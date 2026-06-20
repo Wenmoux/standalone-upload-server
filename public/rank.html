@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>动态榜单 · PO18 Reader</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f7;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --text: #162033;
+      --muted: #66758b;
+      --line: #d8e1ea;
+      --line-strong: #b7c4d3;
+      --primary: #0f766e;
+      --blue: #2563eb;
+      --rose: #be123c;
+      --amber: #a16207;
+      --green: #15803d;
+      --shadow: 0 14px 34px rgba(15, 23, 42, 0.09);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      min-height: 38px;
+      border: 0;
+      border-radius: var(--radius);
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: #fff;
+      background: var(--primary);
+      font-weight: 760;
+      cursor: pointer;
+      white-space: nowrap;
+      box-shadow: 0 8px 18px rgba(15, 118, 110, 0.2);
+    }
+
+    button.secondary {
+      border: 1px solid #cbd6e5;
+      background: #fff;
+      color: #315071;
+      box-shadow: none;
+    }
+
+    button.active {
+      background: #102a2a;
+      color: #d6fff7;
+      box-shadow: 0 8px 18px rgba(16, 42, 42, 0.18);
+    }
+
+    button:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid #cbd6e5;
+      border-radius: var(--radius);
+      padding: 9px 11px;
+      background: #fff;
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 30px;
+      background: rgba(255, 255, 255, 0.96);
+      border-bottom: 1px solid rgba(216, 225, 234, 0.96);
+      backdrop-filter: saturate(140%) blur(14px);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.055);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #102a2a;
+      color: #d6fff7;
+      font-weight: 850;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.15;
+    }
+
+    .brand span,
+    .sub,
+    .meta {
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 2px;
+      font-size: 12px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .ghost {
+      min-height: 38px;
+      border: 1px solid #cbd6e5;
+      border-radius: var(--radius);
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      color: #315071;
+      font-weight: 760;
+    }
+
+    .page {
+      width: min(1500px, 100%);
+      margin: 0 auto;
+      padding: 24px 24px 54px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(250px, 292px) minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .side,
+    .panel,
+    .book-row,
+    .group-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .side {
+      position: sticky;
+      top: 92px;
+      padding: 18px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+      font-size: 25px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 5px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin-bottom: 10px;
+      font-size: 15px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .field span {
+      color: #40556e;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .sorts {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .sorts button {
+      justify-content: flex-start;
+      width: 100%;
+    }
+
+    .status {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .main {
+      min-width: 0;
+    }
+
+    .head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 13px;
+      background: var(--surface);
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+
+    .toolbar {
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .toolbar-grid {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 0.7fr) minmax(150px, 0.7fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .group-strip {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .group-card {
+      padding: 14px;
+      box-shadow: none;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .chip {
+      min-height: 28px;
+      border: 1px solid #d7e0ea;
+      border-radius: 999px;
+      padding: 5px 9px;
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      background: #f8fafc;
+      color: #38506c;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .chip b {
+      color: var(--text);
+    }
+
+    .book-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .book-row {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr) minmax(310px, 0.85fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 13px 14px;
+      box-shadow: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    .book-row:hover {
+      border-color: #8ec6be;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .rank {
+      width: 46px;
+      height: 46px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #eef7f5;
+      color: var(--primary);
+      font-weight: 850;
+    }
+
+    .book-title {
+      display: block;
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .book-meta {
+      margin-top: 5px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .tag {
+      border-radius: 999px;
+      padding: 2px 7px;
+      background: #f1f5f9;
+      color: #40556e;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .metric {
+      min-width: 0;
+      border-left: 3px solid var(--line-strong);
+      padding-left: 8px;
+    }
+
+    .metric.heat { border-color: var(--rose); }
+    .metric.cache { border-color: var(--blue); }
+    .metric.words { border-color: var(--amber); }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .actions {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .empty,
+    .error {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 36px 20px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .error {
+      border-color: #fecdd3;
+      color: var(--rose);
+      background: #fff5f6;
+    }
+
+    .pager {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1120px) {
+      .workspace { grid-template-columns: 1fr; }
+      .side { position: static; }
+      .sorts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      .book-row { grid-template-columns: 48px minmax(0, 1fr); }
+      .metrics,
+      .actions { grid-column: 2; }
+      .actions { justify-content: flex-start; }
+    }
+
+    @media (max-width: 760px) {
+      .topbar { align-items: flex-start; padding: 12px 16px; flex-direction: column; }
+      .page { padding: 18px 14px 42px; }
+      .head { flex-direction: column; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .toolbar-grid { grid-template-columns: 1fr; }
+      .group-strip { grid-template-columns: 1fr; }
+      .sorts { grid-template-columns: 1fr 1fr; }
+      .book-row { grid-template-columns: 42px minmax(0, 1fr); padding: 12px; }
+      .rank { width: 38px; height: 38px; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">R</div>
+      <div>
+        <strong>PO18 Rank</strong>
+        <span>动态榜单 · 分类 / 站点 / 更新 / 字数 / 缓存</span>
+      </div>
+    </div>
+    <div class="top-actions">
+      <a class="ghost" href="/">后台</a>
+      <a class="ghost" id="readerHome" href="/" target="_blank" rel="noreferrer">阅读器 3200</a>
+      <a class="ghost" href="/setup">setup</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="workspace">
+      <aside class="side">
+        <h1>动态榜单</h1>
+        <p class="sub">数据来自后端缓存，定时刷新；筛选和排序不会生成新的静态大文件。</p>
+
+        <div class="sorts" id="sorts"></div>
+
+        <div class="status">
+          <div>缓存：<strong id="cacheState">读取中</strong></div>
+          <div>更新时间：<strong id="generatedAt">-</strong></div>
+          <div>刷新间隔：<strong id="refreshInterval">-</strong></div>
+          <button class="secondary" type="button" id="reloadButton">刷新页面数据</button>
+        </div>
+      </aside>
+
+      <section class="main">
+        <div class="head">
+          <div>
+            <h2 id="title">综合热度</h2>
+            <p class="sub" id="subtitle">正在载入榜单数据。</p>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><span>书籍总量</span><strong id="statTotal">0</strong></div>
+          <div class="stat"><span>当前结果</span><strong id="statFiltered">0</strong></div>
+          <div class="stat"><span>站点</span><strong id="statSites">0</strong></div>
+          <div class="stat"><span>分类</span><strong id="statCategories">0</strong></div>
+        </div>
+
+        <section class="panel toolbar">
+          <div class="toolbar-grid">
+            <label class="field">
+              <span>搜索</span>
+              <input id="search" type="search" placeholder="书名 / 作者 / ID / 标签">
+            </label>
+            <label class="field">
+              <span>站点</span>
+              <select id="site"></select>
+            </label>
+            <label class="field">
+              <span>分类</span>
+              <select id="category"></select>
+            </label>
+            <button type="button" id="applyButton">筛选</button>
+          </div>
+        </section>
+
+        <div class="group-strip">
+          <section class="group-card">
+            <h3>热门站点</h3>
+            <div class="chips" id="siteChips"></div>
+          </section>
+          <section class="group-card">
+            <h3>热门分类</h3>
+            <div class="chips" id="categoryChips"></div>
+          </section>
+        </div>
+
+        <div id="message"></div>
+        <section class="book-list" id="bookList"></section>
+        <div class="pager" id="pager"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const state = {
+      sort: "overall",
+      q: "",
+      site: "",
+      category: "",
+      limit: 80,
+      offset: 0,
+      loading: false,
+      lastData: null
+    };
+
+    const sortLabels = {
+      overall: "综合热度",
+      updated: "最近更新",
+      cache: "缓存最多",
+      words: "字数最多",
+      chapters: "章节最多"
+    };
+
+    const els = {
+      sorts: document.getElementById("sorts"),
+      cacheState: document.getElementById("cacheState"),
+      generatedAt: document.getElementById("generatedAt"),
+      refreshInterval: document.getElementById("refreshInterval"),
+      reloadButton: document.getElementById("reloadButton"),
+      title: document.getElementById("title"),
+      subtitle: document.getElementById("subtitle"),
+      statTotal: document.getElementById("statTotal"),
+      statFiltered: document.getElementById("statFiltered"),
+      statSites: document.getElementById("statSites"),
+      statCategories: document.getElementById("statCategories"),
+      search: document.getElementById("search"),
+      site: document.getElementById("site"),
+      category: document.getElementById("category"),
+      applyButton: document.getElementById("applyButton"),
+      siteChips: document.getElementById("siteChips"),
+      categoryChips: document.getElementById("categoryChips"),
+      message: document.getElementById("message"),
+      bookList: document.getElementById("bookList"),
+      pager: document.getElementById("pager"),
+      readerHome: document.getElementById("readerHome")
+    };
+
+    function number(value) {
+      const num = Number(value || 0);
+      return Number.isFinite(num) ? num.toLocaleString("zh-CN") : "0";
+    }
+
+    function time(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("zh-CN", { hour12: false });
+    }
+
+    function duration(ms) {
+      const sec = Math.round(Number(ms || 0) / 1000);
+      if (!sec) return "-";
+      if (sec < 60) return `${sec} 秒`;
+      const min = Math.round(sec / 60);
+      if (min < 60) return `${min} 分钟`;
+      const hour = Math.round(min / 60);
+      return `${hour} 小时`;
+    }
+
+    function text(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function readerUrl(path = "/", query = {}) {
+      const url = new URL(window.location.href);
+      url.port = "3200";
+      url.pathname = "/";
+      url.search = "";
+      url.hash = path;
+      const params = new URLSearchParams(query);
+      if ([...params.keys()].length) url.hash = `${path}?${params.toString()}`;
+      return url.toString();
+    }
+
+    function bookReaderUrl(bookId) {
+      return readerUrl("/detail", { bid: bookId });
+    }
+
+    function setMessage(type, message) {
+      els.message.innerHTML = message ? `<div class="${type}">${message}</div>` : "";
+    }
+
+    function option(value, label, selected) {
+      return `<option value="${text(value)}"${selected ? " selected" : ""}>${text(label)}</option>`;
+    }
+
+    function renderSorts(sorts = {}) {
+      const keys = Object.keys(sorts).length ? Object.keys(sorts) : Object.keys(sortLabels);
+      els.sorts.innerHTML = keys.map((key) => {
+        const label = sorts[key]?.label || sortLabels[key] || key;
+        return `<button type="button" class="${state.sort === key ? "active" : "secondary"}" data-sort="${key}">${label}</button>`;
+      }).join("");
+      els.sorts.querySelectorAll("[data-sort]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.sort = button.dataset.sort || "overall";
+          state.offset = 0;
+          loadRank();
+        });
+      });
+    }
+
+    function renderFilters(data) {
+      const sites = data.sites || [];
+      const categories = data.categories || [];
+      els.site.innerHTML = option("", "全部站点", !state.site) + sites.map((item) => option(item.key, `${item.label} (${number(item.count)})`, state.site === item.key)).join("");
+      els.category.innerHTML = option("", "全部分类", !state.category) + categories.map((item) => option(item.label, `${item.label} (${number(item.count)})`, state.category === item.label)).join("");
+      els.siteChips.innerHTML = sites.slice(0, 12).map((item) => `<button class="chip" type="button" data-site="${text(item.key)}">${text(item.label)}<b>${number(item.count)}</b></button>`).join("") || "<span class=\"meta\">暂无站点</span>";
+      els.categoryChips.innerHTML = categories.slice(0, 12).map((item) => `<button class="chip" type="button" data-category="${text(item.label)}">${text(item.label)}<b>${number(item.count)}</b></button>`).join("") || "<span class=\"meta\">暂无分类</span>";
+      els.siteChips.querySelectorAll("[data-site]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.site = button.dataset.site || "";
+          state.offset = 0;
+          loadRank();
+        });
+      });
+      els.categoryChips.querySelectorAll("[data-category]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.category = button.dataset.category || "";
+          state.offset = 0;
+          loadRank();
+        });
+      });
+    }
+
+    function renderStats(data) {
+      const meta = data.meta || {};
+      const active = data.active || {};
+      els.title.textContent = (data.sorts && data.sorts[state.sort] && data.sorts[state.sort].label) || sortLabels[state.sort] || "动态榜单";
+      els.subtitle.textContent = `${number(active.total || 0)} 条结果，当前显示 ${number((data.rows || []).length)} 条。`;
+      els.statTotal.textContent = number(meta.total || 0);
+      els.statFiltered.textContent = number(active.total || 0);
+      els.statSites.textContent = number((data.sites || []).length);
+      els.statCategories.textContent = number((data.categories || []).length);
+      els.cacheState.textContent = meta.cacheAgeMs === null || meta.cacheAgeMs === undefined ? "刚生成" : `${duration(meta.cacheAgeMs)} 前`;
+      els.generatedAt.textContent = time(meta.generatedAt);
+      els.refreshInterval.textContent = duration(meta.refreshIntervalMs);
+    }
+
+    function renderBooks(rows = []) {
+      if (!rows.length) {
+        els.bookList.innerHTML = "";
+        setMessage("empty", "当前筛选下没有书籍。");
+        return;
+      }
+      setMessage("", "");
+      els.bookList.innerHTML = rows.map((book) => {
+        const tags = (book.tags || []).slice(0, 3).map((tag) => `<span class="tag">${tag}</span>`).join("");
+        const source = book.source_url ? `<a class="ghost" href="${book.source_url}" target="_blank" rel="noreferrer">原站</a>` : "";
+        return `
+          <article class="book-row">
+            <div class="rank">#${number(book.rank)}</div>
+            <div>
+              <a class="book-title" href="${bookReaderUrl(book.book_id)}" target="_blank" rel="noreferrer">${text(book.title)}</a>
+              <div class="book-meta">
+                <span>${text(book.author || "佚名")}</span>
+                <span>${text(book.platform_label || book.platform || "未知站点")}</span>
+                <span>${text(book.category || "未分类")}</span>
+                ${tags}
+              </div>
+            </div>
+            <div class="metrics">
+              <div class="metric heat"><span>热度</span><strong>${number(book.heat)}</strong></div>
+              <div class="metric cache"><span>缓存</span><strong>${number(book.cache_count)} 章</strong></div>
+              <div class="metric words"><span>字数 / 章节</span><strong>${number(book.word_count)} / ${number(book.chapter_count)}</strong></div>
+            </div>
+            <div class="actions">
+              <a class="ghost" href="${bookReaderUrl(book.book_id)}" target="_blank" rel="noreferrer">阅读器</a>
+              ${source}
+            </div>
+          </article>`;
+      }).join("");
+    }
+
+    function renderPager(data) {
+      const active = data.active || {};
+      const total = Number(active.total || 0);
+      const limit = Number(active.limit || state.limit);
+      const offset = Number(active.offset || 0);
+      const page = Math.floor(offset / limit) + 1;
+      const pages = Math.max(1, Math.ceil(total / limit));
+      els.pager.innerHTML = `
+        <button class="secondary" type="button" id="prevPage" ${offset <= 0 ? "disabled" : ""}>上一页</button>
+        <span>第 ${number(page)} / ${number(pages)} 页</span>
+        <button class="secondary" type="button" id="nextPage" ${offset + limit >= total ? "disabled" : ""}>下一页</button>
+      `;
+      document.getElementById("prevPage").addEventListener("click", () => {
+        state.offset = Math.max(0, state.offset - state.limit);
+        loadRank();
+      });
+      document.getElementById("nextPage").addEventListener("click", () => {
+        state.offset += state.limit;
+        loadRank();
+      });
+    }
+
+    async function loadRank() {
+      if (state.loading) return;
+      state.loading = true;
+      els.applyButton.disabled = true;
+      setMessage("empty", "正在加载榜单...");
+      try {
+        const params = new URLSearchParams({
+          sort: state.sort,
+          q: state.q,
+          site: state.site,
+          category: state.category,
+          limit: String(state.limit),
+          offset: String(state.offset)
+        });
+        const response = await fetch(`/reader-api/rank?${params.toString()}`, { credentials: "include" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        state.lastData = data;
+        renderSorts(data.sorts);
+        renderFilters(data);
+        renderStats(data);
+        renderBooks(data.rows || []);
+        renderPager(data);
+      } catch (err) {
+        els.bookList.innerHTML = "";
+        els.pager.innerHTML = "";
+        setMessage("error", `榜单暂时无法加载：${err.message || err}`);
+      } finally {
+        state.loading = false;
+        els.applyButton.disabled = false;
+      }
+    }
+
+    function applyFilters() {
+      state.q = els.search.value.trim();
+      state.site = els.site.value;
+      state.category = els.category.value;
+      state.offset = 0;
+      loadRank();
+    }
+
+    els.readerHome.href = readerUrl("/");
+    els.applyButton.addEventListener("click", applyFilters);
+    els.reloadButton.addEventListener("click", loadRank);
+    els.search.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") applyFilters();
+    });
+
+    renderSorts();
+    loadRank();
+  </script>
+</body>
+</html>

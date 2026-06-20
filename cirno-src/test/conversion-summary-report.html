@@ -1,0 +1,1155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cirno Conversion Summary</title>
+  <style>
+    :root {
+      --paper: #f6f7f1;
+      --ink: #141414;
+      --panel: #fffdf5;
+      --cyan: #00a7b5;
+      --pink: #f0457a;
+      --yellow: #ffd84d;
+      --green: #16a34a;
+      --red: #dc2626;
+      --muted: #60646c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(#d9dce2 1px, transparent 1px),
+        linear-gradient(90deg, #d9dce2 1px, transparent 1px);
+      background-size: 18px 18px;
+      font: 14px/1.55 Consolas, "Courier New", "Microsoft YaHei", monospace;
+      letter-spacing: 0;
+    }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 26px; }
+    header {
+      border: 3px solid var(--ink);
+      background: var(--panel);
+      box-shadow: 8px 8px 0 var(--ink);
+      padding: 18px;
+      margin-bottom: 22px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: end;
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 28px; text-transform: uppercase; }
+    h2 { font-size: 18px; text-transform: uppercase; }
+    h3 {
+      font-size: 13px;
+      margin: 18px 0 8px;
+      padding-left: 8px;
+      border-left: 10px solid var(--cyan);
+      text-transform: uppercase;
+    }
+    .subline { color: var(--muted); margin-top: 6px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 76px;
+      padding: 4px 8px;
+      border: 2px solid var(--ink);
+      background: white;
+      box-shadow: 3px 3px 0 var(--ink);
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge.ok { background: #dff8e8; color: var(--green); }
+    .badge.fail { background: #ffe1e7; color: var(--red); }
+    .badge.warn { background: #fff3b0; color: #8a5a00; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .metric, .panel {
+      border: 3px solid var(--ink);
+      background: var(--panel);
+      box-shadow: 6px 6px 0 var(--ink);
+    }
+    .metric { padding: 14px; min-height: 106px; position: relative; }
+    .metric::after {
+      content: "";
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      width: 14px;
+      height: 14px;
+      background: var(--yellow);
+      border: 2px solid var(--ink);
+    }
+    .metric span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; }
+    .metric strong { display: block; font-size: 25px; line-height: 1.2; margin-top: 8px; }
+    .metric em { display: block; color: var(--muted); font-style: normal; margin-top: 8px; }
+    .panel { padding: 16px; margin: 18px 0; overflow: hidden; }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 3px solid var(--ink);
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+    }
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .mini-grid div {
+      border: 2px solid var(--ink);
+      padding: 9px;
+      background: white;
+    }
+    .mini-grid span { display: block; color: var(--muted); font-size: 11px; }
+    .mini-grid strong { display: block; font-size: 15px; margin-top: 4px; }
+    .note {
+      border: 2px dashed var(--ink);
+      background: #eaffff;
+      padding: 12px;
+      margin-top: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border: 2px solid var(--ink);
+    }
+    th, td {
+      border: 2px solid var(--ink);
+      padding: 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #141414;
+      color: white;
+      font-size: 12px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 150px;
+      overflow: auto;
+      font-family: "Microsoft YaHei", Consolas, monospace;
+    }
+    .muted { color: var(--muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      border: 2px solid var(--ink);
+      background: white;
+      padding: 5px 8px;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+    .chip b { color: var(--pink); font-size: 16px; }
+    .chip span { color: var(--cyan); font-weight: 700; }
+    .chip em { color: var(--muted); font-style: normal; }
+    .term-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .term-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 4px 8px;
+      border: 2px solid var(--ink);
+      background: #eaffff;
+      box-shadow: 3px 3px 0 var(--ink);
+      font-family: "Microsoft YaHei", Consolas, monospace;
+    }
+    .preview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .preview {
+      border: 2px solid var(--ink);
+      background: white;
+    }
+    .preview b {
+      display: block;
+      padding: 8px;
+      border-bottom: 2px solid var(--ink);
+      background: var(--yellow);
+    }
+    .preview pre { padding: 10px; min-height: 130px; }
+    @media (max-width: 980px) {
+      .wrap { padding: 14px; }
+      header { display: block; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .mini-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .preview-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Cirno Conversion Summary</h1>
+        <div class="subline">TEST_DIR: test · GENERATED: 2026/5/7 07:13:08</div>
+      </div>
+      <span class="badge ok">ALL PASS</span>
+    </header>
+
+    <div class="metrics">
+      <div class="metric"><span>Rounds</span><strong>5</strong><em>23605 ms avg</em></div>
+      <div class="metric"><span>Files / Chars</span><strong>11 / 12,992,838</strong><em>36,661,269 bytes</em></div>
+      <div class="metric"><span>Residual</span><strong>0</strong><em>2,580,058 mapped hits</em></div>
+      <div class="metric"><span>Regression</span><strong>11 / 11</strong><em>protected 110</em></div>
+    </div>
+
+    <section class="panel">
+      <div class="section-title">
+        <h2>Summary</h2>
+        <span class="badge ok">stable</span>
+      </div>
+      <div class="note">
+        共 11 份文本执行 5 轮。最终异常残留 0，段落残留 0，分片残留 0；保护性保留 110 个，不计入异常。
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title"><h2>Round Matrix</h2></div>
+      <table>
+        <thead><tr><th>Status</th><th>Round</th><th>Start</th><th>Time</th><th>Regression</th><th>Map</th><th>Protected</th><th>Paragraph</th><th>Window</th></tr></thead>
+        <tbody><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>#1</td>
+        <td>2026/5/7 07:11:10</td>
+        <td>23232 ms</td>
+        <td>11/11</td>
+        <td>2,580,058 -&gt; 0</td>
+        <td>110</td>
+        <td>0 / 359,732</td>
+        <td>0 / 8,126</td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>#2</td>
+        <td>2026/5/7 07:11:33</td>
+        <td>22939 ms</td>
+        <td>11/11</td>
+        <td>2,580,058 -&gt; 0</td>
+        <td>110</td>
+        <td>0 / 359,732</td>
+        <td>0 / 8,126</td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>#3</td>
+        <td>2026/5/7 07:11:56</td>
+        <td>23524 ms</td>
+        <td>11/11</td>
+        <td>2,580,058 -&gt; 0</td>
+        <td>110</td>
+        <td>0 / 359,732</td>
+        <td>0 / 8,126</td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>#4</td>
+        <td>2026/5/7 07:12:20</td>
+        <td>24247 ms</td>
+        <td>11/11</td>
+        <td>2,580,058 -&gt; 0</td>
+        <td>110</td>
+        <td>0 / 359,732</td>
+        <td>0 / 8,126</td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>#5</td>
+        <td>2026/5/7 07:12:44</td>
+        <td>24084 ms</td>
+        <td>11/11</td>
+        <td>2,580,058 -&gt; 0</td>
+        <td>110</td>
+        <td>0 / 359,732</td>
+        <td>0 / 8,126</td>
+      </tr></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="section-title"><h2>File Aggregate</h2></div>
+      <table>
+        <thead><tr><th>File</th><th>Chars</th><th>Map</th><th>Rate</th><th>Protected</th><th>Paragraph Residual</th><th>Window Residual</th><th>Time Avg</th></tr></thead>
+        <tbody><tr>
+        <td>穿越後綁定了六個老公_827106.txt</td>
+        <td>690,792</td>
+        <td>161,820 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>1299 ms <span class="muted">[1211 ms-1383 ms]</span></td>
+      </tr><tr>
+        <td>創世紀前傳 冰峰魔戀_284.txt</td>
+        <td>1,789,370</td>
+        <td>385,148 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>26</td>
+        <td>0</td>
+        <td>0</td>
+        <td>3184 ms <span class="muted">[3058 ms-3254 ms]</span></td>
+      </tr><tr>
+        <td>大江湖_502.txt</td>
+        <td>244,315</td>
+        <td>47,866 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>425 ms <span class="muted">[382 ms-511 ms]</span></td>
+      </tr><tr>
+        <td>動漫之全收魔王_918.txt</td>
+        <td>1,689,547</td>
+        <td>349,884 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>45</td>
+        <td>0</td>
+        <td>0</td>
+        <td>3129 ms <span class="muted">[3092 ms-3177 ms]</span></td>
+      </tr><tr>
+        <td>繁花落盡_583294.txt</td>
+        <td>397,755</td>
+        <td>74,386 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>643 ms <span class="muted">[618 ms-658 ms]</span></td>
+      </tr><tr>
+        <td>后出軌時代_329.txt</td>
+        <td>2,512,431</td>
+        <td>555,055 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>21</td>
+        <td>0</td>
+        <td>0</td>
+        <td>4883 ms <span class="muted">[4728 ms-5167 ms]</span></td>
+      </tr><tr>
+        <td>梨花與野獸的情事_558874.txt</td>
+        <td>316,039</td>
+        <td>67,199 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>555 ms <span class="muted">[515 ms-602 ms]</span></td>
+      </tr><tr>
+        <td>飄飄欲仙_652411.txt</td>
+        <td>676,969</td>
+        <td>149,508 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>1069 ms <span class="muted">[1007 ms-1116 ms]</span></td>
+      </tr><tr>
+        <td>我的變嫁文_774784.txt</td>
+        <td>911,572</td>
+        <td>217,304 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>7</td>
+        <td>0</td>
+        <td>0</td>
+        <td>1454 ms <span class="muted">[1365 ms-1534 ms]</span></td>
+      </tr><tr>
+        <td>邪惡小仙帝的萬界之旅_1126.txt</td>
+        <td>3,584,772</td>
+        <td>534,403 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>6</td>
+        <td>0</td>
+        <td>0</td>
+        <td>6569 ms <span class="muted">[6291 ms-6865 ms]</span></td>
+      </tr><tr>
+        <td>邪惡APP 女神要壞掉了_1299.txt</td>
+        <td>179,276</td>
+        <td>37,485 -&gt; 0</td>
+        <td>100.00%</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>391 ms <span class="muted">[372 ms-430 ms]</span></td>
+      </tr></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="section-title"><h2>Global Lexicon</h2></div>
+      <h3>TOP BEFORE / ALL BOOKS</h3>
+      <div class="chips"><span class="chip"><b>著</b><span>着</span><em>98,444</em></span><span class="chip"><b>這</b><span>这</span><em>68,604</em></span><span class="chip"><b>來</b><span>来</span><em>63,971</em></span><span class="chip"><b>個</b><span>个</span><em>57,166</em></span><span class="chip"><b>雲</b><span>云</span><em>51,744</em></span><span class="chip"><b>說</b><span>说</span><em>37,329</em></span><span class="chip"><b>過</b><span>过</span><em>34,656</em></span><span class="chip"><b>還</b><span>还</span><em>34,218</em></span><span class="chip"><b>時</b><span>时</span><em>33,747</em></span><span class="chip"><b>沒</b><span>没</span><em>33,182</em></span><span class="chip"><b>頭</b><span>头</span><em>32,405</em></span><span class="chip"><b>麼</b><span>么</span><em>27,248</em></span><span class="chip"><b>會</b><span>会</span><em>26,909</em></span><span class="chip"><b>開</b><span>开</span><em>26,671</em></span><span class="chip"><b>們</b><span>们</span><em>25,337</em></span><span class="chip"><b>後</b><span>后</span><em>24,490</em></span><span class="chip"><b>聲</b><span>声</span><em>24,269</em></span><span class="chip"><b>對</b><span>对</span><em>23,956</em></span><span class="chip"><b>兒</b><span>儿</span><em>23,560</em></span><span class="chip"><b>動</b><span>动</span><em>22,872</em></span><span class="chip"><b>點</b><span>点</span><em>22,711</em></span><span class="chip"><b>發</b><span>发</span><em>22,650</em></span><span class="chip"><b>為</b><span>为</span><em>22,214</em></span><span class="chip"><b>讓</b><span>让</span><em>21,799</em></span><span class="chip"><b>樣</b><span>样</span><em>21,607</em></span><span class="chip"><b>無</b><span>无</span><em>20,955</em></span><span class="chip"><b>兩</b><span>两</span><em>20,461</em></span><span class="chip"><b>臉</b><span>脸</span><em>18,083</em></span><span class="chip"><b>間</b><span>间</span><em>17,878</em></span><span class="chip"><b>氣</b><span>气</span><em>17,862</em></span><span class="chip"><b>經</b><span>经</span><em>17,628</em></span><span class="chip"><b>輕</b><span>轻</span><em>17,378</em></span><span class="chip"><b>體</b><span>体</span><em>17,075</em></span><span class="chip"><b>覺</b><span>觉</span><em>16,642</em></span><span class="chip"><b>現</b><span>现</span><em>16,622</em></span><span class="chip"><b>許</b><span>许</span><em>16,314</em></span></div>
+      <h3>RESIDUAL AFTER / ALL BOOKS</h3>
+      <span class="muted">EMPTY</span>
+      <h3>PROTECTED KEEP / ALL BOOKS</h3>
+      <div class="chips"><span class="chip"><b>著</b><span>着</span><em>110</em></span></div>
+      <h3>TERMS / PHRASES</h3>
+      <div class="term-list"><span class="term-chip">微信对话框里</span><span class="term-chip">备注为“恶毒后妈”</span><span class="term-chip">发来一条新消息</span><span class="term-chip">这个月开始生活费调整到1000块哦</span><span class="term-chip">小夏，这是苏姨</span><span class="term-chip">咱们家的人了</span><span class="term-chip">手机屏幕</span><span class="term-chip">支付界面</span><span class="term-chip">图标</span><span class="term-chip">扫码枪</span><span class="term-chip">两盒进口巧克力</span><span class="term-chip">揣进口袋</span><span class="term-chip">一张白色的公主床</span><span class="term-chip">铺着浅灰色的床品</span><span class="term-chip">床头柜上摆着几本书</span><span class="term-chip">一盏造型简约的台灯</span><span class="term-chip">墙上挂着几幅素描</span><span class="term-chip">都是风景画</span><span class="term-chip">笔触细腻</span><span class="term-chip">显然是出自她手</span><span class="term-chip">著名景点</span><span class="term-chip">原著、编著、专著、译著、著述、著录</span><span class="term-chip">背着书包</span><span class="term-chip">配合着</span><span class="term-chip">写着名字</span><span class="term-chip">明着作对</span><span class="term-chip">支付行为：亲吻对方嘴唇</span><span class="term-chip">支付对象：林泳心</span><span class="term-chip">请在三分钟内完成支付</span><span class="term-chip">【请在三分钟内完成支付】</span><span class="term-chip">江夏抬起头</span><span class="term-chip">那双桃花眼</span><span class="term-chip">瞳孔里倒映着</span><span class="term-chip">手里那部该死的手机</span><span class="term-chip">吊带吊的胸前绷得紧紧的</span><span class="term-chip">似乎随时会崩开</span><span class="term-chip">猫主席著作</span><span class="term-chip">古典名著</span><span class="term-chip">做着作业</span><span class="term-chip">强忍着作呕</span><span class="term-chip">起着作用</span><span class="term-chip">跟着作美</span></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title"><h2>Regression Cases</h2></div>
+      <table>
+        <thead><tr><th>Status</th><th>Case</th><th>Input</th><th>Output</th><th>Missing</th></tr></thead>
+        <tbody><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>微信对话与费用</td>
+        <td><pre>微信对話框裏，備注为“惡毒后媽”的头像发來一條新消息：這个月开始生活費調整到1000塊哦。</pre></td>
+        <td><pre>微信对话框里，备注为“恶毒后妈”的头像发来一条新消息：这个月开始生活费调整到1000块哦。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>家人称呼与 UI 词</td>
+        <td><pre>小夏，這是蘇姨，以后就是咱們家的人了。手機螢幕、支付介面、圖示。</pre></td>
+        <td><pre>小夏，这是苏姨，以后就是咱们家的人了。手机屏幕、支付界面、图标。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>扫码枪/进口/揣进口袋</td>
+        <td><pre>林心泳拿着扫码槍，“两盒進口巧克力，一百二。”江夏点把手机揣進口袋，拿着东西，转身往外走。</pre></td>
+        <td><pre>林心泳拿着扫码枪，“两盒进口巧克力，一百二。”江夏点把手机揣进口袋，拿着东西，转身往外走。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>房间描写</td>
+        <td><pre>一張白色的公主床，鋪著淺灰色的床品。床头櫃上擺著幾本书，还有一盞造型簡約的台燈。</pre></td>
+        <td><pre>一张白色的公主床，铺着浅灰色的床品。床头柜上摆着几本书，还有一盏造型简约的台灯。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>风景画与笔触</td>
+        <td><pre>牆上掛著幾幅素描，都是风景畫，筆觸細膩，顯然是出自她手。</pre></td>
+        <td><pre>墙上挂着几幅素描，都是风景画，笔触细腻，显然是出自她手。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>著字保护</td>
+        <td><pre>著名景點和原著、編著、專著、譯著、著述、著錄。背著書包，配合著，寫著名字，明著作對。</pre></td>
+        <td><pre>著名景点和原著、编著、专著、译著、著述、著录。背着书包，配合着，写着名字，明着作对。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>支付系统词</td>
+        <td><pre>支付行为：親吻对方嘴唇，支付對象：林泳心，請在三分鐘內完成支付。</pre></td>
+        <td><pre>支付行为：亲吻对方嘴唇，支付对象：林泳心，请在三分钟内完成支付。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>支付倒计时提示</td>
+        <td><pre>【請在三分鐘內完成支付】</pre></td>
+        <td><pre>【请在三分钟内完成支付】</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>擡头场景</td>
+        <td><pre>江夏擡起头，正好对上林泳心的目光。那雙桃花眼此刻瞪得大大的，瞳孔裏倒映著他和他手裏那部該死的手機。</pre></td>
+        <td><pre>江夏抬起头，正好对上林泳心的目光。那双桃花眼此刻瞪得大大的，瞳孔里倒映着他和他手里那部该死的手机。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>服饰与状态</td>
+        <td><pre>吊帶吊的胸前繃得緊緊的，似乎隨时会崩开。</pre></td>
+        <td><pre>吊带吊的胸前绷得紧紧的，似乎随时会崩开。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr><tr>
+        <td><span class="badge ok">PASS</span></td>
+        <td>著作边界</td>
+        <td><pre>猫主席著作和古典名著。她坐在位置上做著作業，强忍著作嘔，起著作用，跟著作美。</pre></td>
+        <td><pre>猫主席著作和古典名著。她坐在位置上做着作业，强忍着作呕，起着作用，跟着作美。</pre></td>
+        <td><span class="muted">NONE</span></td>
+      </tr></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+        <div class="section-title">
+          <h2>穿越後綁定了六個老公_827106.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>690,792</strong></div>
+          <div><span>CHANGED</span><strong>168,006</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>161,820 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 19,831</strong></div>
+          <div><span>WINDOW</span><strong>0 / 432</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>穿越後綁定了六個老公
+作者：笑笑長歌
+书号：827106
+
+第 1 章 第2章 一、初見【01】床上一個裸男
+
+少女抱著棉被縮在床角，一臉驚恐地看著眼前的人。
+
+老實說，對方長得不可怕，說實話還挺符合她的審美，但這並不能讓殷璃冷靜下來。
+
+重點一：她不認識這人。
+
+重點二：他們倆都一絲不掛。
+
+重點三……這他喵的到底是什麼地方！！？？
+
+冷不防被她猛力推開的青年，在差點掉下床後倒也一點都不生氣，慢條斯理的從散落地上的被褥裡找出衣服穿上。
+
+但當他剛套上外衣，回頭看到殷璃的表情，臉色頓時也變得驚疑不定。
+
+？？？我莫名其妙就算了，怎麼你也一臉搞不懂發生了什麼的表情？
+
+難道這人爬錯床……不對、照現在的狀況來看，她爬錯床的機率還比較高！
+
+但殷璃記得她昨天晚上明明是躺在自己房間裡睡著的啊！
+
+難道她一夜之間突然得了</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>穿越后绑定了六个老公
+作者：笑笑长歌
+书号：827106
+
+第 1 章 第2章 一、初见【01】床上一个裸男
+
+少女抱着棉被缩在床角，一脸惊恐地看着眼前的人。
+
+老实说，对方长得不可怕，说实话还挺符合她的审美，但这并不能让殷璃冷静下来。
+
+重点一：她不认识这人。
+
+重点二：他们俩都一丝不挂。
+
+重点三……这他喵的到底是什么地方！！？？
+
+冷不防被她猛力推开的青年，在差点掉下床后倒也一点都不生气，慢条斯理的从散落地上的被褥里找出衣服穿上。
+
+但当他刚套上外衣，回头看到殷璃的表情，脸色顿时也变得惊疑不定。
+
+？？？我莫名其妙就算了，怎么你也一脸搞不懂发生了什么的表情？
+
+难道这人爬错床……不对、照现在的状况来看，她爬错床的机率还比较高！
+
+但殷璃记得她昨天晚上明明是躺在自己房间里睡着的啊！
+
+难道她一夜之间突然得了</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>創世紀前傳 冰峰魔戀_284.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>1,789,370</strong></div>
+          <div><span>CHANGED</span><strong>402,470</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>385,148 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 27,070</strong></div>
+          <div><span>WINDOW</span><strong>0 / 1,119</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>創世紀前傳：冰峰魔戀
+作者：華沉
+书号：284
+
+第 1 章 序：惡魔之臉
+
+這是一張丑陋、可怖、滿布疤痕的臉。
+
+魔鬼的臉！
+
+許多年前的一場大火，無情的將這張臉完全燒毀了。毀容的嚴重程度，只能用「慘不忍睹」四個字來形容。任何人看到這張已完全辨認不出五官、斑駁猙獰的面容，都會感到毛骨悚然。
+
+只有這張臉的主人阿威自己，才是惟一的例外。
+
+此刻，他正通過鏡子，凝視著自己的面孔，心中一片寧靜——鏡子里的影像雖然可怕，但畢竟是自己的臉，而且已經朝夕相伴了這么多年，早已習慣了，甚至還有些享受這種感覺。
+
+這是一種真實的感覺。
+
+平常為了掩蓋自己這副尊容，阿威總是戴著一張精巧的人造皮革面具。那是由美國頂尖整容醫師專門制造的，有點類似武俠小說里的「人皮面具」，或是電影《碟中諜》里特工用的高科技產品，戴起來又輕又薄，五官栩</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>创世纪前传：冰峰魔恋
+作者：华沉
+书号：284
+
+第 1 章 序：恶魔之脸
+
+这是一张丑陋、可怖、满布疤痕的脸。
+
+魔鬼的脸！
+
+许多年前的一场大火，无情的将这张脸完全烧毁了。毁容的严重程度，只能用「惨不忍睹」四个字来形容。任何人看到这张已完全辨认不出五官、斑驳狰狞的面容，都会感到毛骨悚然。
+
+只有这张脸的主人阿威自己，才是惟一的例外。
+
+此刻，他正通过镜子，凝视着自己的面孔，心中一片宁静——镜子里的影像虽然可怕，但毕竟是自己的脸，而且已经朝夕相伴了这幺多年，早已习惯了，甚至还有些享受这种感觉。
+
+这是一种真实的感觉。
+
+平常为了掩盖自己这副尊容，阿威总是戴着一张精巧的人造皮革面具。那是由美国顶尖整容医师专门制造的，有点类似武侠小说里的「人皮面具」，或是电影《碟中谍》里特工用的高科技产品，戴起来又轻又薄，五官栩</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>大江湖_502.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>244,315</strong></div>
+          <div><span>CHANGED</span><strong>49,866</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>47,866 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 4,382</strong></div>
+          <div><span>WINDOW</span><strong>0 / 153</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>大江湖
+作者：cpwn
+书号：502
+
+第 1 章 第1章 第一章
+
+「他媽的，我還沒玩夠啊。」
+
+不甘的低喃過去，床上老人便也失去了所有的生息。一旁，年輕的律師看著醫生象征性地忙碌了一番，等他們確認老人已去后，低頭默哀片刻，便收起了手機攝像以及老人的遺囑，轉身離開。
+
+老人死了，尚算精彩的一生隨之落幕。只是高坐九天之上的另一位老人，看著被一枚雙魚玉佩帶到面前的老人魂魄，眉頭卻是微不可查地皺了皺。
+
+「老君……」
+
+老人魂魄突兀地出現于此，一旁燒火的童子不由得被嚇了一跳。只是等看到老君的拂塵慢悠悠地轉了個方向，一切情緒便又被本能地壓了回去，安安靜靜地看起了爐火。同時，那雙魚玉佩是化作一道流光，來到了老君面前。
+
+「……因果……」
+
+也不知老君是否有睜開眼過，只是玉佩浮在面前，他便已是一切了然于心了一般。臉上依舊</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>大江湖
+作者：cpwn
+书号：502
+
+第 1 章 第1章 第一章
+
+「他妈的，我还没玩够啊。」
+
+不甘的低喃过去，床上老人便也失去了所有的生息。一旁，年轻的律师看着医生象征性地忙碌了一番，等他们确认老人已去后，低头默哀片刻，便收起了手机摄像以及老人的遗嘱，转身离开。
+
+老人死了，尚算精彩的一生随之落幕。只是高坐九天之上的另一位老人，看着被一枚双鱼玉佩带到面前的老人魂魄，眉头却是微不可查地皱了皱。
+
+「老君……」
+
+老人魂魄突兀地出现于此，一旁烧火的童子不由得被吓了一跳。只是等看到老君的拂尘慢悠悠地转了个方向，一切情绪便又被本能地压了回去，安安静静地看起了炉火。同时，那双鱼玉佩是化作一道流光，来到了老君面前。
+
+「……因果……」
+
+也不知老君是否有睁开眼过，只是玉佩浮在面前，他便已是一切了然于心了一般。脸上依旧</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>動漫之全收魔王_918.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>1,689,547</strong></div>
+          <div><span>CHANGED</span><strong>362,617</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>349,884 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 63,677</strong></div>
+          <div><span>WINDOW</span><strong>0 / 1,056</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>動漫之全收魔王
+作者：純潔的無淚
+书号：918
+
+第 1 章 第01章：被誘拐
+
+涉穀火車站旁，一名留著棕色碎發，頭髮帶著護目鏡的男子，神情淡漠的倚靠在牆壁上……
+
+看著手機裏發來的資訊，忍不住一笑，人影便是緩緩的走入了火車內。
+
+他叫神原拓也，準確的說是趕上了穿越者的大部隊，來到了數碼寶貝世界，剛剛又收到了神聖天女獸發來的資訊，而且這次是讓他一個人去。
+
+雖然不解……
+
+但他還是決定踏上了這次旅行。
+
+周圍的也接二連三的來了幾道人影，神情各異，似是迷惘，卻也是帶著一股解脫。
+
+終於可以離開那煩人的家了，至少這是所有小屁孩們的感覺，殊不知這次的旅行也可能是一種永別。
+
+灰暗的天空卻在此刻忽然間雷電交加，火車自動的前行著，沒有了任何的駕駛員在操縱著，雲層被凹陷下來，形成一個巨大的圓形坑洞。
+
+透過車窗，神原拓也眉</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>动漫之全收魔王
+作者：纯洁的无泪
+书号：918
+
+第 1 章 第01章：被诱拐
+
+涉谷火车站旁，一名留着棕色碎发，头发带着护目镜的男子，神情淡漠的倚靠在墙壁上……
+
+看着手机里发来的信息，忍不住一笑，人影便是缓缓的走入了火车内。
+
+他叫神原拓也，准确的说是赶上了穿越者的大部队，来到了数码宝贝世界，刚刚又收到了神圣天女兽发来的信息，而且这次是让他一个人去。
+
+虽然不解……
+
+但他还是决定踏上了这次旅行。
+
+周围的也接二连三的来了几道人影，神情各异，似是迷惘，却也是带着一股解脱。
+
+终于可以离开那烦人的家了，至少这是所有小屁孩们的感觉，殊不知这次的旅行也可能是一种永别。
+
+灰暗的天空却在此刻忽然间雷电交加，火车自动的前行着，没有了任何的驾驶员在操纵着，云层被凹陷下来，形成一个巨大的圆形坑洞。
+
+透过车窗，神原拓也眉</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>繁花落盡_583294.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>397,755</strong></div>
+          <div><span>CHANGED</span><strong>77,820</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>74,386 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 12,523</strong></div>
+          <div><span>WINDOW</span><strong>0 / 249</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>繁花落盡
+作者：queen
+书号：583294
+
+第 1 章 第1章 € 繁花落盡 (一) 貴婦X侍衛
+
+※這個故事裡沒有愛情，是在說兩個理性的男女偷情的事。
+
+※本故事女大男兩倍，男女主都非處，不喜勿入。
+
+-----------------------------------------------------
+
+子夜時分，李珅與吳勇換班站崗。
+
+他與吳勇守的，是大奶奶的院子，本月他值夜，夜哨雖傷身，但夜裡涼快，李珅又是個怕熱的，比起白日曬得渾身是汗，他還更喜歡值夜。
+
+不過說實話，無論值日值夜，在葉府做侍衛，都是人人羨慕的肥缺，他也很慶幸自己能在這兒當差，所以就算當個侍衛大半時間都挺無聊，休假也少，他也不覺其苦。
+
+當今聖上重商，以商立國，對於商戶愛護有加，國內前二十大商戶每戶編派二十位侍衛看守，除防宵小</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>繁花落尽
+作者：queen
+书号：583294
+
+第 1 章 第1章 € 繁花落尽 (一) 贵妇X侍卫
+
+※这个故事里没有爱情，是在说两个理性的男女偷情的事。
+
+※本故事女大男两倍，男女主都非处，不喜勿入。
+
+-----------------------------------------------------
+
+子夜时分，李珅与吴勇换班站岗。
+
+他与吴勇守的，是大奶奶的院子，本月他值夜，夜哨虽伤身，但夜里凉快，李珅又是个怕热的，比起白日晒得浑身是汗，他还更喜欢值夜。
+
+不过说实话，无论值日值夜，在叶府做侍卫，都是人人羡慕的肥缺，他也很庆幸自己能在这儿当差，所以就算当个侍卫大半时间都挺无聊，休假也少，他也不觉其苦。
+
+当今圣上重商，以商立国，对于商户爱护有加，国内前二十大商户每户编派二十位侍卫看守，除防宵小</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>后出軌時代_329.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>2,512,431</strong></div>
+          <div><span>CHANGED</span><strong>581,011</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>555,055 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 66,295</strong></div>
+          <div><span>WINDOW</span><strong>0 / 1,571</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>后出軌時代
+作者：十三妖
+书号：329
+
+第 1 章 第1章 第一章·煎熬
+
+半夜醒來，許博的胳膊松松的搭在我的腰上，感到背后貼著他厚實的胸口，想到他的睡姿，心里涌起一汪久違的舒暖。
+
+他的臉幾乎埋進我的頭發里，溫熱平穩的呼吸拂過耳垂，帶起一陣陣酥癢。
+
+夜很靜，我閉著眼睛，輕拂耳畔的潮潤氣息若原野中的風，執拗的壓服了衰草，揉皺了湖水，不管不顧的充斥著無邊無際的空曠。
+
+那酥癢像跳躍的溪流漫過我的脖頸，擴散在飽滿柔膩的胸乳肌膚上，那兩團容量驚人的豐盈蘇醒了過來，伴隨著我的呼吸，酥麻酸脹的感覺迅速的傳遍每個鼓蕩著的細胞。
+
+背后松松的擁抱化作一股暖流緩緩涌入，原本水滑柔軟的肌膚越發繃緊，油然生起一層潮潤凝脂。
+
+每一個毛孔都變得無比敏感起來，尤其是兩個峰頂，脹得隱隱發痛，可以清晰的感覺到睡衣布料纖維的紋路。
+
+衣</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>后出轨时代
+作者：十三妖
+书号：329
+
+第 1 章 第1章 第一章·煎熬
+
+半夜醒来，许博的胳膊松松的搭在我的腰上，感到背后贴着他厚实的胸口，想到他的睡姿，心里涌起一汪久违的舒暖。
+
+他的脸几乎埋进我的头发里，温热平稳的呼吸拂过耳垂，带起一阵阵酥痒。
+
+夜很静，我闭着眼睛，轻拂耳畔的潮润气息若原野中的风，执拗的压服了衰草，揉皱了湖水，不管不顾的充斥着无边无际的空旷。
+
+那酥痒像跳跃的溪流漫过我的脖颈，扩散在饱满柔腻的胸乳肌肤上，那两团容量惊人的丰盈苏醒了过来，伴随着我的呼吸，酥麻酸胀的感觉迅速的传遍每个鼓荡着的细胞。
+
+背后松松的拥抱化作一股暖流缓缓涌入，原本水滑柔软的肌肤越发绷紧，油然生起一层潮润凝脂。
+
+每一个毛孔都变得无比敏感起来，尤其是两个峰顶，胀得隐隐发痛，可以清晰的感觉到睡衣布料纤维的纹路。
+
+衣</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>梨花與野獸的情事_558874.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>316,039</strong></div>
+          <div><span>CHANGED</span><strong>69,713</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>67,199 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 5,534</strong></div>
+          <div><span>WINDOW</span><strong>0 / 198</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>梨花與野獸的情事
+作者：咖啡的鱼
+书号：558874
+
+第 1 章 第1章 第一章  初遇沈家禽獸
+
+五月清晨的陽光透過破舊的窗戶紙射進了屋子，懶洋洋的照射的矮小的床榻上。窗戶下幾只肥大的老母雞跳著腳咯咯亂叫，一陣響聲突然從旁邊的一道門傳來，“梨花，怎的還不起床”。
+
+矮小床榻上一道小小的身體蠕動了幾下才坐起身，目光迷離的盯著牆壁發呆。還在古代啊！梨花輕歎一口氣，失望的低下頭看著自己小小軟軟的手。穿越到古代已經有2年了，從一個12的小姑娘，到要及笄的小娘子，似乎很漫長又很短暫。
+
+剛來時，大饑荒剛過去，每日裏只能吞糠咽沒有油水的野菜。幸好原身的家人個性純良，男尊女卑的社會有遭遇大饑荒也肯善待梨花。
+
+吱呀一聲，破舊的房門被人推開，徐徐走進一位身穿灰色裙裝的婦人，“梨花，今日你二哥便要回來，還發什麽呆啊，早些吃膳</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>梨花与野兽的情事
+作者：咖啡的鱼
+书号：558874
+
+第 1 章 第1章 第一章  初遇沈家禽兽
+
+五月清晨的阳光透过破旧的窗户纸射进了屋子，懒洋洋的照射的矮小的床榻上。窗户下几只肥大的老母鸡跳着脚咯咯乱叫，一阵响声突然从旁边的一道门传来，“梨花，怎的还不起床”。
+
+矮小床榻上一道小小的身体蠕动了几下才坐起身，目光迷离的盯着墙壁发呆。还在古代啊！梨花轻叹一口气，失望的低下头看着自己小小软软的手。穿越到古代已经有2年了，从一个12的小姑娘，到要及笄的小娘子，似乎很漫长又很短暂。
+
+刚来时，大饥荒刚过去，每日里只能吞糠咽没有油水的野菜。幸好原身的家人个性纯良，男尊女卑的社会有遭遇大饥荒也肯善待梨花。
+
+吱呀一声，破旧的房门被人推开，徐徐走进一位身穿灰色裙装的妇人，“梨花，今日你二哥便要回来，还发什么呆啊，早些吃膳</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>飄飄欲仙_652411.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>676,969</strong></div>
+          <div><span>CHANGED</span><strong>154,353</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>149,508 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 8,955</strong></div>
+          <div><span>WINDOW</span><strong>0 / 424</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>飄飄欲仙
+作者：狼太郎
+书号：652411
+
+第 1 章 第1章 引子　仙石下凡
+
+“為什麼我一直無法成仙呢？”眉清目秀的少年眼中透露出困惑，詢問著他對面鬚眉皆白的老者。
+
+  老人微微一笑，伸手拈起不知從何處變出的酒杯，一口飲盡，杯未放下，杯中的酒又徐徐生出。
+
+  “碲石，你修成人身，已有多久了？”老人問道。
+
+  少年微一思索，道：“七千年有餘。”
+
+  老人拈著酒杯，繼續問道：“那你在天界呆了多久了？”
+
+  少年怔了一下，愕然道：“開天之初，我便在了。”
+
+  老人笑了起來：“是啊，開天之初，你便是天界仙石，與天地同歲，與日月同老……碲石，這便是你，為什麼修成人身七千年有餘，卻仍然無法成仙的原因。”
+
+  少年不解地問道：“什麼原因？”
+
+  老人向著四處翻騰的雲海一指：“人有悲歡離合，七情六欲……你</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>飘飘欲仙
+作者：狼太郎
+书号：652411
+
+第 1 章 第1章 引子　仙石下凡
+
+“为什么我一直无法成仙呢？”眉清目秀的少年眼中透露出困惑，询问着他对面须眉皆白的老者。
+
+  老人微微一笑，伸手拈起不知从何处变出的酒杯，一口饮尽，杯未放下，杯中的酒又徐徐生出。
+
+  “碲石，你修成人身，已有多久了？”老人问道。
+
+  少年微一思索，道：“七千年有余。”
+
+  老人拈着酒杯，继续问道：“那你在天界呆了多久了？”
+
+  少年怔了一下，愕然道：“开天之初，我便在了。”
+
+  老人笑了起来：“是啊，开天之初，你便是天界仙石，与天地同岁，与日月同老……碲石，这便是你，为什么修成人身七千年有余，却仍然无法成仙的原因。”
+
+  少年不解地问道：“什么原因？”
+
+  老人向着四处翻腾的云海一指：“人有悲欢离合，七情六欲……你</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>我的變嫁文_774784.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>911,572</strong></div>
+          <div><span>CHANGED</span><strong>224,251</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>217,304 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 10,738</strong></div>
+          <div><span>WINDOW</span><strong>0 / 570</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>我的變嫁文
+作者：變嫁黨KAO
+书号：774784
+
+第 1 章 第1章 惡作劇之神給我三個願望
+
+王傑約我出來一起喝酒，曾經動漫宅的我時常說的一句話，就是三十歲的童貞是魔法師。
+
+    今天是我五十歲生日，準確是在過一個時辰就五十的我，從出生到現在依然是個童貞，如果三十魔法師，四十魔導師，是否五十就是賢者了！
+
+    王傑是個有錢的老少爺，我和他從大學宿友就時常聯絡，幾次我一氣之下炒老闆魷魚時，沒錢重新找工作都是靠他幫忙。
+
+    不過王傑大學時曾經被三個女友甩了，原因是他父母只給他同等工讀生一個禮拜打工的零用錢，所以跟他交往的女孩都認為他是假少爺，因為有一些打工的學生都比他闊綽，然後大學畢業他又遇到幾次同樣情況，他就變得有點氣自己父母的同時，也不太信任一些接近他的女孩子了，結果就是他時常玩一玩女孩子，</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>我的变嫁文
+作者：变嫁党KAO
+书号：774784
+
+第 1 章 第1章 恶作剧之神给我三个愿望
+
+王杰约我出来一起喝酒，曾经动漫宅的我时常说的一句话，就是三十岁的童贞是魔法师。
+
+    今天是我五十岁生日，准确是在过一个时辰就五十的我，从出生到现在依然是个童贞，如果三十魔法师，四十魔导师，是否五十就是贤者了！
+
+    王杰是个有钱的老少爷，我和他从大学宿友就时常联络，几次我一气之下炒老板鱿鱼时，没钱重新找工作都是靠他帮忙。
+
+    不过王杰大学时曾经被三个女友甩了，原因是他父母只给他同等工读生一个礼拜打工的零用钱，所以跟他交往的女孩都认为他是假少爷，因为有一些打工的学生都比他阔绰，然后大学毕业他又遇到几次同样情况，他就变得有点气自己父母的同时，也不太信任一些接近他的女孩子了，结果就是他时常玩一玩女孩子，</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>邪惡小仙帝的萬界之旅_1126.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>3,584,772</strong></div>
+          <div><span>CHANGED</span><strong>553,788</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>534,403 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 130,305</strong></div>
+          <div><span>WINDOW</span><strong>0 / 2,241</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>邪惡小仙帝的萬界之旅
+作者：疾風學霸
+书号：1126
+
+第 1 章 第1章：與光之創造女神媽媽做愛（1）
+
+在充斥著無盡光輝的神國，一座輝煌無比的大殿中，一個面容極其英俊的小少年，正赤身裸體的趴在一個金髮神女身上，用他堅硬無比的粗大肉棒，瘋狂的強姦著胯下的神女。
+
+那粗長堅挺的大雞巴，目測棒身就有30多釐米，整根肉棒沒有那些青筋，棒身極為白嫩光滑細膩，宛如一件藝術品！
+
+小少年有著一頭柔順的黑色長髮，細胳膊細腿，纖細的腰肢、以及挺翹圓潤的臀瓣。
+
+雖然比女孩子還漂亮……
+
+但他的八塊腹肌，結實的胸肌也是毫不含糊，展現出他驚人的力量與絕世美貌！
+
+啪啪啪啪啪啪啪啪啪啪啪！！
+
+“嗚哦哦哦哦！”
+
+那天馬流星拳一般的超光速抽插，速度和力量堪比高鐵一般疾風驟雨的強烈衝擊！
+
+就算是三米厚的鈦合金鋼板，天雲都有信心可以</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>邪恶小仙帝的万界之旅
+作者：疾风学霸
+书号：1126
+
+第 1 章 第1章：与光之创造女神妈妈做爱（1）
+
+在充斥着无尽光辉的神国，一座辉煌无比的大殿中，一个面容极其英俊的小少年，正赤身裸体的趴在一个金发神女身上，用他坚硬无比的粗大肉棒，疯狂的强奸着胯下的神女。
+
+那粗长坚挺的大鸡巴，目测棒身就有30多厘米，整根肉棒没有那些青筋，棒身极为白嫩光滑细腻，宛如一件艺术品！
+
+小少年有着一头柔顺的黑色长发，细胳膊细腿，纤细的腰肢、以及挺翘圆润的臀瓣。
+
+虽然比女孩子还漂亮……
+
+但他的八块腹肌，结实的胸肌也是毫不含糊，展现出他惊人的力量与绝世美貌！
+
+啪啪啪啪啪啪啪啪啪啪啪！！
+
+“呜哦哦哦哦！”
+
+那天马流星拳一般的超光速抽插，速度和力量堪比高铁一般疾风骤雨的强烈冲击！
+
+就算是三米厚的钛合金钢板，天云都有信心可以</pre></div>
+        </div>
+
+        
+      </section><section class="panel">
+        <div class="section-title">
+          <h2>邪惡APP 女神要壞掉了_1299.txt</h2>
+          <span class="badge ok">CLEAN</span>
+        </div>
+        <div class="mini-grid">
+          <div><span>CHARS</span><strong>179,276</strong></div>
+          <div><span>CHANGED</span><strong>38,442</strong></div>
+          <div><span>RATE</span><strong>100.00%</strong></div>
+          <div><span>MAP</span><strong>37,485 -&gt; 0</strong></div>
+          <div><span>PARAGRAPH</span><strong>0 / 10,422</strong></div>
+          <div><span>WINDOW</span><strong>0 / 113</strong></div>
+        </div>
+
+        <h3>PREVIEW</h3>
+        <div class="preview-grid">
+          <div class="preview"><b>RAW</b><pre>邪惡APP，女神要壞掉了
+作者：江夏
+书号：1299
+
+第 1 章 第1章：愛支付
+
+“又減我生活費，還讓不讓人活了。”
+
+江夏盯著手機螢幕，拇指幾乎要把螢幕戳穿。
+
+微信對話框裏，備註為“惡毒後媽”的頭像發來一條新消息：
+
+【這個月開始生活費調整到1000塊哦。
+
+小夏，你也長大了，要學著獨立自主。
+
+錢不夠的話可以去打工嘛，既能賺錢又能鍛煉自己，多好。
+
+你爸也同意的哦……】
+
+末尾那個波浪號，隔著螢幕都能想像出那張漂亮臉蛋上虛偽的笑容。
+
+“不把我當兒子是吧？”
+
+江夏咬著後槽牙，一字一句從齒縫裏擠出來，“好，好，日後我也不會把你當媽。”
+
+宿舍裏空無一人，三個室友不知道去哪鬼混了。
+
+江夏一屁股坐在椅子上，手機重重摔在桌面，發出“砰”的一聲響。
+
+他目前身份是：東城大學，大一新生。
+
+說出來別人都不信，</pre></div>
+          <div class="preview"><b>SIMPLIFIED</b><pre>邪恶APP，女神要坏掉了
+作者：江夏
+书号：1299
+
+第 1 章 第1章：爱支付
+
+“又减我生活费，还让不让人活了。”
+
+江夏盯着手机屏幕，拇指几乎要把屏幕戳穿。
+
+微信对话框里，备注为“恶毒后妈”的头像发来一条新消息：
+
+【这个月开始生活费调整到1000块哦。
+
+小夏，你也长大了，要学着独立自主。
+
+钱不够的话可以去打工嘛，既能赚钱又能锻炼自己，多好。
+
+你爸也同意的哦……】
+
+末尾那个波浪号，隔着屏幕都能想象出那张漂亮脸蛋上虚伪的笑容。
+
+“不把我当儿子是吧？”
+
+江夏咬着后槽牙，一字一句从齿缝里挤出来，“好，好，日后我也不会把你当妈。”
+
+宿舍里空无一人，三个室友不知道去哪鬼混了。
+
+江夏一屁股坐在椅子上，手机重重摔在桌面，发出“砰”的一声响。
+
+他目前身份是：东城大学，大一新生。
+
+说出来别人都不信，</pre></div>
+        </div>
+
+        
+      </section>
+  </div>
+</body>
+</html>

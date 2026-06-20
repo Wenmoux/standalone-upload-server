@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520" role="img" aria-labelledby="title desc">
+  <title id="title">PO18 Reader Stack</title>
+  <desc id="desc">A GitHub banner for a self-hosted reader, admin panel, PostgreSQL backend and Telegram Bot stack.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="0.52" stop-color="#eef6ff"/>
+      <stop offset="1" stop-color="#f7efe4"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="0.55" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#b45309"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.14"/>
+    </filter>
+    <style>
+      .sans { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .title { font-size: 58px; font-weight: 800; fill: #111827; letter-spacing: 0; }
+      .subtitle { font-size: 23px; font-weight: 500; fill: #475569; letter-spacing: 0; }
+      .label { font-size: 20px; font-weight: 700; fill: #0f172a; letter-spacing: 0; }
+      .small { font-size: 17px; font-weight: 500; fill: #64748b; letter-spacing: 0; }
+      .tiny { font-size: 14px; font-weight: 700; fill: #ffffff; letter-spacing: 0; }
+      .chip { font-size: 16px; font-weight: 700; fill: #334155; letter-spacing: 0; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="520" rx="34" fill="url(#bg)"/>
+  <path d="M0 404 C180 350 284 456 464 404 C645 351 804 302 998 350 C1128 382 1216 342 1280 292 L1280 520 L0 520 Z" fill="#dbeafe" opacity="0.65"/>
+  <path d="M0 440 C206 384 318 482 515 432 C700 386 854 346 1032 393 C1140 421 1216 395 1280 360 L1280 520 L0 520 Z" fill="#ccfbf1" opacity="0.56"/>
+
+  <g transform="translate(72 72)">
+    <rect x="0" y="0" width="93" height="93" rx="24" fill="#111827"/>
+    <path d="M27 29 h40 a12 12 0 0 1 12 12 v25 a12 12 0 0 1 -12 12 h-40 z" fill="#ffffff" opacity="0.95"/>
+    <path d="M28 29 c18 9 34 9 51 0 v48 c-16 -8 -34 -8 -51 0 z" fill="#bfdbfe"/>
+    <path d="M43 42 h24 M43 54 h24 M43 66 h14" stroke="#2563eb" stroke-width="5" stroke-linecap="round"/>
+
+    <text class="sans title" x="122" y="57">PO18 Reader Stack</text>
+    <text class="sans subtitle" x="126" y="96">自托管书库 · 阅读器 · 后台 · Bot · PostgreSQL</text>
+
+    <g transform="translate(0 142)">
+      <rect x="0" y="0" width="216" height="44" rx="22" fill="#ffffff" stroke="#dbe3ea"/>
+      <circle cx="27" cy="22" r="8" fill="#22c55e"/>
+      <text class="sans chip" x="45" y="28">Single Docker Image</text>
+
+      <rect x="236" y="0" width="156" height="44" rx="22" fill="#ffffff" stroke="#dbe3ea"/>
+      <circle cx="263" cy="22" r="8" fill="#2563eb"/>
+      <text class="sans chip" x="281" y="28">Setup Wizard</text>
+
+      <rect x="412" y="0" width="142" height="44" rx="22" fill="#ffffff" stroke="#dbe3ea"/>
+      <circle cx="439" cy="22" r="8" fill="#f59e0b"/>
+      <text class="sans chip" x="457" y="28">Task Center</text>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="805" y="108" width="360" height="276" rx="22" fill="#ffffff"/>
+    <rect x="805" y="108" width="360" height="58" rx="22" fill="#111827"/>
+    <rect x="805" y="144" width="360" height="22" fill="#111827"/>
+    <circle cx="840" cy="137" r="7" fill="#ef4444"/>
+    <circle cx="862" cy="137" r="7" fill="#f59e0b"/>
+    <circle cx="884" cy="137" r="7" fill="#22c55e"/>
+    <text class="sans tiny" x="923" y="143">admin.po18.local</text>
+
+    <rect x="835" y="193" width="132" height="82" rx="14" fill="#eff6ff"/>
+    <text class="sans label" x="857" y="226">3100</text>
+    <text class="sans small" x="857" y="253">Admin / API</text>
+
+    <rect x="993" y="193" width="132" height="82" rx="14" fill="#ecfdf5"/>
+    <text class="sans label" x="1015" y="226">3200</text>
+    <text class="sans small" x="1015" y="253">Reader</text>
+
+    <rect x="835" y="296" width="290" height="54" rx="14" fill="#fff7ed"/>
+    <text class="sans small" x="858" y="329">Bot queue · Backups · Metrics</text>
+  </g>
+
+  <g transform="translate(144 303)">
+    <rect x="0" y="0" width="180" height="98" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+    <text class="sans label" x="24" y="38">Reader</text>
+    <text class="sans small" x="24" y="67">书架 / 目录 / 正文</text>
+
+    <rect x="210" y="0" width="180" height="98" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+    <text class="sans label" x="234" y="38">Admin</text>
+    <text class="sans small" x="234" y="67">任务 / 备份 / 质量</text>
+
+    <rect x="420" y="0" width="180" height="98" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+    <text class="sans label" x="444" y="38">Bot</text>
+    <text class="sans small" x="444" y="67">搜索 / 导出 / 书评</text>
+  </g>
+
+  <rect x="72" y="459" width="1136" height="8" rx="4" fill="url(#accent)"/>
+</svg>

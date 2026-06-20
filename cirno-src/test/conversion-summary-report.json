@@ -1,0 +1,498 @@
+{
+  "generatedAt": "2026/5/7 07:13:08",
+  "rounds": 5,
+  "allPassed": true,
+  "duration": {
+    "totalMs": 118026,
+    "avgMs": 23605.2,
+    "minMs": 22939,
+    "maxMs": 24247
+  },
+  "final": {
+    "bytes": 36661269,
+    "chars": 12992838,
+    "changedChars": 2682337,
+    "replacementChars": 6,
+    "before": 2580058,
+    "after": 0,
+    "protectedAfter": 110,
+    "paragraphs": 359732,
+    "residualParagraphs": 0,
+    "windows": 8126,
+    "residualWindows": 0,
+    "secondPassDiff": 28123,
+    "rate": 100
+  },
+  "roundRows": [
+    {
+      "index": 1,
+      "startedAt": "2026/5/7 07:11:10",
+      "durationMs": 23232,
+      "passed": true,
+      "regression": "11/11",
+      "bytes": 36661269,
+      "chars": 12992838,
+      "changedChars": 2682337,
+      "replacementChars": 6,
+      "before": 2580058,
+      "after": 0,
+      "protectedAfter": 110,
+      "paragraphs": 359732,
+      "residualParagraphs": 0,
+      "windows": 8126,
+      "residualWindows": 0,
+      "secondPassDiff": 28123,
+      "rate": 100
+    },
+    {
+      "index": 2,
+      "startedAt": "2026/5/7 07:11:33",
+      "durationMs": 22939,
+      "passed": true,
+      "regression": "11/11",
+      "bytes": 36661269,
+      "chars": 12992838,
+      "changedChars": 2682337,
+      "replacementChars": 6,
+      "before": 2580058,
+      "after": 0,
+      "protectedAfter": 110,
+      "paragraphs": 359732,
+      "residualParagraphs": 0,
+      "windows": 8126,
+      "residualWindows": 0,
+      "secondPassDiff": 28123,
+      "rate": 100
+    },
+    {
+      "index": 3,
+      "startedAt": "2026/5/7 07:11:56",
+      "durationMs": 23524,
+      "passed": true,
+      "regression": "11/11",
+      "bytes": 36661269,
+      "chars": 12992838,
+      "changedChars": 2682337,
+      "replacementChars": 6,
+      "before": 2580058,
+      "after": 0,
+      "protectedAfter": 110,
+      "paragraphs": 359732,
+      "residualParagraphs": 0,
+      "windows": 8126,
+      "residualWindows": 0,
+      "secondPassDiff": 28123,
+      "rate": 100
+    },
+    {
+      "index": 4,
+      "startedAt": "2026/5/7 07:12:20",
+      "durationMs": 24247,
+      "passed": true,
+      "regression": "11/11",
+      "bytes": 36661269,
+      "chars": 12992838,
+      "changedChars": 2682337,
+      "replacementChars": 6,
+      "before": 2580058,
+      "after": 0,
+      "protectedAfter": 110,
+      "paragraphs": 359732,
+      "residualParagraphs": 0,
+      "windows": 8126,
+      "residualWindows": 0,
+      "secondPassDiff": 28123,
+      "rate": 100
+    },
+    {
+      "index": 5,
+      "startedAt": "2026/5/7 07:12:44",
+      "durationMs": 24084,
+      "passed": true,
+      "regression": "11/11",
+      "bytes": 36661269,
+      "chars": 12992838,
+      "changedChars": 2682337,
+      "replacementChars": 6,
+      "before": 2580058,
+      "after": 0,
+      "protectedAfter": 110,
+      "paragraphs": 359732,
+      "residualParagraphs": 0,
+      "windows": 8126,
+      "residualWindows": 0,
+      "secondPassDiff": 28123,
+      "rate": 100
+    }
+  ],
+  "globalTop": {
+    "before": [
+      {
+        "ch": "著",
+        "mappedTo": "着",
+        "count": 98444
+      },
+      {
+        "ch": "這",
+        "mappedTo": "这",
+        "count": 68604
+      },
+      {
+        "ch": "來",
+        "mappedTo": "来",
+        "count": 63971
+      },
+      {
+        "ch": "個",
+        "mappedTo": "个",
+        "count": 57166
+      },
+      {
+        "ch": "雲",
+        "mappedTo": "云",
+        "count": 51744
+      },
+      {
+        "ch": "說",
+        "mappedTo": "说",
+        "count": 37329
+      },
+      {
+        "ch": "過",
+        "mappedTo": "过",
+        "count": 34656
+      },
+      {
+        "ch": "還",
+        "mappedTo": "还",
+        "count": 34218
+      },
+      {
+        "ch": "時",
+        "mappedTo": "时",
+        "count": 33747
+      },
+      {
+        "ch": "沒",
+        "mappedTo": "没",
+        "count": 33182
+      },
+      {
+        "ch": "頭",
+        "mappedTo": "头",
+        "count": 32405
+      },
+      {
+        "ch": "麼",
+        "mappedTo": "么",
+        "count": 27248
+      },
+      {
+        "ch": "會",
+        "mappedTo": "会",
+        "count": 26909
+      },
+      {
+        "ch": "開",
+        "mappedTo": "开",
+        "count": 26671
+      },
+      {
+        "ch": "們",
+        "mappedTo": "们",
+        "count": 25337
+      },
+      {
+        "ch": "後",
+        "mappedTo": "后",
+        "count": 24490
+      },
+      {
+        "ch": "聲",
+        "mappedTo": "声",
+        "count": 24269
+      },
+      {
+        "ch": "對",
+        "mappedTo": "对",
+        "count": 23956
+      },
+      {
+        "ch": "兒",
+        "mappedTo": "儿",
+        "count": 23560
+      },
+      {
+        "ch": "動",
+        "mappedTo": "动",
+        "count": 22872
+      },
+      {
+        "ch": "點",
+        "mappedTo": "点",
+        "count": 22711
+      },
+      {
+        "ch": "發",
+        "mappedTo": "发",
+        "count": 22650
+      },
+      {
+        "ch": "為",
+        "mappedTo": "为",
+        "count": 22214
+      },
+      {
+        "ch": "讓",
+        "mappedTo": "让",
+        "count": 21799
+      },
+      {
+        "ch": "樣",
+        "mappedTo": "样",
+        "count": 21607
+      },
+      {
+        "ch": "無",
+        "mappedTo": "无",
+        "count": 20955
+      },
+      {
+        "ch": "兩",
+        "mappedTo": "两",
+        "count": 20461
+      },
+      {
+        "ch": "臉",
+        "mappedTo": "脸",
+        "count": 18083
+      },
+      {
+        "ch": "間",
+        "mappedTo": "间",
+        "count": 17878
+      },
+      {
+        "ch": "氣",
+        "mappedTo": "气",
+        "count": 17862
+      },
+      {
+        "ch": "經",
+        "mappedTo": "经",
+        "count": 17628
+      },
+      {
+        "ch": "輕",
+        "mappedTo": "轻",
+        "count": 17378
+      },
+      {
+        "ch": "體",
+        "mappedTo": "体",
+        "count": 17075
+      },
+      {
+        "ch": "覺",
+        "mappedTo": "觉",
+        "count": 16642
+      },
+      {
+        "ch": "現",
+        "mappedTo": "现",
+        "count": 16622
+      },
+      {
+        "ch": "許",
+        "mappedTo": "许",
+        "count": 16314
+      }
+    ],
+    "after": [],
+    "protected": [
+      {
+        "ch": "著",
+        "mappedTo": "着",
+        "count": 110
+      }
+    ]
+  },
+  "termBank": [
+    "微信对话框里",
+    "备注为“恶毒后妈”",
+    "发来一条新消息",
+    "这个月开始生活费调整到1000块哦",
+    "小夏，这是苏姨",
+    "咱们家的人了",
+    "手机屏幕",
+    "支付界面",
+    "图标",
+    "扫码枪",
+    "两盒进口巧克力",
+    "揣进口袋",
+    "一张白色的公主床",
+    "铺着浅灰色的床品",
+    "床头柜上摆着几本书",
+    "一盏造型简约的台灯",
+    "墙上挂着几幅素描",
+    "都是风景画",
+    "笔触细腻",
+    "显然是出自她手",
+    "著名景点",
+    "原著、编著、专著、译著、著述、著录",
+    "背着书包",
+    "配合着",
+    "写着名字",
+    "明着作对",
+    "支付行为：亲吻对方嘴唇",
+    "支付对象：林泳心",
+    "请在三分钟内完成支付",
+    "【请在三分钟内完成支付】",
+    "江夏抬起头",
+    "那双桃花眼",
+    "瞳孔里倒映着",
+    "手里那部该死的手机",
+    "吊带吊的胸前绷得紧紧的",
+    "似乎随时会崩开",
+    "猫主席著作",
+    "古典名著",
+    "做着作业",
+    "强忍着作呕",
+    "起着作用",
+    "跟着作美"
+  ],
+  "files": [
+    {
+      "name": "穿越後綁定了六個老公_827106.txt",
+      "bytes": 1982447,
+      "chars": 690792,
+      "before": 161820,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 1,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 1299.4
+    },
+    {
+      "name": "創世紀前傳 冰峰魔戀_284.txt",
+      "bytes": 5250097,
+      "chars": 1789370,
+      "before": 385148,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 26,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 3184.2
+    },
+    {
+      "name": "大江湖_502.txt",
+      "bytes": 714429,
+      "chars": 244315,
+      "before": 47866,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 1,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 425.4
+    },
+    {
+      "name": "動漫之全收魔王_918.txt",
+      "bytes": 4801954,
+      "chars": 1689547,
+      "before": 349884,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 45,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 3128.6
+    },
+    {
+      "name": "繁花落盡_583294.txt",
+      "bytes": 1106931,
+      "chars": 397755,
+      "before": 74386,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 1,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 643.4
+    },
+    {
+      "name": "后出軌時代_329.txt",
+      "bytes": 7260528,
+      "chars": 2512431,
+      "before": 555055,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 21,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 4883.2
+    },
+    {
+      "name": "梨花與野獸的情事_558874.txt",
+      "bytes": 896744,
+      "chars": 316039,
+      "before": 67199,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 0,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 555.2
+    },
+    {
+      "name": "飄飄欲仙_652411.txt",
+      "bytes": 1900239,
+      "chars": 676969,
+      "before": 149508,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 1,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 1069
+    },
+    {
+      "name": "我的變嫁文_774784.txt",
+      "bytes": 2555344,
+      "chars": 911572,
+      "before": 217304,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 7,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 1454.2
+    },
+    {
+      "name": "邪惡小仙帝的萬界之旅_1126.txt",
+      "bytes": 9699328,
+      "chars": 3584772,
+      "before": 534403,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 6,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 6569.4
+    },
+    {
+      "name": "邪惡APP 女神要壞掉了_1299.txt",
+      "bytes": 493228,
+      "chars": 179276,
+      "before": 37485,
+      "afterMin": 0,
+      "afterMax": 0,
+      "protectedMax": 1,
+      "residualParagraphMax": 0,
+      "residualWindowMax": 0,
+      "durationAvg": 390.6
+    }
+  ]
+}

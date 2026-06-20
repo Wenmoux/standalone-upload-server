@@ -1,0 +1,65 @@
+[
+  {
+    "bookSourceName": "PO18 本地书库",
+    "bookSourceGroup": "本地书库",
+    "bookSourceType": 0,
+    "bookSourceUrl": "http://127.0.0.1:3200",
+    "bookSourceComment": "使用 cirno-src reader-server 代理的 /reader-api。登录页会写入 /reader-auth session cookie。",
+    "enabled": true,
+    "enabledExplore": true,
+    "enabledCookieJar": true,
+    "concurrentRate": "10/3000",
+    "header": "{\"User-Agent\":\"Mozilla/5.0 (Linux; Android 13; Legado) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36\",\"Accept\":\"application/json,text/plain,*/*\"}",
+    "loginUrl": "var BASE=String(baseUrl||'http://127.0.0.1:3200').replace(/\\/+$/,'');function hdr(){var h=new Packages.java.util.HashMap();h.put('Content-Type','application/json');h.put('Accept','application/json');return h;}function body(r){try{return r&&typeof r.body==='function'?r.body():(r&&r.body?r.body:r);}catch(e){return String(r||e);}}function parse(s){try{return JSON.parse(String(s||'{}'));}catch(e){return {error:String(s||e)};}}function req(method,path,obj){var url=BASE+path;var r=method==='post'?java.post(url,JSON.stringify(obj||{}),hdr()):java.ajax(url);return parse(body(r));}function value(name){try{var m=source.getLoginInfoMap();if(m&&m.get)return m.get(name)||'';}catch(e){}try{return result&&result.get?result.get(name):'';}catch(e){return '';}}function say(t){t=String(t||'');try{java.toast(t);}catch(e){}}function fmt(u){if(!u)return '未登录';var exp=u.membership_permanent?'永久':(u.membership_expires_at?String(u.membership_expires_at).replace('T',' ').replace(/\\.\\d+Z?$/,''):'未开通');var active=!!u.membership_permanent||(u.membership_expires_at&&new Date(u.membership_expires_at)>new Date());var access=(u.library_access!==false&&active)?'有效':'未开通或已到期';return (u.nickname||u.username||'用户')+' 权限:'+access+' 有效期:'+exp;}function login(){var username=String(value('用户名')).trim();var password=String(value('密码'));if(!username||!password)throw '请输入用户名和密码';var d=req('post','/reader-auth/login',{username:username,password:password});if(d.error)throw d.error;say('登录成功 '+fmt(d.user));}function queryStatus(){try{var d=req('get','/reader-auth/me');say(fmt(d.user));}catch(e){say('查询失败 '+e);}}function signIn(){try{var d=req('post','/reader-auth/sign',{});if(d.error)throw d.error;var r=d.reward||{};say('签到成功 铜币+'+(r.copper||0)+' 银币+'+(r.silver||0)+' 经验+'+(r.exp||0));}catch(e){say('签到失败 '+e);}}function logout(){try{req('post','/reader-auth/logout',{});}catch(e){}try{source.removeLoginInfo();source.removeLoginHeader();}catch(e){}say('已退出登录');}",
+    "loginUi": "[{\"name\":\"用户名\",\"type\":\"text\"},{\"name\":\"密码\",\"type\":\"password\"},{\"name\":\"查询有效期\",\"type\":\"button\",\"action\":\"queryStatus()\"},{\"name\":\"签到\",\"type\":\"button\",\"action\":\"signIn()\"},{\"name\":\"退出登录\",\"type\":\"button\",\"action\":\"logout()\"}]",
+    "searchUrl": "/reader-api/search?keyword={{key}}&sort=cache_desc&page={{page}}&limit=20",
+    "exploreUrl": "最近更新::/reader-api/search?sort=updated_desc&page={{page}}&limit=20\n缓存最多::/reader-api/search?sort=cache_desc&page={{page}}&limit=20\n人气最高::/reader-api/search?sort=popularity_desc&page={{page}}&limit=20\n书名升序::/reader-api/search?sort=title_asc&page={{page}}&limit=20\nPO18::/reader-api/search?platform=po18&sort=cache_desc&page={{page}}&limit=20\nPOPO::/reader-api/search?platform=popo&sort=cache_desc&page={{page}}&limit=20\n起点::/reader-api/search?platform=qidian&sort=cache_desc&page={{page}}&limit=20\n番茄::/reader-api/search?platform=fanqie&sort=cache_desc&page={{page}}&limit=20\n米国度::/reader-api/search?platform=miguodu&sort=cache_desc&page={{page}}&limit=20\n河图::/reader-api/search?platform=hetu&sort=cache_desc&page={{page}}&limit=20\n海棠::/reader-api/search?platform=haitang&sort=cache_desc&page={{page}}&limit=20\n脸红心跳::/reader-api/search?platform=lianhongxintiao&sort=cache_desc&page={{page}}&limit=20",
+    "ruleSearch": {
+      "bookList": "$.rows",
+      "name": "title",
+      "author": "author",
+      "coverUrl": "cover",
+      "intro": "description##<[^>]+>|&nbsp;##",
+      "kind": "{{$.platform}} {{$.category}} {{$.tags}}",
+      "lastChapter": "latest_chapter_name",
+      "wordCount": "word_count",
+      "bookUrl": "http://127.0.0.1:3200/reader-api/books/{{$.book_id}}",
+      "tocUrl": "http://127.0.0.1:3200/reader-api/books/{{$.book_id}}/chapters"
+    },
+    "ruleExplore": {
+      "bookList": "$.rows",
+      "name": "title",
+      "author": "author",
+      "coverUrl": "cover",
+      "intro": "description##<[^>]+>|&nbsp;##",
+      "kind": "{{$.platform}} {{$.category}} {{$.tags}}",
+      "lastChapter": "latest_chapter_name",
+      "wordCount": "word_count",
+      "bookUrl": "http://127.0.0.1:3200/reader-api/books/{{$.book_id}}",
+      "tocUrl": "http://127.0.0.1:3200/reader-api/books/{{$.book_id}}/chapters"
+    },
+    "ruleBookInfo": {
+      "name": "$.book.title",
+      "author": "$.book.author",
+      "coverUrl": "$.book.cover",
+      "intro": "$.book.description##<[^>]+>|&nbsp;##",
+      "kind": "{{$.book.platform}} {{$.book.category}} {{$.book.tags}}",
+      "lastChapter": "$.book.latest_chapter_name",
+      "wordCount": "$.book.word_count",
+      "tocUrl": "{{baseUrl + '/chapters'}}"
+    },
+    "ruleToc": {
+      "chapterList": "$.rows",
+      "chapterName": "title",
+      "chapterUrl": "http://127.0.0.1:3200/reader-api/books/{{$.book_id}}/chapters/{{$.chapter_id}}",
+      "updateTime": "updated_at",
+      "isVolume": "is_volume"
+    },
+    "ruleContent": {
+      "title": "$.chapter.title",
+      "content": "$.chapter.text"
+    },
+    "lastUpdateTime": 0,
+    "weight": 0
+  }
+]

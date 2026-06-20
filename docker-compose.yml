@@ -1,0 +1,122 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-po18}
+      POSTGRES_USER: ${POSTGRES_USER:-po18}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-po18-change-me}
+    volumes:
+      - po18-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server-pg:
+    build:
+      context: .
+      target: server-pg
+    image: po18-server-pg:local
+    environment:
+      NODE_ENV: production
+      PO18_UPLOAD_HOST: 0.0.0.0
+      PO18_UPLOAD_PORT: 3100
+      PO18_PG_URL: ${PO18_PG_URL:-postgres://po18:po18-change-me@postgres:5432/po18}
+      PO18_UPLOAD_ADMIN_USER: ${PO18_UPLOAD_ADMIN_USER:-admin}
+      PO18_UPLOAD_ADMIN_PASSWORD: ${PO18_UPLOAD_ADMIN_PASSWORD:-change-this-admin-password}
+      PO18_UPLOAD_SESSION_SECRET: ${PO18_UPLOAD_SESSION_SECRET:-change-this-session-secret}
+      PO18_BOT_API_TOKEN: ${PO18_BOT_API_TOKEN:-change-this-bot-api-token}
+      PO18_TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    ports:
+      - "3100:3100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "docker/status-check.js", "http", "http://127.0.0.1:3100/health/ready", "server-pg"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  reader:
+    build:
+      context: .
+      target: reader
+    image: po18-reader:local
+    environment:
+      NODE_ENV: production
+      PO18_READER_HOST: 0.0.0.0
+      PO18_READER_PORT: 3200
+      PO18_API_BASE: http://server-pg:3100
+    ports:
+      - "3200:3200"
+    depends_on:
+      server-pg:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "docker/status-check.js", "http", "http://127.0.0.1:3200/health/ready", "reader"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  bot:
+    build:
+      context: .
+      target: bot
+    image: po18-bot:local
+    environment:
+      NODE_ENV: production
+      PO18_SERVER_URL: http://server-pg:3100
+      PO18_SHARE_API_URL: ${PO18_SHARE_API_URL:-http://127.0.0.1:3200}
+      PO18_BOT_API_TOKEN: ${PO18_BOT_API_TOKEN:-change-this-bot-api-token}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://api.telegram.org}
+      TELEGRAM_REQUEST_TIMEOUT_MS: ${TELEGRAM_REQUEST_TIMEOUT_MS:-60000}
+      BOT_HEALTH_HOST: 0.0.0.0
+      BOT_HEALTH_PORT: 3300
+      PIKPAK_WEBDAV_URL: ${PIKPAK_WEBDAV_URL:-}
+      PIKPAK_WEBDAV_USERNAME: ${PIKPAK_WEBDAV_USERNAME:-}
+      PIKPAK_WEBDAV_PASSWORD: ${PIKPAK_WEBDAV_PASSWORD:-}
+      PIKPAK_WEBDAV_ROOT: ${PIKPAK_WEBDAV_ROOT:-/}
+    ports:
+      - "127.0.0.1:3300:3300"
+    depends_on:
+      server-pg:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "docker/status-check.js", "http", "http://127.0.0.1:3300/health/ready", "bot"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  status:
+    profiles:
+      - tools
+    build:
+      context: .
+      target: server-pg
+    image: po18-server-pg:local
+    command: ["node", "docker/status-check.js", "compose"]
+    environment:
+      PO18_PG_URL: ${PO18_PG_URL:-postgres://po18:po18-change-me@postgres:5432/po18}
+      SERVER_PG_HEALTH_URL: http://server-pg:3100/health/ready
+      READER_HEALTH_URL: http://reader:3200/health/ready
+      BOT_HEALTH_URL: http://bot:3300/health/ready
+    depends_on:
+      postgres:
+        condition: service_healthy
+      server-pg:
+        condition: service_healthy
+      reader:
+        condition: service_healthy
+      bot:
+        condition: service_healthy
+
+volumes:
+  po18-postgres-data:
