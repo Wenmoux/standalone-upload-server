@@ -2,8 +2,8 @@
   <article class="stat">
     <span>{{ label }}</span>
     <strong>{{ value }}</strong>
-    <small v-if="$slots.default"><slot /></small>
-    <small v-else-if="hint">{{ hint }}</small>
+    <div v-if="$slots.default" class="stat-extra"><slot /></div>
+    <small v-else-if="hint" class="stat-extra">{{ hint }}</small>
   </article>
 </template>
 

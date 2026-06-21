@@ -18,7 +18,21 @@
         </div>
         <div class="stat-grid" :class="{ four: section.four, five: section.five, six: section.six }">
           <StatCard v-for="item in section.items" :key="item.label" :label="item.label" :value="item.value">
-            <template v-if="item.action">
+            <template v-if="item.type === 'platforms'">
+              <div class="platform-summary-card">
+                <div class="platform-chip-grid">
+                  <span v-for="platform in platformTopItems" :key="platform.platform" class="platform-chip">
+                    <b>{{ platform.platform }}</b>
+                    <em>{{ number(platform.count) }}</em>
+                  </span>
+                </div>
+                <div v-if="platformRest.count" class="platform-rest">
+                  其余 {{ platformRest.items }} 个站别 · {{ number(platformRest.count) }} 本
+                </div>
+                <div v-else-if="!platformTopItems.length" class="platform-rest">暂无站别数据</div>
+              </div>
+            </template>
+            <template v-else-if="item.action">
               <button class="secondary" type="button" @click="navigate(item.action)">{{ item.hint }}</button>
             </template>
             <template v-else>{{ item.hint }}</template>
@@ -33,7 +47,7 @@
 import { computed, inject, onMounted, ref } from "vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";
-import { bytes, number, percent, platformSummary, time, uptime } from "../utils/format";
+import { bytes, number, percent, time, uptime } from "../utils/format";
 
 const navigate = inject("navigate", () => {});
 const loading = ref(true);
@@ -75,7 +89,7 @@ const sections = computed(() => {
       items: [
         { label: "章节共享人数", value: number(s.uploaders), hint: "按上传者ID/名称去重" },
         { label: "元信息上传人数", value: number(s.metadataUploaders), hint: "按上传者ID/名称去重" },
-        { label: "站别数量", value: number(s.platformsCount), hint: platformSummary(s.platforms) },
+        { label: "站别数量", value: number(s.platformsCount), type: "platforms" },
         { label: "更新记录", value: number(s.events), hint: `24h ${number(s.events24h)} / 7日 ${number(s.events7d)}` }
       ]
     },
@@ -130,6 +144,27 @@ const sections = computed(() => {
       ]
     }
   ];
+});
+
+const sortedPlatforms = computed(() => {
+  const rows = Array.isArray(stats.value?.platforms) ? stats.value.platforms : [];
+  return rows
+    .map((item) => ({
+      platform: String(item.platform || "未知"),
+      count: Number(item.count || 0)
+    }))
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.platform.localeCompare(b.platform));
+});
+
+const platformTopItems = computed(() => sortedPlatforms.value.slice(0, 6));
+
+const platformRest = computed(() => {
+  const rest = sortedPlatforms.value.slice(6);
+  return {
+    items: rest.length,
+    count: rest.reduce((sum, item) => sum + Number(item.count || 0), 0)
+  };
 });
 
 async function load() {
