@@ -18,6 +18,8 @@ function createBotApiUserRoutes(deps = {}) {
         exportPricingConfig,
         dailyFreeExportStatus,
         claimDailyFreeExport,
+        claimExtraExportQuota,
+        redeemExportQuotaCdk,
         spendUserCurrency,
         todayDateKey,
         positiveNumber,
@@ -166,7 +168,8 @@ function createBotApiUserRoutes(deps = {}) {
                 unlocked: !!user.export_unlocked_at || !!user.is_admin,
                 user: botPublicUser(user),
                 pricing: await exportPricingConfig(),
-                free_export: await dailyFreeExportStatus(user, query, bookId)
+                free_export: await dailyFreeExportStatus(user, query, bookId),
+                extra_export_quota: Number(user.export_extra_quota || 0)
             });
         } catch (err) {
             next(err);
@@ -183,6 +186,35 @@ function createBotApiUserRoutes(deps = {}) {
             res.json({ success: true, user: botPublicUser(result.user), usage: result.usage });
         } catch (err) {
             if (err.status) return res.status(err.status).json({ error: err.message, quota: err.quota || null });
+            next(err);
+        }
+    });
+
+    router.post("/bot-api/users/:telegramId/export-extra-claim", requireBotApi, async (req, res, next) => {
+        try {
+            if (typeof claimExtraExportQuota !== "function") return res.status(503).json({ error: "extra export quota service is not configured" });
+            const result = await claimExtraExportQuota({
+                telegramId: req.params.telegramId,
+                bookId: req.body?.book_id || req.body?.bookId,
+                format: req.body?.format || ""
+            });
+            res.json({ success: true, user: botPublicUser(result.user), usage: result.usage });
+        } catch (err) {
+            if (err.status) return res.status(err.status).json({ error: err.message, quota: err.quota || null });
+            next(err);
+        }
+    });
+
+    router.post("/bot-api/users/:telegramId/redeem-cdk", requireBotApi, async (req, res, next) => {
+        try {
+            if (typeof redeemExportQuotaCdk !== "function") return res.status(503).json({ error: "CDK redeem service is not configured" });
+            const result = await redeemExportQuotaCdk({
+                telegramId: req.params.telegramId,
+                code: req.body?.code || req.body?.cdk || ""
+            });
+            res.json({ success: true, user: botPublicUser(result.user), cdk: result.cdk });
+        } catch (err) {
+            if (err.status) return res.status(err.status).json({ error: err.message });
             next(err);
         }
     });

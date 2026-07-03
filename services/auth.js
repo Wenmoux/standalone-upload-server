@@ -80,6 +80,7 @@ function createAuthService(options = {}) {
             invite_count: Number(user.invite_count || 0),
             inviter_telegram_id: user.inviter_telegram_id || "",
             export_unlocked_at: user.export_unlocked_at || null,
+            export_extra_quota: Number(user.export_extra_quota || 0),
             scholar_exp: scholar.exp,
             scholar,
             scholar_level: scholar.level,
@@ -114,7 +115,7 @@ function createAuthService(options = {}) {
         const found = await query(
             `SELECT id, username, nickname, avatar_url, membership_expires_at, membership_permanent, library_access,
                     copper_coins, silver_coins, sign_cycle_day, last_sign_date, telegram_id, telegram_username,
-                    is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, scholar_exp
+                    is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, export_extra_quota, scholar_exp
              FROM reader_users WHERE id = $1`,
             [req.session.readerUser.id]
         );
@@ -186,7 +187,7 @@ function createAuthService(options = {}) {
     function botUserSelect() {
         return `id, username, nickname, avatar_url, membership_expires_at, membership_permanent, library_access,
                 copper_coins, silver_coins, sign_cycle_day, last_sign_date, created_at, last_login_at,
-                telegram_id, telegram_username, is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, scholar_exp`;
+                telegram_id, telegram_username, is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, export_extra_quota, scholar_exp`;
     }
 
     async function findBotUserByTelegramId(telegramId) {

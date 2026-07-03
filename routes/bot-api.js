@@ -30,6 +30,7 @@ function createBotApiRoutes(deps = {}) {
         pushBookReviewToChannel,
         getHotKeywords,
         addHotKeyword,
+        wordCloudPayload,
         recordEvent
     } = deps;
 
@@ -592,6 +593,20 @@ function createBotApiRoutes(deps = {}) {
     router.get("/bot-api/hot-keywords", requireBotApi, async (req, res, next) => {
         try {
             res.json({ rows: await getHotKeywords(req.query.limit || 20) });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/bot-api/word-cloud", requireBotApi, async (req, res, next) => {
+        try {
+            if (typeof wordCloudPayload !== "function") return res.status(503).json({ error: "word cloud service is not configured" });
+            res.json(await wordCloudPayload({
+                limit: req.query.limit,
+                hotLimit: req.query.hot_limit || req.query.hotLimit,
+                sourceLimit: req.query.source_limit || req.query.sourceLimit,
+                platform: req.query.platform || ""
+            }));
         } catch (err) {
             next(err);
         }

@@ -33,6 +33,7 @@ class PgBotClient {
         if (/^\/reader-api\/books\/[^/?]+(?:$|\?)/i.test(path)) return url;
         if (/^\/reader-api\/books\/[^/?]+\/chapters(?:$|\?)/i.test(path)) return url;
         if (/^\/bot-api\/hot-keywords\?/i.test(path)) return url;
+        if (/^\/bot-api\/word-cloud\?/i.test(path)) return url;
         if (/^\/bot-api\/top\?/i.test(path)) return url;
         return "";
     }
@@ -209,6 +210,20 @@ class PgBotClient {
         });
     }
 
+    async claimExtraExport(telegramId, bookId, format = "") {
+        return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/export-extra-claim`, {
+            method: "POST",
+            body: JSON.stringify({ book_id: bookId, format })
+        });
+    }
+
+    async redeemCdk(telegramId, code = "") {
+        return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/redeem-cdk`, {
+            method: "POST",
+            body: JSON.stringify({ code })
+        });
+    }
+
     async spendCurrency(telegramId, currency, amount, type = "spend", detail = "", source = "telegram_bot") {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/spend`, {
             method: "POST",
@@ -322,6 +337,16 @@ class PgBotClient {
 
     async hotKeywords(limit = 10) {
         return this.request(`/bot-api/hot-keywords?limit=${encodeURIComponent(limit)}`);
+    }
+
+    async wordCloud(options = {}) {
+        const qs = new URLSearchParams();
+        if (options.limit) qs.set("limit", String(options.limit));
+        if (options.hotLimit) qs.set("hotLimit", String(options.hotLimit));
+        if (options.sourceLimit) qs.set("sourceLimit", String(options.sourceLimit));
+        if (options.platform) qs.set("platform", String(options.platform));
+        const suffix = qs.toString() ? `?${qs}` : "?limit=60";
+        return this.request(`/bot-api/word-cloud${suffix}`);
     }
 
     async top(currency = "copper", limit = 10) {

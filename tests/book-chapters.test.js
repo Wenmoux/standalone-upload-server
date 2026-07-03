@@ -62,15 +62,24 @@ function makeService(overrides = {}) {
 
 test("book chapter service upserts book metadata and records event", async () => {
     const { service, calls } = makeService({
-        bookColumns: ["book_id", "platform", "title", "chapter_count", "description_html", "updated_at", "uploader", "uploaderId", "detail_url"]
+        bookColumns: ["book_id", "platform", "title", "category", "chapter_count", "description_html", "updated_at", "uploader", "uploaderId", "detail_url"]
     });
 
-    await service.upsertBook({ book_id: "b1", title: "Book", chapter_count: 12, description_html: "<p>Intro</p>" });
+    await service.upsertBook({
+        book_id: "b1",
+        title: "Book",
+        category: "言情，都市",
+        categories: ["都市", "玄幻"],
+        chapter_count: 12,
+        description_html: "<p>Intro</p>"
+    });
 
     const insert = calls.find((call) => /INSERT INTO book_metadata/.test(call.sql || ""));
     assert.ok(insert);
+    assert.match(insert.sql, /category/);
     assert.match(insert.sql, /chapter_count/);
     assert.match(insert.sql, /description_html/);
+    assert.ok(insert.params.includes("言情，都市，玄幻"));
     assert.ok(insert.params.includes(12));
     assert.ok(insert.params.includes("<p>Intro</p>"));
     assert.ok(calls.some((call) => call.event?.eventType === "metadata" && call.event.bookId === "b1"));
@@ -100,6 +109,27 @@ test("book chapter service saves chapter in a transaction and records event", as
     assert.ok(calls.some((call) => call.client && call.sql === "COMMIT"));
     assert.ok(calls.some((call) => call.release));
     assert.ok(calls.some((call) => call.event?.eventType === "chapter" && call.event.chapterId === "c1"));
+});
+
+test("book chapter service cleans confirmed bracket notes on save", async () => {
+    const { service, calls } = makeService();
+
+    await service.saveChapter({ bookId: "b1", chapterId: "c1", title: "第1章 开始（求月票）", html: "<p>Hello</p>" });
+
+    const insert = calls.find((call) => /INSERT INTO chapter_cache/.test(call.sql || ""));
+    assert.ok(insert);
+    assert.ok(insert.params.includes("第1章 开始"));
+    assert.equal(insert.params.includes("第1章 开始（求月票）"), false);
+});
+
+test("book chapter service keeps unconfirmed bracket notes on save", async () => {
+    const { service, calls } = makeService();
+
+    await service.saveChapter({ bookId: "b1", chapterId: "c1", title: "第1章 开始（上）", html: "<p>Hello</p>" });
+
+    const insert = calls.find((call) => /INSERT INTO chapter_cache/.test(call.sql || ""));
+    assert.ok(insert);
+    assert.ok(insert.params.includes("第1章 开始（上）"));
 });
 
 test("book chapter service does not renumber PO18 displayed chapter orders", async () => {
@@ -157,4 +187,75 @@ test("book chapter service lets PO18 userscript upload correct existing chapter 
     assert.ok(insert);
     assert.ok(insert.params.includes(4));
     assert.equal(calls.some((call) => /SET chapter_order = -/.test(call.sql || "")), false);
+});
+
+test("book chapter service updates qidian order-only without replacing content", async () => {
+    const { service, calls } = makeService({
+        pool: {
+            connect: async () => ({
+                async query(sql, params = []) {
+                    calls.push({ client: true, sql, params });
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8 }] };
+                    return { rows: [] };
+                },
+                release() {
+                    calls.push({ release: true });
+                }
+            })
+        }
+    });
+
+    const result = await service.saveChapter({
+        bookId: "b1",
+        chapterId: "9004",
+        title: "Changed title should be ignored",
+        html: "",
+        chapterOrder: 12,
+        platform: "qidian",
+        fromUserScript: true,
+        orderOnly: true,
+        updateOrderOnly: true,
+        skipContentUpdate: true
+    });
+
+    assert.equal(result.orderOnly, true);
+    assert.equal(result.updated, true);
+    assert.equal(calls.some((call) => /INSERT INTO chapter_cache/.test(call.sql || "")), false);
+    const update = calls.find((call) => /UPDATE chapter_cache SET chapter_order/.test(call.sql || ""));
+    assert.ok(update);
+    assert.deepEqual(update.params, [12, "qidian", "b1", "9004"]);
+    assert.ok(calls.some((call) => call.event?.action === "order-only" && call.event.details.contentUpdated === false));
+});
+
+test("book chapter service does not apply order-only shortcut to PO18", async () => {
+    const { service, calls } = makeService({
+        pool: {
+            connect: async () => ({
+                async query(sql, params = []) {
+                    calls.push({ client: true, sql, params });
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8 }] };
+                    return { rows: [] };
+                },
+                release() {
+                    calls.push({ release: true });
+                }
+            })
+        }
+    });
+
+    const result = await service.saveChapter({
+        bookId: "b1",
+        chapterId: "9004",
+        title: "PO18 title",
+        html: "<p>content</p>",
+        chapterOrder: 12,
+        platform: "po18",
+        fromUserScript: true,
+        orderOnly: true,
+        skipContentUpdate: true
+    });
+
+    assert.equal(result.orderOnly, false);
+    assert.ok(calls.some((call) => /INSERT INTO chapter_cache/.test(call.sql || "")));
+    assert.equal(calls.some((call) => /UPDATE chapter_cache SET chapter_order/.test(call.sql || "")), false);
 });

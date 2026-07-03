@@ -257,6 +257,7 @@ function createReaderApiRoutes(deps = {}) {
             const keyword = String(req.query.keyword || req.query.q || "").trim();
             const author = String(req.query.author || "").trim();
             const tag = String(req.query.tag || "").trim();
+            const category = String(req.query.category || "").trim();
             const platform = String(req.query.platform || "").trim();
             const numberFilter = (name) => {
                 const raw = req.query[name];
@@ -285,7 +286,15 @@ function createReaderApiRoutes(deps = {}) {
             }
             if (tag) {
                 params.push(`%${tag}%`);
-                where.push(`m.tags ILIKE $${params.length}`);
+                where.push(`(m.tags ILIKE $${params.length} OR m.category ILIKE $${params.length})`);
+            }
+            if (category) {
+                params.push(category);
+                where.push(`EXISTS (
+                    SELECT 1
+                    FROM regexp_split_to_table(COALESCE(m.category, ''), '[,，、/|·]+') AS category_token
+                    WHERE LOWER(BTRIM(category_token)) = LOWER($${params.length})
+                )`);
             }
             if (platform) {
                 params.push(platform);

@@ -4,6 +4,7 @@ function registerSearchCommands(registry, handlers = {}) {
         withInfoCooldown,
         handleSearch,
         handleHot,
+        handleWordCloud,
         handleRandom,
         handleInfo
     } = handlers;
@@ -19,6 +20,13 @@ function registerSearchCommands(registry, handlers = {}) {
         description: "热门书籍",
         action: "hot",
         handler: ({ message, args }) => withSearchCooldown(message, "热门", () => handleHot(message, args))
+    });
+    registry.register({
+        command: "/wordcloud",
+        aliases: ["/cloud"],
+        description: "热搜词云",
+        action: "wordcloud",
+        handler: ({ message, args }) => withSearchCooldown(message, "词云", () => handleWordCloud(message, args))
     });
     registry.register({
         command: "/random",

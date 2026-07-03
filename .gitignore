@@ -3,6 +3,7 @@
 backups/
 tmp/
 test-results/
+.docker-build.json
 
 node_modules/
 admin-ui/node_modules/

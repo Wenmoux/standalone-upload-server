@@ -345,13 +345,22 @@ async function loadStatus() {
   try {
     const data = await api("/admin-api/system/status");
     const version = data.version || {};
-    versionLine.value = `${version.image || "wenmoux/reader:v1.0"} · ${version.version || "-"} · uptime ${uptime(version.uptime_seconds || 0)}`;
+    const revision = String(version.build_revision || version.revision || "").slice(0, 12);
+    const buildDate = formatBuildDate(version.build_date);
+    versionLine.value = [version.image || "wenmoux/reader:v1.0", version.version || "-", revision, buildDate, `uptime ${uptime(version.uptime_seconds || 0)}`].filter(Boolean).join(" · ");
     statusRows.value = data.deep?.checks || data.status || [];
   } catch (err) {
     toast(err.message || String(err));
   } finally {
     statusLoading.value = false;
   }
+}
+
+function formatBuildDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  return date.toISOString().slice(0, 16).replace("T", " ");
 }
 
 async function loadLogs(filter = logFilter.value) {

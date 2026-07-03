@@ -14,6 +14,13 @@
       <div class="section">
         <div class="toolbar compact">
           <label class="field">
+            <span>类型</span>
+            <select v-model="cdkType">
+              <option value="membership">会员注册码</option>
+              <option value="export_quota">下载次数</option>
+            </select>
+          </label>
+          <label v-if="cdkType === 'membership'" class="field">
             <span>时长</span>
             <select v-model="duration">
               <option value="7d">7天</option>
@@ -21,6 +28,10 @@
               <option value="365d">一年</option>
               <option value="permanent">永久</option>
             </select>
+          </label>
+          <label v-else class="field">
+            <span>下载次数</span>
+            <input v-model.number="exportQuota" type="number" min="1" max="10000" />
           </label>
           <label class="field">
             <span>数量</span>
@@ -39,7 +50,8 @@
         <DataTable :columns="columns" :rows="rows" :loading="loading" empty-text="暂无 CDK">
           <template #cell-id="{ row }"><code>{{ row.id }}</code></template>
           <template #cell-code="{ row }"><code>{{ row.code }}</code></template>
-          <template #cell-duration="{ row }">{{ durationLabel(row) }}</template>
+          <template #cell-type="{ row }"><span class="tag">{{ cdkTypeLabel(row) }}</span></template>
+          <template #cell-duration="{ row }">{{ cdkDurationLabel(row) }}</template>
           <template #cell-status="{ row }">
             <span v-if="!row.used_by" class="tag success">未使用</span>
             <span v-else>已使用：{{ row.used_username || row.used_by }}<br /><small>{{ time(row.used_at) }}</small></span>
@@ -56,22 +68,34 @@
 import { inject, onMounted, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import { api } from "../services/api";
-import { durationLabel, time } from "../utils/format";
+import { durationLabel, number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
 const rows = ref([]);
 const loading = ref(false);
+const cdkType = ref("membership");
 const duration = ref("7d");
+const exportQuota = ref(1);
 const count = ref(1);
 const statusFilter = ref("");
 const columns = [
   { key: "id", label: "ID" },
   { key: "code", label: "CDK" },
-  { key: "duration", label: "时长" },
+  { key: "type", label: "类型" },
+  { key: "duration", label: "用途" },
   { key: "status", label: "状态" },
   { key: "created", label: "创建" },
   { key: "actions", label: "操作" }
 ];
+
+function cdkTypeLabel(row) {
+  return row?.cdk_type === "export_quota" ? "下载次数" : "会员";
+}
+
+function cdkDurationLabel(row) {
+  if (row?.cdk_type === "export_quota") return `下载次数 +${number(row.export_quota || 0)}`;
+  return durationLabel(row);
+}
 
 async function load() {
   loading.value = true;
@@ -89,7 +113,12 @@ async function load() {
 async function generate() {
   await api("/admin-api/cdks", {
     method: "POST",
-    body: JSON.stringify({ duration_type: duration.value, count: Number(count.value || 1) })
+    body: JSON.stringify({
+      cdk_type: cdkType.value,
+      duration_type: duration.value,
+      export_quota: Number(exportQuota.value || 1),
+      count: Number(count.value || 1)
+    })
   });
   await load();
   toast("CDK 已生成");

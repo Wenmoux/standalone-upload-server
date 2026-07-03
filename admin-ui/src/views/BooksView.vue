@@ -17,7 +17,7 @@
         <div class="toolbar">
           <label class="field">
             <span>搜索</span>
-            <input v-model.trim="filters.q" placeholder="书名 / 作者 / ID / 标签" @keydown.enter="loadBooks(1)" />
+            <input v-model.trim="filters.q" placeholder="书名 / 作者 / ID / 标签 / 分类" @keydown.enter="loadBooks(1)" />
           </label>
           <label class="field">
             <span>标签</span>
@@ -57,9 +57,16 @@
           </div>
         </div>
 
-        <div v-if="hotKeywords.length" class="tag-row" style="margin: 13px 0">
-          <button v-for="row in hotKeywords" :key="row.keyword" class="secondary" type="button" @click="useKeyword(row.keyword)">
-            {{ row.keyword }} · {{ number(row.count) }}
+        <div v-if="categoryOptions.length" class="filter-row category-filter-row">
+          <button
+            v-for="row in categoryOptions"
+            :key="row.category"
+            class="secondary"
+            :class="{ active: filters.category === row.category }"
+            type="button"
+            @click="toggleCategory(row.category)"
+          >
+            {{ row.category }} · {{ number(row.count) }}
           </button>
         </div>
 
@@ -143,12 +150,25 @@
             <p class="section-desc">查看、编辑和删除当前书籍的缓存章节。</p>
           </div>
           <div class="row-actions">
+            <button class="secondary" type="button" @click="loadChapters(currentBookId, currentBookTitle)">刷新目录</button>
             <button class="secondary" type="button" @click="exportBookTxt(currentBookId)">导出 TXT</button>
             <button class="secondary" type="button" @click="openChapterEditor()">新增</button>
             <button class="danger secondary" type="button" @click="deleteCurrentBookChapters">删除本书全部缓存</button>
           </div>
         </div>
+        <div class="bulk-bar">
+          <label class="check-row">
+            <input type="checkbox" :checked="allChaptersSelected" @change="toggleAllChapters($event.target.checked)" />
+            <span>本页全选</span>
+          </label>
+          <span class="sub">已选 {{ number(selectedChapterRows.length) }} 章</span>
+          <button class="danger secondary" type="button" :disabled="!selectedChapterRows.length || chaptersLoading" @click="deleteSelectedChapters">删除选中</button>
+          <button class="secondary" type="button" :disabled="!selectedChapterRows.length" @click="clearChapterSelection">清空选择</button>
+        </div>
         <DataTable :columns="chapterColumns" :rows="chapters" :loading="chaptersLoading" empty-text="这本书还没有章节缓存">
+          <template #cell-select="{ row }">
+            <input class="row-check" type="checkbox" :checked="isChapterSelected(row)" @change="toggleChapterRow(row)" />
+          </template>
           <template #cell-chapter_id="{ row }"><code>{{ row.chapter_id }}</code></template>
           <template #cell-platform="{ row }">
             <span class="tag">{{ row.platform || "-" }}</span><br />
@@ -200,10 +220,10 @@ import { number, splitTags, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
 
-const filters = reactive({ q: "", tag: "", platform: "" });
+const filters = reactive({ q: "", tag: "", category: "", platform: "" });
 const sortValue = ref("updated_desc");
 const books = ref([]);
-const hotKeywords = ref([]);
+const categoryOptions = ref([]);
 const platformOptions = ref([
   { value: "po18", label: "PO18" },
   { value: "popo", label: "POPO" },
@@ -219,10 +239,13 @@ const currentBookTitle = ref("");
 const chapters = ref([]);
 const chaptersLoading = ref(false);
 const selectedBookIds = ref(new Set());
+const selectedChapterIds = ref(new Set());
 
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value || 0) / Number(limit.value || 20))));
 const selectedRows = computed(() => books.value.filter((book) => selectedBookIds.value.has(String(book.id))));
 const allPageSelected = computed(() => books.value.length > 0 && books.value.every((book) => selectedBookIds.value.has(String(book.id))));
+const selectedChapterRows = computed(() => chapters.value.filter((chapter) => selectedChapterIds.value.has(String(chapter.id))));
+const allChaptersSelected = computed(() => chapters.value.length > 0 && chapters.value.every((chapter) => selectedChapterIds.value.has(String(chapter.id))));
 
 const bookColumns = [
   { key: "select", label: "选" },
@@ -235,6 +258,7 @@ const bookColumns = [
 ];
 
 const chapterColumns = [
+  { key: "select", label: "选" },
   { key: "chapter_id", label: "章节ID" },
   { key: "title", label: "标题" },
   { key: "platform", label: "站别/来源" },
@@ -328,6 +352,7 @@ function restoreFiltersFromUrl() {
   const params = new URLSearchParams(window.location.search);
   filters.q = params.get("q") || "";
   filters.tag = params.get("tag") || "";
+  filters.category = params.get("category") || "";
   filters.platform = params.get("platform") || "";
   sortValue.value = params.get("sort") || "updated_desc";
   const nextPage = Number(params.get("page") || 1);
@@ -338,6 +363,7 @@ function syncBooksUrl() {
   const params = new URLSearchParams();
   if (filters.q) params.set("q", filters.q);
   if (filters.tag) params.set("tag", filters.tag);
+  if (filters.category) params.set("category", filters.category);
   if (filters.platform) params.set("platform", filters.platform);
   if (sortValue.value !== "updated_desc") params.set("sort", sortValue.value);
   if (page.value > 1) params.set("page", String(page.value));
@@ -373,6 +399,50 @@ function pruneSelectionToPage() {
   selectedBookIds.value = new Set([...selectedBookIds.value].filter((id) => pageIds.has(id)));
 }
 
+function isChapterSelected(row) {
+  return selectedChapterIds.value.has(String(row.id));
+}
+
+function toggleChapterRow(row) {
+  const next = new Set(selectedChapterIds.value);
+  const id = String(row.id);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  selectedChapterIds.value = next;
+}
+
+function toggleAllChapters(checked) {
+  const next = new Set(selectedChapterIds.value);
+  chapters.value.forEach((chapter) => {
+    const id = String(chapter.id);
+    if (checked) next.add(id);
+    else next.delete(id);
+  });
+  selectedChapterIds.value = next;
+}
+
+function clearChapterSelection() {
+  selectedChapterIds.value = new Set();
+}
+
+function pruneChapterSelection() {
+  const ids = new Set(chapters.value.map((chapter) => String(chapter.id)));
+  selectedChapterIds.value = new Set([...selectedChapterIds.value].filter((id) => ids.has(id)));
+}
+
+function upsertChapterRow(chapter) {
+  if (!chapter?.id) return;
+  const id = String(chapter.id);
+  const index = chapters.value.findIndex((row) => String(row.id) === id);
+  if (index >= 0) {
+    const next = chapters.value.slice();
+    next[index] = { ...next[index], ...chapter };
+    chapters.value = next;
+  } else if (!currentBookId.value || String(chapter.book_id || "") === String(currentBookId.value)) {
+    chapters.value = [...chapters.value, chapter];
+  }
+}
+
 async function loadPlatforms() {
   try {
     const data = await api("/admin-api/config/platforms");
@@ -389,20 +459,21 @@ async function loadBooks(nextPage = 1) {
     const params = new URLSearchParams({
       q: filters.q,
       tag: filters.tag,
+      category: filters.category,
       platform: filters.platform,
       sort: sortValue.value,
       page: String(nextPage),
       limit: String(limit.value)
     });
-    const [data, hot] = await Promise.all([
+    const [data, categories] = await Promise.all([
       api(`/admin-api/books?${params}`),
-      api("/reader-api/hot-keywords?limit=16").catch(() => ({ rows: [] }))
+      api("/admin-api/books/categories").catch(() => ({ rows: [] }))
     ]);
     books.value = data.rows || [];
     total.value = Number(data.total || 0);
     page.value = Number(data.page || nextPage);
     limit.value = Number(data.limit || limit.value);
-    hotKeywords.value = hot.rows || [];
+    categoryOptions.value = categories.rows || [];
     pruneSelectionToPage();
     syncBooksUrl();
   } catch (err) {
@@ -412,8 +483,8 @@ async function loadBooks(nextPage = 1) {
   }
 }
 
-function useKeyword(keyword) {
-  filters.q = keyword || "";
+function toggleCategory(category) {
+  filters.category = filters.category === category ? "" : category || "";
   loadBooks(1);
 }
 
@@ -421,6 +492,7 @@ function exportBooksCsv() {
   const params = new URLSearchParams({
     q: filters.q,
     tag: filters.tag,
+    category: filters.category,
     platform: filters.platform,
     sort: sortValue.value
   });
@@ -568,10 +640,12 @@ async function cleanupStaleBooks() {
 async function loadChapters(bookId, title) {
   currentBookId.value = String(bookId || "");
   currentBookTitle.value = String(title || "");
+  clearChapterSelection();
   chaptersLoading.value = true;
   try {
     const data = await api(`/admin-api/books/${encodeURIComponent(bookId)}/chapters`);
     chapters.value = data.rows || [];
+    pruneChapterSelection();
   } catch (err) {
     toast(err.message || String(err));
   } finally {
@@ -599,28 +673,45 @@ function openChapterEditor(row = null) {
 
 async function saveChapter(form) {
   const body = { ...form, chapter_order: Number(form.chapter_order || 0) };
-  await api(chapterModal.id ? `/admin-api/chapters/${chapterModal.id}` : "/admin-api/chapters", {
+  const data = await api(chapterModal.id ? `/admin-api/chapters/${chapterModal.id}` : "/admin-api/chapters", {
     method: chapterModal.id ? "PUT" : "POST",
     body: JSON.stringify(body)
   });
   chapterModal.open = false;
-  await loadChapters(body.book_id || currentBookId.value, currentBookTitle.value || body.book_id);
+  upsertChapterRow(data.chapter || { ...body, id: chapterModal.id });
+  pruneChapterSelection();
   toast("章节已保存");
 }
 
 async function deleteChapter(row) {
   if (!window.confirm("删除该章节缓存？")) return;
   await api(`/admin-api/chapters/${row.id}`, { method: "DELETE" });
-  await loadChapters(currentBookId.value, currentBookTitle.value);
+  chapters.value = chapters.value.filter((chapter) => String(chapter.id) !== String(row.id));
+  selectedChapterIds.value = new Set([...selectedChapterIds.value].filter((id) => id !== String(row.id)));
   toast("已删除章节");
+}
+
+async function deleteSelectedChapters() {
+  const rows = selectedChapterRows.value.slice();
+  if (!rows.length) return;
+  if (!currentBookId.value) return toast("请先打开一本书的章节列表");
+  if (!window.confirm(`删除已选 ${rows.length} 章缓存？元信息会保留。`)) return;
+  const data = await api(`/admin-api/books/${encodeURIComponent(currentBookId.value)}/chapters/bulk`, {
+    method: "DELETE",
+    body: JSON.stringify({ ids: rows.map((row) => row.id) })
+  });
+  const deletedIds = new Set((data.deletedIds || rows.map((row) => row.id)).map((id) => String(id)));
+  chapters.value = chapters.value.filter((chapter) => !deletedIds.has(String(chapter.id)));
+  clearChapterSelection();
+  toast(`已删除 ${number(data.deleted ?? deletedIds.size)} 章`);
 }
 
 async function deleteCurrentBookChapters() {
   if (!currentBookId.value) return toast("请先打开一本书的章节列表");
   if (!window.confirm(`删除《${currentBookTitle.value || currentBookId.value}》的全部章节缓存？元信息会保留。`)) return;
   const data = await api(`/admin-api/books/${encodeURIComponent(currentBookId.value)}/chapters`, { method: "DELETE" });
-  await loadChapters(currentBookId.value, currentBookTitle.value);
-  await loadBooks(page.value);
+  chapters.value = [];
+  clearChapterSelection();
   toast(`已删除 ${number(data.deletedChapters ?? data.deleted ?? 0)} 章缓存`);
 }
 

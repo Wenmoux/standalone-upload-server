@@ -60,7 +60,7 @@ function createAdminUsersRoutes(deps = {}) {
                 `SELECT u.id, u.username, u.nickname, u.avatar_url, u.membership_expires_at, u.membership_permanent, u.library_access,
                         u.copper_coins, u.silver_coins, u.sign_cycle_day, u.last_sign_date, u.telegram_id, u.telegram_username,
                         u.created_at, u.last_login_at, u.is_admin, u.is_banned, u.invite_count, u.inviter_telegram_id,
-                        u.export_unlocked_at, u.scholar_exp, COALESCE(e.free_exports_today, 0)::int free_exports_today
+                        u.export_unlocked_at, u.export_extra_quota, u.scholar_exp, COALESCE(e.free_exports_today, 0)::int free_exports_today
                  FROM reader_users u
                  LEFT JOIN (
                     SELECT user_id, COUNT(DISTINCT book_id)::int free_exports_today
@@ -105,7 +105,7 @@ function createAdminUsersRoutes(deps = {}) {
                 `SELECT u.id, u.username, u.nickname, u.library_access, u.membership_expires_at, u.membership_permanent,
                         u.copper_coins, u.silver_coins, u.scholar_exp, u.sign_cycle_day, u.last_sign_date,
                         u.telegram_id, u.telegram_username, u.is_admin, u.is_banned, u.invite_count, u.inviter_telegram_id,
-                        u.export_unlocked_at, COALESCE(e.free_exports_today, 0)::int free_exports_today,
+                        u.export_unlocked_at, u.export_extra_quota, COALESCE(e.free_exports_today, 0)::int free_exports_today,
                         u.created_at, u.last_login_at
                  FROM reader_users u
                  LEFT JOIN (
@@ -123,7 +123,7 @@ function createAdminUsersRoutes(deps = {}) {
                 "id", "username", "nickname", "library_access", "membership_expires_at", "membership_permanent",
                 "copper_coins", "silver_coins", "scholar_exp", "sign_cycle_day", "last_sign_date",
                 "telegram_id", "telegram_username", "is_admin", "is_banned", "invite_count", "inviter_telegram_id",
-                "export_unlocked_at", "free_exports_today", "created_at", "last_login_at"
+                "export_unlocked_at", "export_extra_quota", "free_exports_today", "created_at", "last_login_at"
             ].map((key) => ({ key, label: key })));
         } catch (err) { next(err); }
     });
@@ -339,21 +339,23 @@ function createAdminUsersRoutes(deps = {}) {
             const status = String(req.query.status || "").trim().toLowerCase();
             const whereSql = status === "used" ? "WHERE c.used_by IS NOT NULL" : status === "unused" ? "WHERE c.used_by IS NULL" : "";
             const rows = await query(
-                `SELECT c.id, c.code, c.duration_type, c.duration_days, c.created_by, c.created_at, c.used_by, c.used_at,
+                `SELECT c.id, c.code, c.cdk_type, c.duration_type, c.duration_days, c.export_quota, c.created_by, c.created_at, c.used_by, c.used_at,
                         u.username used_username, u.nickname used_nickname
                  FROM reader_cdks c LEFT JOIN reader_users u ON u.id = c.used_by
                  ${whereSql}
                  ORDER BY c.id DESC`
             );
-            const header = ["id", "code", "duration_type", "duration_days", "status", "created_by", "created_at", "used_by", "used_username", "used_nickname", "used_at"];
+            const header = ["id", "code", "cdk_type", "duration_type", "duration_days", "export_quota", "status", "created_by", "created_at", "used_by", "used_username", "used_nickname", "used_at"];
             const lines = [
                 header.join(","),
                 ...rows.rows.map((row) =>
                     [
                         row.id,
                         row.code,
+                        row.cdk_type || "membership",
                         row.duration_type,
                         row.duration_days,
+                        row.export_quota || 0,
                         row.used_by ? "used" : "unused",
                         row.created_by,
                         row.created_at,
@@ -372,17 +374,19 @@ function createAdminUsersRoutes(deps = {}) {
 
     router.post("/admin-api/cdks", requireAdmin, async (req, res, next) => {
         try {
-            const duration = cdkDuration(req.body?.duration_type || req.body?.duration || "7d");
+            const cdkType = String(req.body?.cdk_type || req.body?.type || "membership").trim().toLowerCase() === "export_quota" ? "export_quota" : "membership";
+            const duration = cdkType === "membership" ? cdkDuration(req.body?.duration_type || req.body?.duration || "7d") : { type: "export_quota", days: 0 };
             if (!duration) return res.status(400).json({ error: "无效 CDK 时长" });
+            const exportQuota = cdkType === "export_quota" ? Math.max(1, Math.min(10000, Math.trunc(Number(req.body?.export_quota || req.body?.quota || 1)))) : 0;
             const count = Math.max(1, Math.min(100, Number(req.body?.count || 1)));
             const rows = [];
             for (let i = 0; i < count; i++) {
                 let code = String(req.body?.code || "").trim().toUpperCase() || generateCdkCode();
                 if (count > 1 || i > 0) code = generateCdkCode();
                 const inserted = await query(
-                    `INSERT INTO reader_cdks(code, duration_type, duration_days, created_by)
-                     VALUES ($1,$2,$3,$4) RETURNING *`,
-                    [code, duration.type, duration.days, req.session.adminUser?.username || "admin"]
+                    `INSERT INTO reader_cdks(code, cdk_type, duration_type, duration_days, export_quota, created_by)
+                     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+                    [code, cdkType, duration.type, duration.days, exportQuota, req.session.adminUser?.username || "admin"]
                 );
                 rows.push(inserted.rows[0]);
             }

@@ -138,6 +138,11 @@
           <label class="field"><span>免费书导出（铜币/次）</span><input v-model.number="pricing.freeCopperCost" type="number" min="0" step="1" /></label>
           <label class="field"><span>收费章节导出（银币/章）</span><input v-model.number="pricing.paidChapterSilverCost" type="number" min="0" step="1" /></label>
         </div>
+        <label class="field" style="margin-top: 12px">
+          <span>每日付费书免费导出额度（JSON，按等级向上继承）</span>
+          <textarea v-model.trim="dailyQuotaText" rows="4" placeholder='{"1":1,"2":1,"3":2}'></textarea>
+        </label>
+        <p class="section-desc" style="margin-top: 8px">默认 Lv1/Lv2 每日 1 本，Lv3 及以上每日 2 本；这里只需要填写变化点。</p>
         <div class="button-row" style="margin-top: 14px">
           <button type="button" @click="savePricing">保存导出价格</button>
           <button class="secondary" type="button" @click="loadPricing">刷新</button>
@@ -212,7 +217,8 @@ const form = reactive({
   dailyReportTime: "22:00",
   dailyReportAdminIds: ""
 });
-const pricing = reactive({ unlockCost: 100, freeCopperCost: 100, paidChapterSilverCost: 10 });
+const pricing = reactive({ unlockCost: 100, freeCopperCost: 100, paidChapterSilverCost: 10, dailyQuotaByLevel: {} });
+const dailyQuotaText = ref('{"1":1,"2":1,"3":2}');
 const tokenSourceText = computed(() => {
   if (status.value.loginTokenSource === "env") return "来自环境变量";
   if (status.value.loginTokenSource === "admin_config") return "来自后台保存";
@@ -328,15 +334,25 @@ async function loadPricing() {
   pricing.unlockCost = data.unlockCost ?? 100;
   pricing.freeCopperCost = data.freeCopperCost ?? 100;
   pricing.paidChapterSilverCost = data.paidChapterSilverCost ?? 10;
+  pricing.dailyQuotaByLevel = data.dailyQuotaByLevel || {};
+  dailyQuotaText.value = JSON.stringify(pricing.dailyQuotaByLevel, null, 2);
 }
 
 async function savePricing() {
+  let dailyQuotaByLevel = {};
+  try {
+    dailyQuotaByLevel = dailyQuotaText.value ? JSON.parse(dailyQuotaText.value) : {};
+  } catch {
+    toast("每日额度 JSON 格式错误");
+    return;
+  }
   await api("/admin-api/config/export", {
     method: "PUT",
     body: JSON.stringify({
       unlockCost: Number(pricing.unlockCost || 0),
       freeCopperCost: Number(pricing.freeCopperCost || 0),
-      paidChapterSilverCost: Number(pricing.paidChapterSilverCost || 0)
+      paidChapterSilverCost: Number(pricing.paidChapterSilverCost || 0),
+      dailyQuotaByLevel
     })
   });
   await loadPricing();

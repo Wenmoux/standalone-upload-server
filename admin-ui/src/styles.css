@@ -614,6 +614,16 @@ label > span {
   line-height: 1.45;
 }
 
+.stat-platforms {
+  grid-column: 1 / -1;
+}
+
+.stat-platforms .stat-extra {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .platform-summary-card {
   display: grid;
   gap: 7px;
@@ -621,7 +631,7 @@ label > span {
 
 .platform-chip-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 6px;
 }
 
@@ -631,7 +641,8 @@ label > span {
   justify-content: space-between;
   min-width: 0;
   gap: 8px;
-  padding: 5px 7px;
+  min-height: 32px;
+  padding: 6px 8px;
   border: 1px solid #d8e4ef;
   border-radius: 8px;
   background: #ffffff;
@@ -1477,6 +1488,11 @@ td small {
   margin: 0 0 14px;
 }
 
+.category-filter-row {
+  margin: 13px 0;
+  padding-top: 2px;
+}
+
 .filter-row button {
   min-height: 34px;
   border: 1px solid #cbd6e5;
@@ -1487,9 +1503,9 @@ td small {
 }
 
 .filter-row button.active {
-  border-color: #8fb2e8;
-  background: #e8f0ff;
-  color: var(--primary);
+  border-color: #8ec6be;
+  background: #e8f8f4;
+  color: #0f766e;
 }
 
 .logbox,

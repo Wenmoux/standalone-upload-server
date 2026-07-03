@@ -47,6 +47,7 @@ function createReaderAuthRoutes(deps = {}) {
             const cdkRow = cdk.rows[0];
             if (!cdkRow) return res.status(404).json({ error: "CDK 不存在" });
             if (cdkRow.used_by || cdkRow.used_at) return res.status(409).json({ error: "CDK 已被使用" });
+            if (String(cdkRow.cdk_type || "membership") === "export_quota") return res.status(400).json({ error: "下载次数 CDK 不能用于注册" });
             const { salt, hash } = hashPassword(password);
             const duration = cdkDuration(cdkRow.duration_type);
             if (!duration) return res.status(400).json({ error: "CDK 时长配置无效" });

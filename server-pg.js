@@ -50,6 +50,7 @@ const { remoteBackupStatus, uploadBackupToRemote } = require("./services/remote-
 const { createAuthService } = require("./services/auth");
 const { createEventService } = require("./services/events");
 const { createHotKeywordService } = require("./services/hot-keywords");
+const { createWordCloudService } = require("./services/word-cloud");
 const { createBookSocialService } = require("./services/book-social");
 const { createChapterMaintenanceService } = require("./services/chapter-maintenance");
 const { createBookMaintenanceService } = require("./services/book-maintenance");
@@ -195,6 +196,10 @@ const {
     addHotKeyword,
     getHotKeywords
 } = hotKeywordService;
+const wordCloudService = createWordCloudService({
+    query,
+    getHotKeywords
+});
 const bookSocialService = createBookSocialService({
     query,
     pool,
@@ -281,6 +286,7 @@ const userCurrencyService = createUserCurrencyService({
     botUserSelect,
     todayDateKey,
     scholarProfile,
+    exportPricingConfig,
     nonNegativeInt,
     currencyLabel: serverCurrencyLabel
 });
@@ -497,6 +503,8 @@ const botApiRoutes = createBotApiRoutes({
     exportPricingConfig,
     dailyFreeExportStatus: userCurrencyService.dailyFreeExportStatus,
     claimDailyFreeExport: userCurrencyService.claimDailyFreeExport,
+    claimExtraExportQuota: userCurrencyService.claimExtraExportQuota,
+    redeemExportQuotaCdk: userCurrencyService.redeemExportQuotaCdk,
     spendUserCurrency: userCurrencyService.spendUserCurrency,
     todayDateKey,
     positiveNumber,
@@ -519,6 +527,7 @@ const botApiRoutes = createBotApiRoutes({
     pushBookReviewToChannel,
     getHotKeywords,
     addHotKeyword,
+    wordCloudPayload: wordCloudService.wordCloudPayload,
     recordEvent,
     createSystemJob,
     getSystemJob,
@@ -604,7 +613,7 @@ app.use(
         secret: SESSION_SECRET,
         resave: false,
         saveUninitialized: false,
-        cookie: { httpOnly: true, sameSite: "lax", maxAge: 1000 * 60 * 60 * 12 }
+        cookie: { httpOnly: true, sameSite: "lax", maxAge: 1000 * 60 * 60 * 24 * 30 }
     })
 );
 app.use(createRequestLogger({ service: "server-pg", slowMs: REQUEST_SLOW_MS, skip: (req) => req.path === "/favicon.ico" }));
@@ -754,7 +763,7 @@ function scholarProfile(expValue = 0) {
         exp_to_next: Math.max(0, nextLevelExp - levelExp),
         progress: nextLevelExp ? Number((levelExp / nextLevelExp).toFixed(4)) : 1,
         next_level_name: nextName,
-        daily_free_exports: level <= 2 ? 1 : level
+        daily_free_exports: level <= 2 ? 1 : 2
     };
 }
 

@@ -25,6 +25,7 @@ const { startBotHealthServer } = require("./health-server");
 const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const { createTaskSchedulers } = require("./task-schedulers");
+const { renderWordCloudSvgBuffer } = require("./word-cloud");
 const { createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
 const { createTelegramPollingRuntime } = require("./polling-runtime");
 const {
@@ -68,6 +69,7 @@ const BOT_EXPORT_COOLDOWN_MS = positiveMs(process.env.TELEGRAM_EXPORT_COOLDOWN_M
 const BOT_BOOKSHELF_COOLDOWN_MS = positiveMs(process.env.TELEGRAM_BOOKSHELF_COOLDOWN_MS, 300000);
 const BOT_PIKPAK_COOLDOWN_MS = positiveMs(process.env.TELEGRAM_PIKPAK_COOLDOWN_MS, 10000);
 const BOT_GROUP_LONG_TEXT_THRESHOLD = positiveMs(process.env.TELEGRAM_GROUP_LONG_TEXT_THRESHOLD, 1600);
+const PRIVATE_EXPORT_START_TTL_MS = positiveMs(process.env.TELEGRAM_PRIVATE_EXPORT_START_TTL_MS, 30 * 60 * 1000);
 const BOT_HEALTH_PORT = Number(process.env.BOT_HEALTH_PORT || 3300);
 const BOT_HEALTH_HOST = process.env.BOT_HEALTH_HOST || "127.0.0.1";
 const BOT_HEALTH_STALE_MS = Number(process.env.BOT_HEALTH_STALE_MS || 120000);
@@ -175,6 +177,7 @@ if (!TELEGRAM_TOKEN) {
 let botUser = null;
 const searchCache = createSearchCache({ maxSize: Number(process.env.TELEGRAM_SEARCH_CACHE_MAX || 200) });
 const po18LoginSessions = new Map();
+const privateExportStarts = new Map();
 let commandRegistry = null;
 const commandSettingsState = { at: 0, payload: null };
 
@@ -189,8 +192,8 @@ function getCommandRegistry() {
     const withBookshelfCooldown = (message, label, handler) => withCooldown(message, "mybookshelf", BOT_BOOKSHELF_COOLDOWN_MS, label, handler);
     const withPikpakCooldown = (message, label, handler) => withCooldown(message, "pikpak", BOT_PIKPAK_COOLDOWN_MS, label, handler);
 
-    registerAccountCommands(registry, { handleStart, handleRegister, handleMe, handleSign, handleGive, handleTop, handleTransactions });
-    registerSearchCommands(registry, { withSearchCooldown, withInfoCooldown, handleSearch, handleHot, handleRandom, handleInfo });
+    registerAccountCommands(registry, { handleStart, handleRegister, handleMe, handleSign, handleRedeem, handleGive, handleTop, handleTransactions });
+    registerSearchCommands(registry, { withSearchCooldown, withInfoCooldown, handleSearch, handleHot, handleWordCloud, handleRandom, handleInfo });
     registerSocialCommands(registry, { handleMyFav, handleRedPacket, handleClaimRedPacket, handleCrowd, handleReview, handleReviews });
     registerIntegrationCommands(registry, {
         withPikpakCooldown,
@@ -231,6 +234,58 @@ function rememberSearch(query) {
     return searchCache.remember(query);
 }
 
+function botPrivateUrl(payload = "") {
+    const username = String(botUser?.username || "").trim();
+    if (!username) return "";
+    const suffix = payload ? `?start=${encodeURIComponent(payload)}` : "";
+    return `https://t.me/${username}${suffix}`;
+}
+
+function cleanupPrivateExportStarts() {
+    const now = Date.now();
+    for (const [key, pending] of privateExportStarts.entries()) {
+        if (!pending?.createdAt || now - pending.createdAt > PRIVATE_EXPORT_START_TTL_MS) privateExportStarts.delete(key);
+    }
+}
+
+function rememberPrivateExportStart(from = {}, chat = {}, bookId = "", format = "txt") {
+    cleanupPrivateExportStarts();
+    const key = `ex_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    privateExportStarts.set(key, {
+        userId: String(from.id || ""),
+        chatId: String(typeof chat === "object" ? chat.id : chat || ""),
+        bookId: String(bookId || "").trim(),
+        format: String(format || "txt").trim(),
+        createdAt: Date.now()
+    });
+    return key;
+}
+
+function takePrivateExportStart(payload = "", userId = "") {
+    cleanupPrivateExportStarts();
+    const key = String(payload || "").trim();
+    if (!key.startsWith("ex_")) return null;
+    const pending = privateExportStarts.get(key);
+    if (!pending || String(pending.userId) !== String(userId || "")) return null;
+    privateExportStarts.delete(key);
+    return pending;
+}
+
+function privateExportStartMarkup(payload = "") {
+    const url = botPrivateUrl(payload);
+    return url ? { inline_keyboard: [[{ text: "打开私聊继续导出", url }]] } : undefined;
+}
+
+async function canSendPrivateMessage(userId) {
+    try {
+        await telegram("sendChatAction", { chat_id: userId, action: "upload_document" });
+        return true;
+    } catch (err) {
+        if (/forbidden|bot can't initiate conversation|chat not found|blocked/i.test(String(err.message || ""))) return false;
+        throw err;
+    }
+}
+
 
 
 async function ensureRegistered(user) {
@@ -242,7 +297,16 @@ async function ensureRegistered(user) {
 
 async function handleStart(message, payload) {
     await refreshCommandSettings();
-    const user = await client.getUser(message.from.id);
+    const user = await ensureRegistered(message.from);
+    const pendingExport = takePrivateExportStart(payload, message.from.id);
+    if (pendingExport) {
+        await sendMessage(message.chat.id, [
+            "私聊已授权，开始继续刚才的导出。",
+            `书号：<code>${escapeHtml(pendingExport.bookId)}</code>`,
+            `格式：${escapeHtml(pendingExport.format.toUpperCase())}`
+        ].join("\n")).catch(() => {});
+        return scheduleExport(message.chat, message.from, pendingExport.bookId, pendingExport.format);
+    }
     await deliverLongGroupResult(message, startHelpText({
         user,
         payload,
@@ -338,6 +402,53 @@ async function handleHot(message, args = "") {
         ? `${platformLabel(platform)} 热门排行\n热搜：${keywords.rows.map((row) => `${row.keyword}(${row.count})`).join(" / ")}`
         : `${platformLabel(platform)} 热门排行`;
     await sendBookCards(message, data.rows, title);
+}
+
+function parseWordCloudArgs(args = "") {
+    const parsed = parsePlatformSuffix(args, { defaultPlatform: "" });
+    const limitMatch = parsed.query.match(/\b(\d{1,3})\b/);
+    const limit = limitMatch ? Math.max(20, Math.min(100, Number(limitMatch[1]))) : 60;
+    const sourceLimitMatch = parsed.query.match(/(?:source|books|书)[=:：]?(\d{2,4})/i);
+    const sourceLimit = sourceLimitMatch ? Math.max(50, Math.min(2000, Number(sourceLimitMatch[1]))) : 300;
+    return { platform: parsed.platform, limit, sourceLimit };
+}
+
+async function sendWordCloudResult(chatId, svg, caption) {
+    try {
+        return await sendPhoto(chatId, svg, "po18-word-cloud.svg", caption);
+    } catch (err) {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), "po18-wordcloud-"));
+        const filePath = path.join(dir, "po18-word-cloud.svg");
+        try {
+            await fs.writeFile(filePath, svg);
+            return await sendDocument(chatId, filePath, caption);
+        } finally {
+            await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+        }
+    }
+}
+
+async function handleWordCloud(message, args = "") {
+    const { platform, limit, sourceLimit } = parseWordCloudArgs(args);
+    const label = platformLabel(platform);
+    const progress = await sendMessage(message.chat.id, `正在生成 ${escapeHtml(label)} 热搜词云...`);
+    const payload = await client.wordCloud({ limit, sourceLimit, platform });
+    const rows = payload.rows || [];
+    if (!rows.length) {
+        return editMessage(message.chat.id, progress.message_id, "暂无热搜词或热门标签，先搜索几次或等榜单数据积累后再试。").catch(() => {});
+    }
+    const topWords = rows.slice(0, 8).map((row) => row.text).join(" / ");
+    const svg = renderWordCloudSvgBuffer(rows, {
+        title: `${label} 热搜词云`,
+        subtitle: `热搜词 + 热门书籍标签 · ${rows.length} 个关键词`,
+        generatedAt: new Date(payload.generated_at || Date.now()).toLocaleString("zh-CN", { hour12: false })
+    });
+    await sendWordCloudResult(message.chat.id, svg, [
+        `${label} 热搜词云`,
+        `Top：${topWords}`,
+        `来源：热搜词 ${payload.sources?.hot_keywords || 0}，标签 ${payload.sources?.tags || 0}`
+    ].join("\n"));
+    await editMessage(message.chat.id, progress.message_id, "词云已生成。").catch(() => {});
 }
 
 async function handleRandom(message, args = "") {
@@ -512,6 +623,23 @@ async function handleMyFav(message) {
     const data = await client.listBookshelf(message.from.id);
     if (!data.rows.length) return sendMessage(message.chat.id, "你的书架还没有书。");
     await sendBookCards(message, data.rows.slice(0, 20), `我的收藏：${data.rows.length} 本`);
+}
+
+async function handleRedeem(message, args) {
+    await ensureRegistered(message.from);
+    const code = String(args || "").trim().split(/\s+/)[0] || "";
+    if (!code) return sendMessage(message.chat.id, "用法：/redeem CDK-XXXX-XXXX");
+    try {
+        const result = await client.redeemCdk(message.from.id, code);
+        await sendMessage(message.chat.id, [
+            "兑换成功。",
+            `增加下载次数：${result.cdk?.export_quota || 0}`,
+            `当前额外下载次数：${result.user?.export_extra_quota || 0}`
+        ].join("\n"));
+    } catch (err) {
+        if (err.status) return sendMessage(message.chat.id, `兑换失败：${escapeHtml(err.message || "CDK 无效")}`);
+        throw err;
+    }
 }
 
 async function handleGive(message, args) {
@@ -782,16 +910,17 @@ async function sendExport(chat, from, bookId, format) {
     ]);
     const pricing = normalizeExportPricing(pricingData.pricing ? pricingData : permission.pricing || {});
     const freeExport = permission.free_export || {};
-    const canUseFreeExport = !!freeExport.available;
-    if (!permission.unlocked && !canUseFreeExport) {
+    const canUseDailyExport = !!freeExport.available;
+    const canUseExtraExport = !!freeExport.extra_book_already_used || Number(freeExport.extra_remaining || 0) > 0;
+    if (groupExport && !(await canSendPrivateMessage(from.id))) {
+        const payload = rememberPrivateExportStart(from, chat, id, format);
+        const failure = formatExportFailure(asExportError("EXPORT_PRIVATE_CHAT_REQUIRED", "Forbidden: bot can't initiate conversation with a user"));
         await sendMessage(chatId, [
-            "今日免费导出额度已用完，继续导出需要先开通授权。",
-            freeExportText(freeExport),
-            `授权价格：${pricing.unlockCost} 银币`,
-            `当前银币：${permission.user?.silver_coins ?? 0}`,
-            `导出扣费：纯免费书 ${pricing.freeCopperCost} 铜币/次；收费章节 ${pricing.paidChapterSilverCost} 银币/章。`,
-            "点击下方按钮消耗银币开通后再导出。"
-        ].join("\n"), { reply_markup: { inline_keyboard: [[{ text: "开通导出授权", callback_data: callback(["unlock", id]) }]] } });
+            failure.message,
+            `错误码：${failure.code}`,
+            "Telegram 不允许 Bot 主动私聊未 /start 的用户。",
+            "点下面按钮打开私聊，发送 /start 后会自动继续这次导出。"
+        ].join("\n"), { reply_markup: privateExportStartMarkup(payload) });
         return;
     }
     const progress = await sendMessage(chatId, `正在生成 ${format.toUpperCase()}：<code>${escapeHtml(id)}</code>`);
@@ -799,29 +928,70 @@ async function sendExport(chat, from, bookId, format) {
     try {
         result = await buildExport(bookData.book, format, from);
         const quote = exportQuote(result, pricing);
-        let freeClaim = null;
-        if (canUseFreeExport) {
-            try {
-                const claimed = await client.claimFreeExport(from.id, result.book.book_id, format);
-                freeClaim = claimed.usage || null;
-            } catch (err) {
-                if (err.status === 409 && !permission.unlocked) {
-                    const exportErr = asExportError("EXPORT_FREE_QUOTA_USED", err.message || "free export quota used", err);
-                    exportErr.userNotified = true;
-                    const failure = formatExportFailure(exportErr);
-                    await editMessage(chatId, progress.message_id, [
-                        failure.message,
-                        `错误码：${failure.code}`,
-                        err.data?.quota ? freeExportText(err.data.quota) : escapeHtml(failure.raw || err.message),
-                        `可开通导出授权：${pricing.unlockCost} 银币`
-                    ].join("\n")).catch(() => {});
-                    throw exportErr;
-                }
-                if (err.status !== 409) throw err;
-            }
+        const paidBook = Number(quote.paidChapters || 0) > 0;
+        const user = permission.user || {};
+        if (paidBook && !permission.unlocked && !canUseDailyExport && !canUseExtraExport) {
+            const exportErr = asExportError("EXPORT_FREE_QUOTA_USED", "paid export quota used");
+            exportErr.userNotified = true;
+            const failure = formatExportFailure(exportErr);
+            await editMessage(chatId, progress.message_id, [
+                failure.message,
+                `错误码：${failure.code}`,
+                freeExportText(freeExport),
+                `授权价格：${pricing.unlockCost} 银币`,
+                `当前银币：${user.silver_coins ?? 0}`,
+                "付费章节导出可使用每日免费额度、额外下载次数，或开通导出授权后按收费章节扣银币。"
+            ].join("\n"), { reply_markup: { inline_keyboard: [[{ text: "开通导出授权", callback_data: callback(["unlock", id]) }]] } }).catch(() => {});
+            throw exportErr;
         }
-        if (!freeClaim && quote.amount > 0) {
-            try {
+        if (!paidBook && quote.amount > 0 && Number(user.copper_coins || 0) < Number(quote.amount || 0)) {
+            const exportErr = asExportError("EXPORT_INSUFFICIENT_BALANCE", `copper insufficient, need ${quote.amount}`);
+            exportErr.userNotified = true;
+            const failure = formatExportFailure(exportErr);
+            await editMessage(chatId, progress.message_id, [
+                failure.message,
+                `错误码：${failure.code}`,
+                `本次费用：${exportQuoteText(quote)}`,
+                `当前铜币：${user.copper_coins ?? 0}`
+            ].join("\n")).catch(() => {});
+            throw exportErr;
+        }
+        if (paidBook && permission.unlocked && !canUseDailyExport && !canUseExtraExport && quote.amount > 0 && Number(user.silver_coins || 0) < Number(quote.amount || 0)) {
+            const exportErr = asExportError("EXPORT_INSUFFICIENT_BALANCE", `silver insufficient, need ${quote.amount}`);
+            exportErr.userNotified = true;
+            const failure = formatExportFailure(exportErr);
+            await editMessage(chatId, progress.message_id, [
+                failure.message,
+                `错误码：${failure.code}`,
+                `本次费用：${exportQuoteText(quote)}`,
+                `当前银币：${user.silver_coins ?? 0}`
+            ].join("\n")).catch(() => {});
+            throw exportErr;
+        }
+
+        async function settleSuccessfulExport() {
+            if (paidBook) {
+                if (canUseDailyExport) {
+                    try {
+                        const claimed = await client.claimFreeExport(from.id, result.book.book_id, format);
+                        return { kind: "daily", usage: claimed.usage || null };
+                    } catch (err) {
+                        if (err.status !== 409) throw err;
+                    }
+                }
+                if (canUseExtraExport) {
+                    try {
+                        const claimed = await client.claimExtraExport(from.id, result.book.book_id, format);
+                        return { kind: "extra", usage: claimed.usage || null };
+                    } catch (err) {
+                        if (err.status !== 409) throw err;
+                    }
+                }
+                if (!permission.unlocked) {
+                    throw asExportError("EXPORT_FREE_QUOTA_USED", "paid export quota used");
+                }
+            }
+            if (quote.amount > 0) {
                 await client.spendCurrency(
                     from.id,
                     quote.currency,
@@ -830,44 +1000,67 @@ async function sendExport(chat, from, bookId, format) {
                     `${result.book.book_id} ${result.chapters} chapters paid=${quote.paidChapters}`,
                     "telegram_bot"
                 );
+                return { kind: "currency", quote };
+            }
+            return { kind: "free", quote };
+        }
+
+        async function recordAndSettle() {
+            await client.recordUserEvent(from.id, `export_${format}`, `${result.book.book_id} ${result.chapters} chapters`).catch(() => {});
+            try {
+                return await settleSuccessfulExport();
             } catch (err) {
+                const message = err.status === 409 ? (err.data?.quota ? freeExportText(err.data.quota) : err.message) : (err.message || String(err));
                 if (err.status === 409) {
                     const exportErr = asExportError("EXPORT_INSUFFICIENT_BALANCE", err.message || "insufficient balance", err);
                     exportErr.userNotified = true;
-                    const failure = formatExportFailure(exportErr);
-                    await editMessage(chatId, progress.message_id, [
-                        failure.message,
-                        `错误码：${failure.code}`,
-                        `本次费用：${exportQuoteText(quote)}`,
-                        `原因：${escapeHtml(failure.raw || err.message)}`
-                    ].join("\n")).catch(() => {});
                     throw exportErr;
                 }
-                throw err;
+                throw Object.assign(err, { settlementMessage: message });
             }
         }
+
         const exportTitle = escapeHtml(result.book.title || result.book.book_id);
         const exportSummary = `${exportTitle}\n已导出 ${result.chapters} 章`;
         if (groupExport) {
             try {
                 await sendDocument(from.id, result.filePath, exportSummary);
-                await client.recordUserEvent(from.id, `export_${format}`, `${result.book.book_id} ${result.chapters} chapters`).catch(() => {});
+                await recordAndSettle();
                 await editMessage(chatId, progress.message_id, `${format.toUpperCase()} 已私聊发送：${exportSummary}`).catch(() => {});
             } catch (err) {
-                const exportErr = asExportError("EXPORT_PRIVATE_CHAT_REQUIRED", err.message || "private chat required", err);
-                exportErr.userNotified = true;
-                const failure = formatExportFailure(exportErr);
+                if (/forbidden|bot can't initiate conversation|chat not found|blocked/i.test(String(err.message || ""))) {
+                    const exportErr = asExportError("EXPORT_PRIVATE_CHAT_REQUIRED", err.message || "private chat required", err);
+                    exportErr.userNotified = true;
+                    const failure = formatExportFailure(exportErr);
+                    const payload = rememberPrivateExportStart(from, chat, id, format);
+                    await editMessage(chatId, progress.message_id, [
+                        failure.message,
+                        `错误码：${failure.code}`,
+                        `原因：${escapeHtml(failure.raw || err.message)}`,
+                        "点下面按钮打开私聊，发送 /start 后会自动继续这次导出。"
+                    ].join("\n"), { reply_markup: privateExportStartMarkup(payload) }).catch(() => {});
+                    throw exportErr;
+                }
                 await editMessage(chatId, progress.message_id, [
-                    failure.message,
-                    `错误码：${failure.code}`,
-                    `原因：${escapeHtml(failure.raw || err.message)}`
+                    `${format.toUpperCase()} 已私聊发送：${exportSummary}`,
+                    `但扣费/扣次数记录失败：${escapeHtml(err.settlementMessage || err.message || String(err))}`
                 ].join("\n")).catch(() => {});
-                throw exportErr;
+                err.userNotified = true;
+                throw err;
             }
             return;
         }
         await sendDocument(chatId, result.filePath, exportSummary);
-        await client.recordUserEvent(from.id, `export_${format}`, `${result.book.book_id} ${result.chapters} chapters`).catch(() => {});
+        try {
+            await recordAndSettle();
+        } catch (err) {
+            await editMessage(chatId, progress.message_id, [
+                `${format.toUpperCase()} 导出完成：${exportSummary}`,
+                `但扣费/扣次数记录失败：${escapeHtml(err.settlementMessage || err.message || String(err))}`
+            ].join("\n")).catch(() => {});
+            err.userNotified = true;
+            throw err;
+        }
         await editMessage(chatId, progress.message_id, `${format.toUpperCase()} 导出完成：${exportSummary}`).catch(() => {});
     } finally {
         if (result?.filePath) await fs.rm(path.dirname(result.filePath), { recursive: true, force: true }).catch(() => {});

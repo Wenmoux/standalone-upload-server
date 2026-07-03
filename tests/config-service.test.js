@@ -13,8 +13,10 @@ test("config helpers normalize labels and pricing", () => {
     assert.deepEqual(exportPricingPayload({ unlockCost: -1, freeCopperCost: "12.8", paidChapterSilverCost: "bad" }), {
         unlockCost: 0,
         freeCopperCost: 12,
-        paidChapterSilverCost: 10
+        paidChapterSilverCost: 10,
+        dailyQuotaByLevel: {}
     });
+    assert.deepEqual(exportPricingPayload({ dailyQuotaByLevel: { 3: "2", 2: "1", bad: 9 } }).dailyQuotaByLevel, { "2": 1, "3": 2 });
 });
 
 test("config service reads, writes, builds platform payload and export pricing", async (t) => {
@@ -33,7 +35,8 @@ test("config service reads, writes, builds platform payload and export pricing",
         platform_labels: JSON.stringify({ " PO18 ": "PO18 Custom", custom: "Custom Site" }),
         bot_export_unlock_cost: "",
         bot_export_free_copper_cost: "250",
-        bot_export_paid_chapter_silver_cost: "bad"
+        bot_export_paid_chapter_silver_cost: "bad",
+        bot_export_daily_quota_by_level: "{\"2\":1,\"3\":2}"
     };
     const service = createConfigService({
         cleanPgText: (value) => String(value || "").replace(/\u0000/g, ""),
@@ -75,6 +78,7 @@ test("config service reads, writes, builds platform payload and export pricing",
     assert.deepEqual(await service.exportPricingConfig(), {
         unlockCost: 75,
         freeCopperCost: 250,
-        paidChapterSilverCost: 12
+        paidChapterSilverCost: 12,
+        dailyQuotaByLevel: { "2": 1, "3": 2 }
     });
 });

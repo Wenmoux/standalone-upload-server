@@ -5,6 +5,7 @@ function createUserCurrencyService(options = {}) {
     const botUserSelect = options.botUserSelect || (() => "*");
     const todayDateKey = options.todayDateKey || (() => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10));
     const scholarProfile = options.scholarProfile || (() => ({ level: 1, name: "L1", daily_free_exports: 1 }));
+    const exportPricingConfig = options.exportPricingConfig || (async () => ({}));
     const nonNegativeInt = options.nonNegativeInt || ((value, fallback = 0) => {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : Math.max(0, Math.trunc(Number(fallback) || 0));
@@ -13,13 +14,35 @@ function createUserCurrencyService(options = {}) {
 
     function normalizeScholarFreeExportLimit(rawScholar = {}) {
         const level = Math.max(1, Math.trunc(Number(rawScholar.level || 1)));
-        const configured = nonNegativeInt(rawScholar.daily_free_exports, level);
-        return level <= 2 ? 1 : configured;
+        return level <= 2 ? 1 : 2;
     }
 
-    function scholarWithEffectiveFreeExportLimit(expValue) {
+    function effectiveDailyLimit(level = 1, configured = {}) {
+        const safeLevel = Math.max(1, Math.trunc(Number(level || 1)));
+        const keys = Object.keys(configured || {})
+            .map((key) => Math.max(1, Math.trunc(Number(key || 0))))
+            .filter((key) => Number.isFinite(key))
+            .sort((a, b) => a - b);
+        let matched = null;
+        for (const key of keys) {
+            if (key <= safeLevel) matched = key;
+            else break;
+        }
+        if (matched !== null) return nonNegativeInt(configured[String(matched)], normalizeScholarFreeExportLimit({ level: safeLevel }));
+        return safeLevel <= 2 ? 1 : 2;
+    }
+
+    async function scholarWithEffectiveFreeExportLimit(expValue) {
         const rawScholar = scholarProfile(expValue) || {};
-        const limit = normalizeScholarFreeExportLimit(rawScholar);
+        let quotaByLevel = {};
+        try {
+            quotaByLevel = (await exportPricingConfig()).dailyQuotaByLevel || {};
+        } catch {
+            quotaByLevel = {};
+        }
+        const limit = Object.keys(quotaByLevel).length
+            ? effectiveDailyLimit(rawScholar.level, quotaByLevel)
+            : normalizeScholarFreeExportLimit(rawScholar);
         return { ...rawScholar, daily_free_exports: limit };
     }
 
@@ -156,10 +179,11 @@ function createUserCurrencyService(options = {}) {
     }
 
     async function dailyFreeExportStatus(user, db = query, bookId = "") {
-        const scholar = scholarWithEffectiveFreeExportLimit(user?.scholar_exp);
+        const scholar = await scholarWithEffectiveFreeExportLimit(user?.scholar_exp);
         const limit = scholar.daily_free_exports;
         const today = todayDateKey();
         const userId = user?.id;
+        const extraRemaining = nonNegativeInt(user?.export_extra_quota, 0);
         if (!userId) {
             return {
                 date: today,
@@ -167,7 +191,10 @@ function createUserCurrencyService(options = {}) {
                 used: 0,
                 remaining: limit,
                 available: limit > 0,
+                extra_remaining: extraRemaining,
+                any_available: limit > 0 || extraRemaining > 0,
                 book_already_used: false,
+                extra_book_already_used: false,
                 level: scholar.level,
                 level_name: scholar.name,
                 scholar
@@ -190,15 +217,29 @@ function createUserCurrencyService(options = {}) {
                   [userId, today, String(bookId)]
               )
             : { rows: [] };
+        const extraBookResult = bookId
+            ? await dbQuery(
+                  db,
+                  `SELECT 1
+                   FROM reader_export_usage
+                   WHERE user_id = $1 AND export_date = $2::date AND book_id = $3 AND charge_type = 'extra_quota'
+                   LIMIT 1`,
+                  [userId, today, String(bookId)]
+              )
+            : { rows: [] };
         const used = Number(usedResult.rows[0]?.count || 0);
         const already = !!bookResult.rows.length;
+        const extraAlready = !!extraBookResult.rows.length;
         return {
             date: today,
             limit,
             used,
             remaining: Math.max(0, limit - used),
             available: already || used < limit,
+            extra_remaining: extraRemaining,
+            any_available: already || extraAlready || used < limit || extraRemaining > 0,
             book_already_used: already,
+            extra_book_already_used: extraAlready,
             level: scholar.level,
             level_name: scholar.name,
             scholar
@@ -249,12 +290,124 @@ function createUserCurrencyService(options = {}) {
         }
     }
 
+    async function claimExtraExportQuota({ telegramId, bookId, format = "" }) {
+        const safeTelegramId = normalizeTelegramId(telegramId);
+        const safeBookId = String(bookId || "").trim();
+        const safeFormat = String(format || "").trim().toLowerCase().slice(0, 16);
+        if (!safeTelegramId) throw Object.assign(new Error("missing telegram_id"), { status: 400 });
+        if (!safeBookId) throw Object.assign(new Error("missing book_id"), { status: 400 });
+
+        const db = await pool.connect();
+        try {
+            await db.query("BEGIN");
+            const found = await db.query(`SELECT ${botUserSelect()} FROM reader_users WHERE telegram_id = $1 FOR UPDATE`, [safeTelegramId]);
+            const user = found.rows[0];
+            if (!user) throw Object.assign(new Error("user not found"), { status: 404 });
+            if (user.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
+            const today = todayDateKey();
+            const existed = await db.query(
+                `SELECT id
+                 FROM reader_export_usage
+                 WHERE user_id = $1 AND export_date = $2::date AND book_id = $3 AND charge_type = 'extra_quota'
+                 LIMIT 1`,
+                [user.id, today, safeBookId]
+            );
+            let updatedUser = user;
+            let repeated = !!existed.rows.length;
+            if (!repeated) {
+                if (nonNegativeInt(user.export_extra_quota, 0) <= 0) {
+                    throw Object.assign(new Error("extra export quota used"), { status: 409, quota: await dailyFreeExportStatus(user, db, safeBookId) });
+                }
+                const updated = await db.query(
+                    `UPDATE reader_users
+                     SET export_extra_quota = GREATEST(0, COALESCE(export_extra_quota, 0) - 1)
+                     WHERE id = $1 AND COALESCE(export_extra_quota, 0) > 0
+                     RETURNING ${botUserSelect()}`,
+                    [user.id]
+                );
+                if (!updated.rows.length) {
+                    throw Object.assign(new Error("extra export quota used"), { status: 409, quota: await dailyFreeExportStatus(user, db, safeBookId) });
+                }
+                updatedUser = updated.rows[0];
+                await db.query(
+                    `INSERT INTO reader_export_usage(user_id, telegram_id, book_id, format, charge_type, export_date)
+                     VALUES ($1,$2,$3,$4,'extra_quota',$5::date)
+                     ON CONFLICT (user_id, export_date, book_id, charge_type) DO UPDATE SET
+                        format = EXCLUDED.format,
+                        telegram_id = EXCLUDED.telegram_id,
+                        updated_at = CURRENT_TIMESTAMP`,
+                    [user.id, safeTelegramId, safeBookId, safeFormat, today]
+                );
+                await db.query(
+                    `INSERT INTO reader_transactions(user_id, telegram_id, type, currency, amount, balance, detail, source)
+                     VALUES ($1,$2,$3,'copper',0,$4,$5,$6)`,
+                    [user.id, safeTelegramId, "export_extra_quota", nonNegativeInt(updatedUser.export_extra_quota, 0), `${safeBookId} ${safeFormat}`, "telegram_bot"]
+                );
+            }
+            const after = await dailyFreeExportStatus(updatedUser, db, safeBookId);
+            await db.query("COMMIT");
+            return { user: updatedUser, usage: { ...after, book_id: safeBookId, format: safeFormat, repeated, charge_type: "extra_quota" } };
+        } catch (err) {
+            await db.query("ROLLBACK").catch(() => {});
+            throw err;
+        } finally {
+            db.release();
+        }
+    }
+
+    async function redeemExportQuotaCdk({ telegramId, code }) {
+        const safeTelegramId = normalizeTelegramId(telegramId);
+        const cdkCode = String(code || "").trim().toUpperCase();
+        if (!safeTelegramId) throw Object.assign(new Error("missing telegram_id"), { status: 400 });
+        if (!cdkCode) throw Object.assign(new Error("missing cdk"), { status: 400 });
+
+        const db = await pool.connect();
+        try {
+            await db.query("BEGIN");
+            const found = await db.query(`SELECT ${botUserSelect()} FROM reader_users WHERE telegram_id = $1 FOR UPDATE`, [safeTelegramId]);
+            const user = found.rows[0];
+            if (!user) throw Object.assign(new Error("user not found"), { status: 404 });
+            if (user.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
+            const cdkResult = await db.query("SELECT * FROM reader_cdks WHERE upper(code) = $1 FOR UPDATE", [cdkCode]);
+            const cdk = cdkResult.rows[0];
+            if (!cdk) throw Object.assign(new Error("CDK 不存在"), { status: 404 });
+            if (cdk.used_by || cdk.used_at) throw Object.assign(new Error("CDK 已被使用"), { status: 409 });
+            if (String(cdk.cdk_type || "membership") !== "export_quota") {
+                throw Object.assign(new Error("这不是下载次数 CDK"), { status: 400 });
+            }
+            const count = nonNegativeInt(cdk.export_quota, 0);
+            if (count <= 0) throw Object.assign(new Error("下载次数 CDK 配置无效"), { status: 400 });
+            const updated = await db.query(
+                `UPDATE reader_users
+                 SET export_extra_quota = COALESCE(export_extra_quota, 0) + $1
+                 WHERE id = $2
+                 RETURNING ${botUserSelect()}`,
+                [count, user.id]
+            );
+            await db.query("UPDATE reader_cdks SET used_by = $1, used_at = CURRENT_TIMESTAMP WHERE id = $2", [user.id, cdk.id]);
+            await db.query(
+                `INSERT INTO reader_transactions(user_id, telegram_id, type, currency, amount, balance, detail, source)
+                 VALUES ($1,$2,'export_quota_cdk','copper',0,$3,$4,'telegram_bot')`,
+                [user.id, safeTelegramId, nonNegativeInt(updated.rows[0].export_extra_quota, 0), `${cdk.code} +${count}`]
+            );
+            await db.query("COMMIT");
+            return { user: updated.rows[0], cdk: { id: cdk.id, code: cdk.code, export_quota: count } };
+        } catch (err) {
+            await db.query("ROLLBACK").catch(() => {});
+            throw err;
+        } finally {
+            db.release();
+        }
+    }
+
     return {
+        claimExtraExportQuota,
         claimDailyFreeExport,
         dailyFreeExportStatus,
         dbQuery,
         listTransactions,
         recordTransaction,
+        redeemExportQuotaCdk,
         spendUserCurrency
     };
 }

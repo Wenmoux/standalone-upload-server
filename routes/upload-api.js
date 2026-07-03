@@ -22,10 +22,29 @@ function createUploadApiRoutes(options = {}) {
             const { bookId, chapterId, html, text, title, fromUserScript, cacheOnly } = req.body || {};
             if (!bookId || !chapterId) return res.status(400).json({ error: "Missing bookId or chapterId" });
 
-            if (fromUserScript && (html || text || safePgBool(req.body?.is_volume ?? req.body?.isVolume, false))) {
-                await saveChapter(req.body);
+            const platformKey = String(req.body?.platform || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+            const isQidianOrderOnly = ["qidian", "qd"].includes(platformKey)
+                && (
+                    safePgBool(req.body?.orderOnly, false)
+                    || safePgBool(req.body?.updateOrderOnly, false)
+                    || safePgBool(req.body?.skipContentUpdate, false)
+                );
+
+            if ((fromUserScript && (html || text || safePgBool(req.body?.is_volume ?? req.body?.isVolume, false))) || isQidianOrderOnly) {
+                const saved = await saveChapter(req.body);
                 const safeHtml = cleanPgText(html);
                 const safeText = cleanPgText(text);
+                if (saved?.orderOnly) {
+                    return res.json({
+                        html: "",
+                        text: "",
+                        title: "",
+                        fromCache: true,
+                        uploaded: false,
+                        orderOnly: true,
+                        updated: !!saved.updated
+                    });
+                }
                 return res.json({
                     html: safeHtml,
                     text: chapterText({ html: safeHtml, text: safeText }),

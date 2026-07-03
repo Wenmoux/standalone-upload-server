@@ -108,6 +108,88 @@ test("upload API accepts userscript chapter upload without cache lookup", async 
     assert.equal(queries, 0);
 });
 
+test("upload API accepts qidian order-only userscript update without content", async () => {
+    const saved = [];
+    let queries = 0;
+    const router = createUploadApiRoutes(baseDeps({
+        query: async () => {
+            queries++;
+            return { rows: [{ html: "<p>Old</p>", text: "Old", title: "Old" }] };
+        },
+        saveChapter: async (payload) => {
+            saved.push(payload);
+            return { success: true, orderOnly: true, updated: true };
+        }
+    }));
+
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/api/parse/chapter-content`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Upload-Token": "upload-token" },
+            body: JSON.stringify({
+                bookId: "b1",
+                chapterId: "c1",
+                chapterOrder: 9,
+                platform: "qidian",
+                orderOnly: true,
+                updateOrderOnly: true,
+                skipContentUpdate: true
+            })
+        });
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), {
+            html: "",
+            text: "",
+            title: "",
+            fromCache: true,
+            uploaded: false,
+            orderOnly: true,
+            updated: true
+        });
+    });
+
+    assert.equal(saved.length, 1);
+    assert.equal(queries, 0);
+});
+
+test("upload API ignores order-only shortcut for non-qidian platforms", async () => {
+    const saved = [];
+    let queries = 0;
+    const router = createUploadApiRoutes(baseDeps({
+        query: async () => {
+            queries++;
+            return { rows: [{ html: "<p>Old</p>", text: "Old", title: "Old" }] };
+        },
+        saveChapter: async (payload) => saved.push(payload)
+    }));
+
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/api/parse/chapter-content`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Upload-Token": "upload-token" },
+            body: JSON.stringify({
+                bookId: "b1",
+                chapterId: "c1",
+                chapterOrder: 9,
+                platform: "po18",
+                fromUserScript: true,
+                orderOnly: true,
+                skipContentUpdate: true
+            })
+        });
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), {
+            html: "<p>Old</p>",
+            text: "Old",
+            title: "Old",
+            fromCache: true
+        });
+    });
+
+    assert.equal(saved.length, 0);
+    assert.equal(queries, 1);
+});
+
 test("upload API batches metadata and stops on database connection errors", async () => {
     const seen = [];
     const router = createUploadApiRoutes(baseDeps({

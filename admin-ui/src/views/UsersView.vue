@@ -70,7 +70,8 @@
           <template #cell-scholar="{ row }">
             {{ scholarName(row) }} Lv.{{ number(scholarLevel(row)) }}<br />
             <small>经验 {{ number(row.scholar_exp) }}，距下级 {{ number(row.scholar?.exp_to_next ?? 0) }}</small><br />
-            <small>今日免费 {{ number(row.free_exports_today) }}/{{ number(row.daily_free_exports || row.scholar?.daily_free_exports || scholarLevel(row)) }} 本</small>
+            <small>今日付费书免费 {{ number(row.free_exports_today) }}/{{ number(row.daily_free_exports || row.scholar?.daily_free_exports || scholarLevel(row)) }} 本</small><br />
+            <small>额外次数 {{ number(row.export_extra_quota || 0) }}</small>
           </template>
           <template #cell-sign="{ row }">第 {{ number(row.sign_cycle_day) }} 天<br /><small>{{ dateOnly(row.last_sign_date) }}</small></template>
           <template #cell-time="{ row }">创建 {{ time(row.created_at) }}<br /><small>登录 {{ time(row.last_login_at) }}</small></template>

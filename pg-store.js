@@ -529,8 +529,10 @@ async function initPg() {
         CREATE TABLE IF NOT EXISTS reader_cdks (
             id BIGSERIAL PRIMARY KEY,
             code TEXT NOT NULL UNIQUE,
+            cdk_type TEXT NOT NULL DEFAULT 'membership',
             duration_type TEXT NOT NULL,
             duration_days INTEGER DEFAULT 0,
+            export_quota INTEGER NOT NULL DEFAULT 0,
             used_by BIGINT REFERENCES reader_users(id) ON DELETE SET NULL,
             used_at TIMESTAMP,
             created_by TEXT,
@@ -552,7 +554,12 @@ async function initPg() {
         ALTER TABLE reader_users ADD COLUMN IF NOT EXISTS invite_count INTEGER DEFAULT 0;
         ALTER TABLE reader_users ADD COLUMN IF NOT EXISTS inviter_telegram_id TEXT DEFAULT '';
         ALTER TABLE reader_users ADD COLUMN IF NOT EXISTS export_unlocked_at TIMESTAMP;
+        ALTER TABLE reader_users ADD COLUMN IF NOT EXISTS export_extra_quota INTEGER DEFAULT 0;
         ALTER TABLE reader_users ADD COLUMN IF NOT EXISTS scholar_exp INTEGER DEFAULT 0;
+        ALTER TABLE reader_cdks ADD COLUMN IF NOT EXISTS cdk_type TEXT DEFAULT 'membership';
+        ALTER TABLE reader_cdks ADD COLUMN IF NOT EXISTS export_quota INTEGER DEFAULT 0;
+        ALTER TABLE reader_cdks ALTER COLUMN cdk_type SET DEFAULT 'membership';
+        ALTER TABLE reader_cdks ALTER COLUMN export_quota SET DEFAULT 0;
         ALTER TABLE chapter_cache ADD COLUMN IF NOT EXISTS is_volume BOOLEAN DEFAULT FALSE;
         UPDATE chapter_cache SET is_volume = FALSE WHERE is_volume IS NULL;
         ALTER TABLE reader_history ADD COLUMN IF NOT EXISTS reading_seconds INTEGER DEFAULT 0;
@@ -693,6 +700,7 @@ async function initPg() {
 
         CREATE INDEX IF NOT EXISTS idx_reader_cdks_code ON reader_cdks(code);
         CREATE INDEX IF NOT EXISTS idx_reader_cdks_used_by ON reader_cdks(used_by);
+        CREATE INDEX IF NOT EXISTS idx_reader_cdks_type ON reader_cdks(cdk_type, used_by);
 
         CREATE INDEX IF NOT EXISTS idx_reader_bookshelf_user ON reader_bookshelf(user_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_reader_history_user ON reader_history(user_id, updated_at DESC);

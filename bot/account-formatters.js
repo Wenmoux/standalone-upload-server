@@ -28,7 +28,8 @@ function registerText(result = {}, { escapeHtml = defaultEscape, scholarText = (
         result.existed ? "你已经注册过了。" : "注册成功，已赠送初始铜币。",
         `账号：${escapeHtml(user.nickname || user.username)}`,
         `等级：${escapeHtml(scholarText(user))}`,
-        `每日免费导出：${user.daily_free_exports || user.scholar?.daily_free_exports || 1} 本/天`,
+        `每日付费书免费导出：${user.daily_free_exports || user.scholar?.daily_free_exports || 1} 本/天`,
+        `额外下载次数：${user.export_extra_quota || 0}`,
         `铜币：${user.copper_coins}`,
         `银币：${user.silver_coins}`
     ].join("\n");
@@ -40,7 +41,8 @@ function walletText(user = {}, { escapeHtml = defaultEscape, scholarText = () =>
         `铜币：${user.copper_coins}`,
         `银币：${user.silver_coins}`,
         `等级：${escapeHtml(scholarText(user))}`,
-        `每日免费导出：${user.daily_free_exports || user.scholar?.daily_free_exports || 1} 本/天`,
+        `每日付费书免费导出：${user.daily_free_exports || user.scholar?.daily_free_exports || 1} 本/天`,
+        `额外下载次数：${user.export_extra_quota || 0}`,
         `连签：${user.sign_cycle_day || 0} 天`,
         `上次签到：${user.last_sign_date ? String(user.last_sign_date).slice(0, 10) : "-"}`
     ].join("\n");
@@ -61,6 +63,7 @@ function meText({ user = {}, stats = {}, telegramId = "", escapeHtml = defaultEs
         `<b>书卷等级</b>`,
         `${escapeHtml(scholarText(user))}`,
         `${escapeHtml(freeExportText(stats.free_export || {}))}`,
+        `额外下载次数：${user.export_extra_quota || stats.free_export?.extra_remaining || 0}`,
         "",
         `<b>权限与记录</b>`,
         `权限：${permissionText(user, stats)}`,

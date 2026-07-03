@@ -5,6 +5,7 @@ backups
 tmp
 tests
 playwright.config.js
+.docker-build.json
 public/assets
 cirno-src/docs
 cirno-src/docs/conversion-scans

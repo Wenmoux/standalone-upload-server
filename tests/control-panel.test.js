@@ -3,7 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const test = require("node:test");
-const { handlePanelRequest, importedValuesFromText, loadConfigIntoEnv, setupToken } = require("../docker/control-panel");
+const { handlePanelRequest, importedValuesFromText, loadConfigIntoEnv, setupToken, versionPayload } = require("../docker/control-panel");
 
 function withTempEnv(contents, fn) {
     const file = path.join(os.tmpdir(), `po18-control-panel-${Date.now()}-${Math.random().toString(16).slice(2)}.env`);
@@ -21,6 +21,72 @@ test("setup token from app.env ignores outer quotes", async () => {
     } finally {
         if (previous === undefined) delete process.env.PO18_SETUP_TOKEN;
         else process.env.PO18_SETUP_TOKEN = previous;
+    }
+});
+
+test("version payload exposes runtime app version and build metadata", () => {
+    const previous = {
+        PO18_APP_VERSION: process.env.PO18_APP_VERSION,
+        PO18_IMAGE_TAG: process.env.PO18_IMAGE_TAG,
+        PO18_BUILD_DATE: process.env.PO18_BUILD_DATE,
+        PO18_BUILD_REVISION: process.env.PO18_BUILD_REVISION
+    };
+    try {
+        process.env.PO18_APP_VERSION = "1.0.0+test";
+        process.env.PO18_IMAGE_TAG = "wenmoux/reader:test";
+        process.env.PO18_BUILD_DATE = "2026-06-23T12:00:00.000Z";
+        process.env.PO18_BUILD_REVISION = "abc123def456";
+
+        const payload = versionPayload("unit-test");
+        assert.equal(payload.service, "unit-test");
+        assert.equal(payload.version, "1.0.0+test");
+        assert.equal(payload.image, "wenmoux/reader:test");
+        assert.equal(payload.build_date, "2026-06-23T12:00:00.000Z");
+        assert.equal(payload.build_revision, "abc123def456");
+        assert.equal(payload.revision, "abc123def456");
+    } finally {
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
+});
+
+test("version payload prefers immutable image build info over runtime env", () => {
+    const buildInfoFile = path.join(__dirname, "..", ".po18-build.json");
+    const previous = {
+        PO18_APP_VERSION: process.env.PO18_APP_VERSION,
+        PO18_IMAGE_TAG: process.env.PO18_IMAGE_TAG,
+        PO18_BUILD_DATE: process.env.PO18_BUILD_DATE,
+        PO18_BUILD_REVISION: process.env.PO18_BUILD_REVISION
+    };
+    const hadBuildInfo = fs.existsSync(buildInfoFile);
+    const oldBuildInfo = hadBuildInfo ? fs.readFileSync(buildInfoFile, "utf8") : "";
+    try {
+        fs.writeFileSync(buildInfoFile, JSON.stringify({
+            version: "1.0.0+image",
+            image: "wenmoux/reader:v1.0",
+            build_date: "2026-06-28T16:12:44.322Z",
+            build_revision: "image-rev"
+        }));
+        process.env.PO18_APP_VERSION = "1.0.0+runtime-old";
+        process.env.PO18_IMAGE_TAG = "wenmoux/reader:runtime-old";
+        process.env.PO18_BUILD_DATE = "2026-06-23T12:00:00.000Z";
+        process.env.PO18_BUILD_REVISION = "runtime-rev";
+
+        const payload = versionPayload("unit-test");
+        assert.equal(payload.version, "1.0.0+image");
+        assert.equal(payload.runtime_version, "1.0.0+runtime-old");
+        assert.equal(payload.image, "wenmoux/reader:v1.0");
+        assert.equal(payload.build_date, "2026-06-28T16:12:44.322Z");
+        assert.equal(payload.build_revision, "image-rev");
+    } finally {
+        if (hadBuildInfo) fs.writeFileSync(buildInfoFile, oldBuildInfo);
+        else fs.rmSync(buildInfoFile, { force: true });
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
     }
 });
 

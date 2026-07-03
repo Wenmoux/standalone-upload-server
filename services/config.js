@@ -51,11 +51,35 @@ function nonNegativeInt(value, fallback = 0) {
     return Math.max(0, Math.trunc(parsed));
 }
 
+function parseDailyQuotaByLevel(value = "") {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+        return normalizeDailyQuotaByLevel(value);
+    }
+    try {
+        const parsed = JSON.parse(String(value || "{}"));
+        return normalizeDailyQuotaByLevel(parsed);
+    } catch {
+        return {};
+    }
+}
+
+function normalizeDailyQuotaByLevel(value = {}) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const result = {};
+    for (const [key, raw] of Object.entries(value)) {
+        const level = Math.max(1, Math.min(99, Math.trunc(Number(key || 0))));
+        if (!Number.isFinite(level)) continue;
+        result[String(level)] = nonNegativeInt(raw, 0);
+    }
+    return Object.fromEntries(Object.entries(result).sort((a, b) => Number(a[0]) - Number(b[0])));
+}
+
 function exportPricingPayload(config = {}) {
     return {
         unlockCost: nonNegativeInt(config.unlockCost, 100),
         freeCopperCost: nonNegativeInt(config.freeCopperCost, 100),
-        paidChapterSilverCost: nonNegativeInt(config.paidChapterSilverCost, 10)
+        paidChapterSilverCost: nonNegativeInt(config.paidChapterSilverCost, 10),
+        dailyQuotaByLevel: parseDailyQuotaByLevel(config.dailyQuotaByLevel || config.daily_quota_by_level || {})
     };
 }
 
@@ -124,15 +148,17 @@ function createConfigService(options = {}) {
     }
 
     async function exportPricingConfig() {
-        const [unlockCost, freeCopperCost, paidChapterSilverCost] = await Promise.all([
+        const [unlockCost, freeCopperCost, paidChapterSilverCost, dailyQuotaByLevel] = await Promise.all([
             configGet("bot_export_unlock_cost"),
             configGet("bot_export_free_copper_cost"),
-            configGet("bot_export_paid_chapter_silver_cost")
+            configGet("bot_export_paid_chapter_silver_cost"),
+            configGet("bot_export_daily_quota_by_level")
         ]);
         return exportPricingPayload({
             unlockCost: nonNegativeInt(unlockCost, process.env.PO18_BOT_EXPORT_UNLOCK_COST ?? 100),
             freeCopperCost: nonNegativeInt(freeCopperCost, process.env.PO18_BOT_EXPORT_FREE_COPPER_COST ?? 100),
-            paidChapterSilverCost: nonNegativeInt(paidChapterSilverCost, process.env.PO18_BOT_EXPORT_PAID_CHAPTER_SILVER_COST ?? 10)
+            paidChapterSilverCost: nonNegativeInt(paidChapterSilverCost, process.env.PO18_BOT_EXPORT_PAID_CHAPTER_SILVER_COST ?? 10),
+            dailyQuotaByLevel: parseDailyQuotaByLevel(dailyQuotaByLevel || process.env.PO18_BOT_EXPORT_DAILY_QUOTA_BY_LEVEL || "{}")
         });
     }
 
@@ -157,6 +183,8 @@ module.exports = {
     createConfigService,
     exportPricingPayload,
     nonNegativeInt,
+    normalizeDailyQuotaByLevel,
     normalizePlatformKey,
+    parseDailyQuotaByLevel,
     parsePlatformLabels
 };

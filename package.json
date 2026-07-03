@@ -15,8 +15,8 @@
     "check:context": "node scripts/check-build-context.js",
     "db:rollback": "node scripts/migrate-rollback.js",
     "audit:prod": "npm audit --omit=dev",
-    "docker:build": "docker build --provenance=false --target app -t wenmoux/reader:v1.0 .",
-    "docker:push": "docker push wenmoux/reader:v1.0"
+    "docker:build": "node scripts/docker-build.js",
+    "docker:push": "node scripts/docker-push.js"
   },
   "dependencies": {
     "compression": "^1.8.1",

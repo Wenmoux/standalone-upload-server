@@ -17,19 +17,27 @@
           <small>{{ section.note }}</small>
         </div>
         <div class="stat-grid" :class="{ four: section.four, five: section.five, six: section.six }">
-          <StatCard v-for="item in section.items" :key="item.label" :label="item.label" :value="item.value">
+          <StatCard
+            v-for="item in section.items"
+            :key="item.label"
+            :label="item.label"
+            :value="item.value"
+            :class="{ 'stat-platforms': item.type === 'platforms' }"
+          >
             <template v-if="item.type === 'platforms'">
               <div class="platform-summary-card">
                 <div class="platform-chip-grid">
-                  <span v-for="platform in platformTopItems" :key="platform.platform" class="platform-chip">
+                  <span
+                    v-for="platform in sortedPlatforms"
+                    :key="platform.platform"
+                    class="platform-chip"
+                    :title="`${platform.platform} ${number(platform.count)}`"
+                  >
                     <b>{{ platform.platform }}</b>
                     <em>{{ number(platform.count) }}</em>
                   </span>
                 </div>
-                <div v-if="platformRest.count" class="platform-rest">
-                  其余 {{ platformRest.items }} 个站别 · {{ number(platformRest.count) }} 本
-                </div>
-                <div v-else-if="!platformTopItems.length" class="platform-rest">暂无站别数据</div>
+                <div v-if="!sortedPlatforms.length" class="platform-rest">暂无站别数据</div>
               </div>
             </template>
             <template v-else-if="item.action">
@@ -155,16 +163,6 @@ const sortedPlatforms = computed(() => {
     }))
     .filter((item) => item.count > 0)
     .sort((a, b) => b.count - a.count || a.platform.localeCompare(b.platform));
-});
-
-const platformTopItems = computed(() => sortedPlatforms.value.slice(0, 6));
-
-const platformRest = computed(() => {
-  const rest = sortedPlatforms.value.slice(6);
-  return {
-    items: rest.length,
-    count: rest.reduce((sum, item) => sum + Number(item.count || 0), 0)
-  };
 });
 
 async function load() {

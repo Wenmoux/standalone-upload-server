@@ -118,12 +118,14 @@ function createAdminConfigRoutes(options = {}) {
             const nextConfig = exportPricingPayload({
                 unlockCost: req.body?.unlockCost ?? req.body?.unlock_cost ?? current.unlockCost,
                 freeCopperCost: req.body?.freeCopperCost ?? req.body?.free_copper_cost ?? current.freeCopperCost,
-                paidChapterSilverCost: req.body?.paidChapterSilverCost ?? req.body?.paid_chapter_silver_cost ?? current.paidChapterSilverCost
+                paidChapterSilverCost: req.body?.paidChapterSilverCost ?? req.body?.paid_chapter_silver_cost ?? current.paidChapterSilverCost,
+                dailyQuotaByLevel: req.body?.dailyQuotaByLevel ?? req.body?.daily_quota_by_level ?? current.dailyQuotaByLevel
             });
             await Promise.all([
                 configSet("bot_export_unlock_cost", String(nextConfig.unlockCost)),
                 configSet("bot_export_free_copper_cost", String(nextConfig.freeCopperCost)),
-                configSet("bot_export_paid_chapter_silver_cost", String(nextConfig.paidChapterSilverCost))
+                configSet("bot_export_paid_chapter_silver_cost", String(nextConfig.paidChapterSilverCost)),
+                configSet("bot_export_daily_quota_by_level", JSON.stringify(nextConfig.dailyQuotaByLevel || {}))
             ]);
             res.json({ success: true, ...nextConfig });
         } catch (err) {

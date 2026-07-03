@@ -326,14 +326,17 @@ function freeExportText(freeExport = {}) {
     const limit = Number(freeExport.limit ?? freeExport.scholar?.daily_free_exports ?? 1);
     const used = Number(freeExport.used || 0);
     const remaining = Number(freeExport.remaining ?? Math.max(0, limit - used));
-    return `今日免费导出：${used}/${limit} 本，剩余 ${remaining} 本`;
+    const extra = Number(freeExport.extra_remaining || 0);
+    return `今日付费书免费导出：${used}/${limit} 本，剩余 ${remaining} 本；额外次数 ${extra} 次`;
 }
 
 function freeExportCostLine(usage = {}) {
-    const action = usage.repeated ? "复用今日免费额度" : "使用每日免费额度";
+    const action = usage.charge_type === "extra_quota"
+        ? (usage.repeated ? "复用额外下载次数记录" : "使用额外下载次数")
+        : (usage.repeated ? "复用今日免费额度" : "使用每日免费额度");
     const level = usage.level || usage.scholar?.level || 1;
     const name = usage.level_name || usage.scholar?.name || "卷首书童";
-    return `本次扣费：0（${action}）；${name} Lv.${level} 今日剩余 ${usage.remaining ?? 0}/${usage.limit ?? level} 本`;
+    return `本次扣费：0（${action}）；${name} Lv.${level} 今日剩余 ${usage.remaining ?? 0}/${usage.limit ?? level} 本，额外次数 ${usage.extra_remaining ?? 0}`;
 }
 
 function parseRedPacketArgs(args = "") {

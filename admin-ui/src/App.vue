@@ -17,7 +17,7 @@
         </div>
       </div>
       <div class="top-actions">
-        <div class="chip version-chip"><span>{{ versionBadge }}</span></div>
+        <div class="chip version-chip" :title="versionTitle"><span>{{ versionBadge }}</span></div>
         <div class="chip"><span class="dot"></span><span>{{ user.username }}</span></div>
         <a class="ghost-button" href="/setup">初始化面板</a>
         <a class="ghost-button" :href="readerLink" target="_blank" rel="noreferrer">阅读器 3200</a>
@@ -115,8 +115,28 @@ const activeLabel = computed(() => navItems.find((item) => item.key === activeVi
 const versionBadge = computed(() => {
   const image = versionInfo.value.image || "wenmoux/reader:v1.0";
   const version = versionInfo.value.version || "";
-  return version ? `${image} · ${version}` : image;
+  const revision = String(versionInfo.value.build_revision || versionInfo.value.revision || "").slice(0, 12);
+  const buildDate = formatBuildDate(versionInfo.value.build_date);
+  return [image, version, revision, buildDate].filter(Boolean).join(" · ");
 });
+const versionTitle = computed(() => {
+  const info = versionInfo.value || {};
+  return [
+    `image: ${info.image || "wenmoux/reader:v1.0"}`,
+    `version: ${info.version || "-"}`,
+    `revision: ${info.build_revision || info.revision || "-"}`,
+    `build: ${info.build_date || "-"}`,
+    `node: ${info.node || "-"}`,
+    `platform: ${info.platform || "-"}`
+  ].join("\n");
+});
+
+function formatBuildDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  return date.toISOString().slice(0, 16).replace("T", " ");
+}
 
 function toast(message) {
   toastMessage.value = message || "";

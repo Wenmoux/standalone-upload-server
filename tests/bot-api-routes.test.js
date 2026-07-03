@@ -78,6 +78,30 @@ test("bot api routes delegate user and hot keyword handlers", async () => {
     ]);
 });
 
+test("bot api routes expose word cloud payload behind bot middleware", async () => {
+    const calls = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        wordCloudPayload: async (options) => {
+            calls.push(options);
+            return { rows: [{ text: "修仙", weight: 100 }], sources: { hot_keywords: 1, tags: 1 } };
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const blocked = await fetch(`${base}/bot-api/word-cloud?limit=3`);
+        assert.equal(blocked.status, 401);
+
+        const ok = await fetch(`${base}/bot-api/word-cloud?limit=3&sourceLimit=50&platform=qidian`, {
+            headers: { "X-Test-Bot": "1" }
+        });
+        assert.equal(ok.status, 200);
+        assert.deepEqual((await ok.json()).rows, [{ text: "修仙", weight: 100 }]);
+    });
+
+    assert.deepEqual(calls, [{ limit: "3", hotLimit: undefined, sourceLimit: "50", platform: "qidian" }]);
+});
+
 test("bot api routes record no-result search requests", async () => {
     const calls = [];
     const router = createBotApiRoutes({
@@ -132,6 +156,46 @@ test("bot api user routes validate currency mutation input", async () => {
         assert.equal(response.status, 400);
         assert.deepEqual(await response.json(), { error: "delta must be a finite integer" });
     });
+});
+
+test("bot api user routes claim extra export quota and redeem cdk", async () => {
+    const calls = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        botPublicUser: (user) => user,
+        claimExtraExportQuota: async (payload) => {
+            calls.push(["claim", payload]);
+            return { user: { telegram_id: payload.telegramId, export_extra_quota: 1 }, usage: { charge_type: "extra_quota", extra_remaining: 1 } };
+        },
+        redeemExportQuotaCdk: async (payload) => {
+            calls.push(["redeem", payload]);
+            return { user: { telegram_id: payload.telegramId, export_extra_quota: 6 }, cdk: { code: String(payload.code).toUpperCase(), export_quota: 5 } };
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const claim = await fetch(`${base}/bot-api/users/42/export-extra-claim`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ book_id: "b1", format: "txt" })
+        });
+        assert.equal(claim.status, 200);
+        assert.equal((await claim.json()).usage.charge_type, "extra_quota");
+
+        const redeem = await fetch(`${base}/bot-api/users/42/redeem-cdk`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ code: "cdk-quota" })
+        });
+        assert.equal(redeem.status, 200);
+        const body = await redeem.json();
+        assert.equal(body.cdk.export_quota, 5);
+        assert.equal(body.user.export_extra_quota, 6);
+    });
+
+    assert.deepEqual(calls.map((call) => call[0]), ["claim", "redeem"]);
+    assert.equal(calls[0][1].bookId, "b1");
+    assert.equal(calls[1][1].code, "cdk-quota");
 });
 
 test("bot api routes let bot tasks create and update system jobs", async () => {

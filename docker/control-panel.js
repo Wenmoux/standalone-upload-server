@@ -48,13 +48,27 @@ function packageVersion() {
     }
 }
 
+function imageBuildInfo() {
+    try {
+        return JSON.parse(fsSync.readFileSync(path.join(__dirname, "..", ".po18-build.json"), "utf8"));
+    } catch {
+        return {};
+    }
+}
+
 function versionPayload(service = "po18-reader") {
+    const build = imageBuildInfo();
+    const runtimeVersion = process.env.PO18_APP_VERSION || "";
+    const revision = build.build_revision || build.revision || process.env.PO18_BUILD_REVISION || "";
     return {
         ok: true,
         service,
-        version: process.env.PO18_APP_VERSION || packageVersion(),
-        image: process.env.PO18_IMAGE_TAG || "wenmoux/reader:v1.0",
-        build_date: process.env.PO18_BUILD_DATE || "",
+        version: build.version || runtimeVersion || packageVersion(),
+        runtime_version: runtimeVersion,
+        image: build.image || process.env.PO18_IMAGE_TAG || "wenmoux/reader:v1.0",
+        build_date: build.build_date || process.env.PO18_BUILD_DATE || "",
+        build_revision: revision,
+        revision,
         node: process.version,
         platform: `${process.platform}/${process.arch}`,
         uptime_seconds: Math.round(process.uptime())

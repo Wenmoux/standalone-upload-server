@@ -1,3 +1,5 @@
+const { cleanChapterTitle } = require("./chapter-title-cleaner");
+
 function createBookChapterService(options = {}) {
     const {
         query,
@@ -39,8 +41,19 @@ function createBookChapterService(options = {}) {
         return String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
     }
 
+    function isQidianPlatform(platform = "") {
+        return ["qidian", "qd"].includes(chapterOrderPlatformKey(platform));
+    }
+
     function shouldNormalizeChapterOrder(platform = "") {
         return !chapterOrderSkipPlatforms.has(chapterOrderPlatformKey(platform));
+    }
+
+    function isQidianOrderOnly(payload = {}, platform = "") {
+        if (!isQidianPlatform(platform)) return false;
+        return safePgBool(payload.orderOnly, false)
+            || safePgBool(payload.updateOrderOnly, false)
+            || safePgBool(payload.skipContentUpdate, false);
     }
 
     function chapterListOrderSql(bookPlatformSql = "platform") {
@@ -128,6 +141,28 @@ function createBookChapterService(options = {}) {
         return normalizeTxtBody(sections.join("\n\n\n")).replace(/\n/g, "\r\n") + "\r\n";
     }
 
+    function normalizeCategoryValue(...values) {
+        const tokens = [];
+        const seen = new Set();
+        const push = (value) => {
+            if (Array.isArray(value)) {
+                for (const item of value) push(item);
+                return;
+            }
+            if (value === undefined || value === null) return;
+            for (const part of String(value).split(/[,\uFF0C\u3001\/|\u00B7]+/)) {
+                const token = part.trim();
+                if (!token) continue;
+                const key = token.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                tokens.push(token);
+            }
+        };
+        for (const value of values) push(value);
+        return tokens.join("\uFF0C");
+    }
+
     function normalizeBook(book = {}) {
         const platform = book.platform || "po18";
         return cleanPgObject({
@@ -138,7 +173,7 @@ function createBookChapterService(options = {}) {
             description: book.descriptionHTML || book.description || "",
             description_html: book.description_html || book.descriptionHtml || "",
             tags: book.tags || "",
-            category: book.category || "",
+            category: normalizeCategoryValue(book.category, book.categories, book.categoryList),
             word_count: Number(book.wordCount || book.word_count || 0),
             chapter_count: Number(book.chapter_count || book.chapterCount || 0),
             free_chapters: Number(book.freeChapters || book.free_chapters || 0),
@@ -281,6 +316,56 @@ function createBookChapterService(options = {}) {
                 [bookId, chapterId]
             );
             const providedOrder = safePgInt(payload.chapterOrder ?? payload.chapter_order, 0);
+            const orderOnly = isQidianOrderOnly(payload, platform);
+            if (orderOnly) {
+                if (!existing.rows[0]) {
+                    const err = new Error("chapter not cached for order-only update");
+                    err.status = 404;
+                    throw err;
+                }
+                if (!providedOrder) {
+                    const err = new Error("missing chapterOrder for order-only update");
+                    err.status = 400;
+                    throw err;
+                }
+                data = {
+                    book_id: bookId,
+                    chapter_id: chapterId,
+                    title: "",
+                    html: "",
+                    text: "",
+                    chapter_order: providedOrder,
+                    uploader: payload.uploader || "unknown_user",
+                    uploaderId: payload.uploaderId || "unknown",
+                    platform,
+                    is_volume: false
+                };
+                if (Number(existing.rows[0].chapter_order || 0) !== providedOrder) {
+                    await client.query(
+                        "UPDATE chapter_cache SET chapter_order = $1, platform = COALESCE(NULLIF($2, ''), platform), updated_at = CURRENT_TIMESTAMP WHERE book_id = $3 AND chapter_id = $4",
+                        [providedOrder, platform, bookId, chapterId]
+                    );
+                }
+                await client.query("COMMIT");
+                const event = await recordEvent({
+                    eventType: "chapter",
+                    action: "order-only",
+                    bookId,
+                    chapterId,
+                    title: "",
+                    platform,
+                    source: cleanPgText(payload.source || "") || "userscript",
+                    uploader: data.uploader,
+                    uploaderId: data.uploaderId,
+                    details: {
+                        oldOrder: Number(existing.rows[0].chapter_order || 0),
+                        newOrder: providedOrder,
+                        contentUpdated: false
+                    }
+                });
+                return { success: true, orderOnly: true, updated: Number(existing.rows[0].chapter_order || 0) !== providedOrder, event };
+            }
+            const cleanedTitle = cleanChapterTitle(payload.title || "").title;
             let chapterOrder = providedOrder || parseChapterOrderFromTitle(payload.title || "");
             if (existing.rows[0]) {
                 chapterOrder = !normalizeOrder && providedOrder
@@ -316,7 +401,7 @@ function createBookChapterService(options = {}) {
                 cleanPgObject({
                     book_id: bookId,
                     chapter_id: chapterId,
-                    title: payload.title || "",
+                    title: cleanedTitle,
                     html: payload.html || "",
                     text: "",
                     chapter_order: safePgInt(chapterOrder, 0),
@@ -360,6 +445,7 @@ function createBookChapterService(options = {}) {
             details: { textLength: textFromHtml(data.html).length, htmlLength: data.html.length, storedText: false }
         });
         notifyTelegram(event).catch((err) => logger.warn(`[telegram] ${err.message}`));
+        return { success: true, orderOnly: false, updated: true, event };
     }
 
     return {

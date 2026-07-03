@@ -25,6 +25,53 @@ function createAdminLibraryRoutes(deps = {}) {
         saveChapter
     } = deps;
     const sendCsv = deps.sendCsv || ((res, filename, rows, columns) => res.json({ filename, rows, columns }));
+    const bookCategoryOptions = [
+        "言情",
+        "无CP",
+        "都市",
+        "历史",
+        "科幻",
+        "耽美",
+        "成人",
+        "玄幻",
+        "同人",
+        "奇幻",
+        "仙侠",
+        "悬疑",
+        "百合",
+        "轻小说",
+        "游戏",
+        "校园",
+        "女性向",
+        "武侠",
+        "军事",
+        "出版",
+        "体育",
+        "待分类"
+    ];
+
+    function applyBookFilters(req, where, params) {
+        if (req.query.q) {
+            params.push(`%${String(req.query.q).trim()}%`);
+            where.push(`(m.book_id ILIKE $${params.length} OR m.title ILIKE $${params.length} OR m.author ILIKE $${params.length} OR m.tags ILIKE $${params.length} OR m.category ILIKE $${params.length})`);
+        }
+        if (req.query.tag) {
+            params.push(`%${String(req.query.tag).trim()}%`);
+            where.push(`m.tags ILIKE $${params.length}`);
+        }
+        if (req.query.category) {
+            params.push(String(req.query.category).trim());
+            where.push(`EXISTS (
+                SELECT 1
+                FROM regexp_split_to_table(COALESCE(m.category, ''), '[,，、/|·]+') AS category_token
+                WHERE LOWER(BTRIM(category_token)) = LOWER($${params.length})
+            )`);
+        }
+        if (req.query.platform) {
+            params.push(String(req.query.platform));
+            where.push(`m.platform = $${params.length}`);
+        }
+    }
 
     router.get("/admin-api/books", requireAdmin, async (req, res, next) => {
         const startedAt = Date.now();
@@ -38,18 +85,7 @@ function createAdminLibraryRoutes(deps = {}) {
             const finalOrder = needsStatsSort ? bookOrder(sort, "m", "bs") : bookOrder(sort);
             const where = [];
             const params = [];
-            if (req.query.q) {
-                params.push(`%${String(req.query.q).trim()}%`);
-                where.push(`(m.book_id ILIKE $${params.length} OR m.title ILIKE $${params.length} OR m.author ILIKE $${params.length} OR m.tags ILIKE $${params.length})`);
-            }
-            if (req.query.tag) {
-                params.push(`%${String(req.query.tag).trim()}%`);
-                where.push(`m.tags ILIKE $${params.length}`);
-            }
-            if (req.query.platform) {
-                params.push(String(req.query.platform));
-                where.push(`m.platform = $${params.length}`);
-            }
+            applyBookFilters(req, where, params);
             const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
             const total = await query(`SELECT COUNT(*)::int count FROM book_metadata m ${whereSql}`, params);
             const limitIndex = params.length + 1;
@@ -105,18 +141,7 @@ function createAdminLibraryRoutes(deps = {}) {
             const order = bookOrder(sort, "m", "bs");
             const where = [];
             const params = [];
-            if (req.query.q) {
-                params.push(`%${String(req.query.q).trim()}%`);
-                where.push(`(m.book_id ILIKE $${params.length} OR m.title ILIKE $${params.length} OR m.author ILIKE $${params.length} OR m.tags ILIKE $${params.length})`);
-            }
-            if (req.query.tag) {
-                params.push(`%${String(req.query.tag).trim()}%`);
-                where.push(`m.tags ILIKE $${params.length}`);
-            }
-            if (req.query.platform) {
-                params.push(String(req.query.platform));
-                where.push(`m.platform = $${params.length}`);
-            }
+            applyBookFilters(req, where, params);
             const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
             const rows = await query(
                 `SELECT m.book_id, m.title, m.author, m.platform, m.tags, m.category, m.status,
@@ -156,6 +181,33 @@ function createAdminLibraryRoutes(deps = {}) {
                 { key: "created_at", label: "created_at" },
                 { key: "updated_at", label: "updated_at" }
             ]);
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/admin-api/books/categories", requireAdmin, async (req, res, next) => {
+        try {
+            const rows = await query(
+                `WITH category_options AS (
+                    SELECT *
+                    FROM unnest($1::text[]) WITH ORDINALITY AS option(category, sort_order)
+                 ),
+                 category_counts AS (
+                    SELECT BTRIM(category_token) AS category,
+                           COUNT(DISTINCT m.book_id)::int count
+                    FROM book_metadata m,
+                         regexp_split_to_table(COALESCE(m.category, ''), '[,，、/|·]+') AS category_token
+                    WHERE NULLIF(BTRIM(category_token), '') IS NOT NULL
+                    GROUP BY BTRIM(category_token)
+                 )
+                 SELECT o.category, COALESCE(c.count, 0)::int count
+                 FROM category_options o
+                 LEFT JOIN category_counts c ON c.category = o.category
+                 ORDER BY o.sort_order`,
+                [bookCategoryOptions]
+            );
+            res.json({ rows: rows.rows || [], categories: bookCategoryOptions });
         } catch (err) {
             next(err);
         }
@@ -342,6 +394,63 @@ function createAdminLibraryRoutes(deps = {}) {
                 details: { deletedChapters: deleted.rowCount }
             });
             res.json({ success: true, deleted: deleted.rowCount, deletedChapters: deleted.rowCount });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.delete("/admin-api/books/:bookId/chapters/bulk", requireAdmin, async (req, res, next) => {
+        try {
+            const bookId = String(req.params.bookId || "").trim();
+            const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+            const chapterIds = Array.isArray(req.body?.chapter_ids || req.body?.chapterIds) ? (req.body.chapter_ids || req.body.chapterIds) : [];
+            const numericIds = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 5000);
+            const cleanChapterIds = [...new Set(chapterIds.map((id) => String(id || "").trim()).filter(Boolean))].slice(0, 5000);
+            if (!bookId) return res.status(400).json({ error: "missing book_id" });
+            if (!numericIds.length && !cleanChapterIds.length) return res.status(400).json({ error: "missing chapter ids" });
+
+            const params = [bookId];
+            const where = ["book_id = $1"];
+            if (numericIds.length) {
+                params.push(numericIds);
+                where.push(`id = ANY($${params.length}::bigint[])`);
+            }
+            if (cleanChapterIds.length) {
+                params.push(cleanChapterIds);
+                where.push(`chapter_id = ANY($${params.length}::text[])`);
+            }
+            const whereSql = `book_id = $1 AND (${where.slice(1).join(" OR ")})`;
+            const found = await query(
+                `SELECT id, book_id, chapter_id, title, platform, uploader, "uploaderId"
+                 FROM chapter_cache
+                 WHERE ${whereSql}`,
+                params
+            );
+            if (!found.rows.length) return res.json({ success: true, deleted: 0, deletedIds: [], deletedChapterIds: [] });
+            const deleted = await query(`DELETE FROM chapter_cache WHERE ${whereSql}`, params);
+            const book = await latestBookMetadata(bookId);
+            await recordEvent({
+                eventType: "chapter",
+                action: "admin_delete_bulk",
+                bookId,
+                title: book?.title || found.rows[0]?.title || "",
+                platform: book?.platform || found.rows[0]?.platform || "",
+                source: "admin",
+                uploader: req.session.adminUser?.username || "admin",
+                uploaderId: req.session.adminUser?.username || "admin",
+                details: {
+                    requestedIds: numericIds.length,
+                    requestedChapterIds: cleanChapterIds.length,
+                    deleted: deleted.rowCount,
+                    sampleChapterIds: found.rows.slice(0, 30).map((row) => row.chapter_id)
+                }
+            });
+            res.json({
+                success: true,
+                deleted: deleted.rowCount,
+                deletedIds: found.rows.map((row) => row.id),
+                deletedChapterIds: found.rows.map((row) => row.chapter_id)
+            });
         } catch (err) {
             next(err);
         }

@@ -4,6 +4,7 @@ const BOT_COMMAND_CATALOG = [
     { command: "/me", group: "账户", description: "我的账户", help: "/me" },
     { command: "/sign", group: "账户", description: "每日签到", help: "/sign" },
     { command: "/tx", group: "账户", description: "币流水", help: "/tx", aliases: ["/transactions"] },
+    { command: "/redeem", group: "账户", description: "兑换下载次数 CDK", help: "/redeem CDK-XXXX-XXXX", aliases: ["/cdk"] },
     { command: "/top", group: "账户", description: "货币/经验排行", help: "/top exp" },
     { command: "/give", group: "账户", description: "管理员发币", help: "/give @user 100", adminOnly: true },
     { command: "/search", group: "搜书", description: "搜索书籍", help: "/search 关键词 [-qd|-fq]" },

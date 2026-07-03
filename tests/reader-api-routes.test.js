@@ -236,14 +236,37 @@ test("reader search combines author tag and platform filters", async () => {
     assert.equal(calls.length, 2);
     assert.deepEqual(calls[0].params, ["%Alpha%", "%AlphaTag%", "po18", 1]);
     assert.match(calls[0].sql, /m\.author ILIKE \$1/);
-    assert.match(calls[0].sql, /m\.tags ILIKE \$2/);
+    assert.match(calls[0].sql, /\(m\.tags ILIKE \$2 OR m\.category ILIKE \$2\)/);
     assert.match(calls[0].sql, /m\.platform = \$3/);
     assert.match(calls[0].sql, /COALESCE\(cc\.cache_count, 0\) >= \$4/);
     assert.deepEqual(calls[1].params, ["%Alpha%", "%AlphaTag%", "po18", 1, 5, 5]);
     assert.match(calls[1].sql, /m\.author ILIKE \$1/);
-    assert.match(calls[1].sql, /m\.tags ILIKE \$2/);
+    assert.match(calls[1].sql, /\(m\.tags ILIKE \$2 OR m\.category ILIKE \$2\)/);
     assert.match(calls[1].sql, /m\.platform = \$3/);
     assert.match(calls[1].sql, /COALESCE\(cc\.cache_count, 0\) >= \$4/);
+});
+
+test("reader search filters exact category tokens", async () => {
+    const calls = [];
+    const router = createReaderApiRoutes(baseDeps({
+        query: async (sql, params = []) => {
+            calls.push({ sql, params });
+            if (/COUNT/.test(sql)) return { rows: [{ count: 1 }] };
+            return { rows: [{ book_id: "b2", title: "Category Book", category: "都市，言情", cache_count: 2 }] };
+        }
+    }));
+
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/reader-api/search?category=%E9%83%BD%E5%B8%82&limit=5`);
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.rows[0].book_id, "b2");
+    });
+
+    assert.deepEqual(calls[0].params, ["都市", 1]);
+    assert.match(calls[0].sql, /regexp_split_to_table\(COALESCE\(m\.category, ''\), '\[,，、\/\|·\]\+'\)/);
+    assert.match(calls[0].sql, /LOWER\(BTRIM\(category_token\)\) = LOWER\(\$1\)/);
+    assert.deepEqual(calls[1].params, ["都市", 1, 5, 0]);
 });
 
 test("reader search fast mode skips exact count and fetches one extra row", async () => {

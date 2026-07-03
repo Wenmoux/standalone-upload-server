@@ -1,3 +1,20 @@
+ARG PO18_IMAGE_TAG=wenmoux/reader:v1.0
+ARG PO18_APP_VERSION=1.0.0
+ARG PO18_BUILD_DATE=
+ARG PO18_BUILD_REVISION=
+
+FROM node:20-alpine AS build-info
+ARG PO18_IMAGE_TAG
+ARG PO18_APP_VERSION
+ARG PO18_BUILD_DATE
+ARG PO18_BUILD_REVISION
+WORKDIR /build-info
+ENV PO18_IMAGE_TAG=${PO18_IMAGE_TAG} \
+    PO18_APP_VERSION=${PO18_APP_VERSION} \
+    PO18_BUILD_DATE=${PO18_BUILD_DATE} \
+    PO18_BUILD_REVISION=${PO18_BUILD_REVISION}
+RUN node -e "const fs=require('fs'); const data={version:process.env.PO18_APP_VERSION||'',image:process.env.PO18_IMAGE_TAG||'',build_date:process.env.PO18_BUILD_DATE||'',build_revision:process.env.PO18_BUILD_REVISION||'',revision:process.env.PO18_BUILD_REVISION||''}; fs.writeFileSync('/build-info/.po18-build.json', JSON.stringify(data, null, 2));"
+
 FROM node:20-alpine AS root-deps
 WORKDIR /app
 COPY package*.json ./
@@ -11,16 +28,28 @@ COPY admin-ui ./
 RUN npm run build
 
 FROM node:20-alpine AS server-pg
-ENV NODE_ENV=production PO18_IMAGE_TAG=wenmoux/reader:v1.0
+ARG PO18_IMAGE_TAG
+ARG PO18_APP_VERSION
+ARG PO18_BUILD_DATE
+ARG PO18_BUILD_REVISION
+ENV NODE_ENV=production \
+    PO18_IMAGE_TAG=${PO18_IMAGE_TAG} \
+    PO18_APP_VERSION=${PO18_APP_VERSION} \
+    PO18_BUILD_DATE=${PO18_BUILD_DATE} \
+    PO18_BUILD_REVISION=${PO18_BUILD_REVISION}
+LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
+      org.opencontainers.image.created="${PO18_BUILD_DATE}" \
+      org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
 RUN apk add --no-cache postgresql-client
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
+COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY pg-store.js server-pg.js ./
 COPY services ./services
 COPY routes ./routes
 COPY db ./db
-COPY scripts/migrate-rollback.js ./scripts/migrate-rollback.js
+COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
 COPY public/legado-po18-reader-source.json public/rank.html ./public/
 COPY --from=admin-build /build/admin-ui/dist ./public/
 COPY docker/control-panel.js docker/entrypoint.js docker/setup-wizard.js docker/status-check.js docker/backup-pg.js docker/structured-log.js ./docker/
@@ -28,10 +57,22 @@ EXPOSE 3100
 CMD ["node", "server-pg.js"]
 
 FROM node:20-alpine AS bot
-ENV NODE_ENV=production PO18_IMAGE_TAG=wenmoux/reader:v1.0
+ARG PO18_IMAGE_TAG
+ARG PO18_APP_VERSION
+ARG PO18_BUILD_DATE
+ARG PO18_BUILD_REVISION
+ENV NODE_ENV=production \
+    PO18_IMAGE_TAG=${PO18_IMAGE_TAG} \
+    PO18_APP_VERSION=${PO18_APP_VERSION} \
+    PO18_BUILD_DATE=${PO18_BUILD_DATE} \
+    PO18_BUILD_REVISION=${PO18_BUILD_REVISION}
+LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
+      org.opencontainers.image.created="${PO18_BUILD_DATE}" \
+      org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
+COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY bot ./bot
 COPY docker/status-check.js ./docker/status-check.js
 EXPOSE 3300
@@ -45,10 +86,22 @@ COPY cirno-src ./
 RUN npm run build:standalone
 
 FROM node:20-alpine AS reader
-ENV NODE_ENV=production PO18_IMAGE_TAG=wenmoux/reader:v1.0
+ARG PO18_IMAGE_TAG
+ARG PO18_APP_VERSION
+ARG PO18_BUILD_DATE
+ARG PO18_BUILD_REVISION
+ENV NODE_ENV=production \
+    PO18_IMAGE_TAG=${PO18_IMAGE_TAG} \
+    PO18_APP_VERSION=${PO18_APP_VERSION} \
+    PO18_BUILD_DATE=${PO18_BUILD_DATE} \
+    PO18_BUILD_REVISION=${PO18_BUILD_REVISION}
+LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
+      org.opencontainers.image.created="${PO18_BUILD_DATE}" \
+      org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
+COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY cirno-src/reader-server.js ./cirno-src/reader-server.js
 COPY --from=reader-build /build/cirno-src/dist-reader ./cirno-src/dist-reader
 COPY docker/status-check.js docker/structured-log.js ./docker/
@@ -56,16 +109,28 @@ EXPOSE 3200
 CMD ["node", "cirno-src/reader-server.js"]
 
 FROM node:20-alpine AS app
-ENV NODE_ENV=production PO18_IMAGE_TAG=wenmoux/reader:v1.0
+ARG PO18_IMAGE_TAG
+ARG PO18_APP_VERSION
+ARG PO18_BUILD_DATE
+ARG PO18_BUILD_REVISION
+ENV NODE_ENV=production \
+    PO18_IMAGE_TAG=${PO18_IMAGE_TAG} \
+    PO18_APP_VERSION=${PO18_APP_VERSION} \
+    PO18_BUILD_DATE=${PO18_BUILD_DATE} \
+    PO18_BUILD_REVISION=${PO18_BUILD_REVISION}
+LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
+      org.opencontainers.image.created="${PO18_BUILD_DATE}" \
+      org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
 RUN apk add --no-cache postgresql-client
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
+COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY pg-store.js server-pg.js ./
 COPY services ./services
 COPY routes ./routes
 COPY db ./db
-COPY scripts/migrate-rollback.js ./scripts/migrate-rollback.js
+COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
 COPY public/legado-po18-reader-source.json public/rank.html ./public/
 COPY --from=admin-build /build/admin-ui/dist ./public/
 COPY bot ./bot

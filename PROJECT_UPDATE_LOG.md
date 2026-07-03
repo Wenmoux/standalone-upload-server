@@ -1,8 +1,77 @@
 ﻿# PO18 Reader 简化更新记录
 
-更新时间：2026-06-06
+更新时间：2026-06-30
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
+
+## 2026-06-30：章节标题清洗
+
+- 章节标题清洗：
+  - 新增确认规则版章节标题清洗器，仅删除标题中整体命中的括号/方括号尾注：`（...）`、`(...)`、`【...】`、`[...]`。
+  - 支持末尾未闭合的感谢/盟主/加更说明清理。
+  - 未确认内容保留，例如“（上）”“（本卷完）”“（大结局）”“【道生一】”“【绝对冰封】”“（蓝）”“【已修改】”“（修）”“（改）”。
+  - `saveChapter` 写入新章节时自动清洗确认尾注。
+  - 新增 `scripts/clean-chapter-titles.js` 批量清理历史库标题；默认 dry-run，传 `--apply` 才会写库，支持 `--quiet` 只输出汇总。
+  - Docker 镜像内包含该脚本，可通过 `docker exec po18-app node scripts/clean-chapter-titles.js ...` 执行。
+  - 已对当前库执行历史清理：扫描约 106.7 万条章节标题，更新 23117 条；复扫剩余待清理 0 条。
+
+## 2026-06-27：Bot 下载额度与下载次数 CDK
+
+- Qidian 目录顺序更新：
+  - `/api/parse/chapter-content` 支持 qidian/qd 平台的 order-only 上传。
+  - 脚本可发送 `orderOnly/updateOrderOnly/skipContentUpdate` 与 `chapterOrder`，后端只更新已缓存章节的 `chapter_order`，不覆盖标题、正文、卷标和上传正文缓存。
+  - order-only 只对 qidian/qd 生效；PO18、番茄等平台继续走原保存逻辑。
+  - 目录、阅读器和导出继续按 `chapter_order` 排序，配合脚本按真实目录顺序重算 order，可避免起点插章、番外和分卷占位导致的顺序错位。
+- 版本显示修复：
+  - 镜像构建时写入 `/app/.po18-build.json`，`/health/version` 和后台顶栏优先显示镜像真实构建版本。
+  - 如果部署平台残留旧 `PO18_APP_VERSION`，不再导致后台误显示旧版本；旧运行时值保留在 `runtime_version` 字段用于诊断。
+- Docker 发布补充：
+  - `npm run docker:build` 会注入本次构建专属 `PO18_APP_VERSION`，用于后台顶部、系统页和 `/health/version` 显示。
+  - Docker Hub 只发布一个镜像 tag：`wenmoux/reader:v1.0`，避免部署侧需要判断多个 tag。
+  - `npm run docker:push` 会读取 `.docker-build.json` 中的单一发布 tag。
+  - 本次已推送：`wenmoux/reader:v1.0`，内部版本 `1.0.0+20260628T162855.f29dce64cea5`。
+  - digest：`sha256:9d2fcc6bfddff10ec7059ec1cadd21b9eeb7a54109745cb271dfdc66065b2d00`。
+- Bot 付费章节导出额度调整：
+  - 默认 Lv1/Lv2 每日 1 本。
+  - 默认 Lv3 及以上每日 2 本。
+  - 后台 TG Bot 配置页新增“每日付费书免费导出额度 JSON”，支持按等级配置并向上继承。
+- 新增下载次数 CDK：
+  - 后台 CDK 页可选择“会员注册码”或“下载次数”。
+  - 下载次数 CDK 兑换后增加用户 `export_extra_quota`，次数永久有效。
+  - Bot 新增 `/redeem CDK码`，别名 `/cdk`，用于兑换下载次数 CDK。
+- 导出扣费/扣次数规则调整：
+  - 只有包含付费章节的书会消耗每日免费额度或额外下载次数。
+  - 免费书不消耗下载次数，仍按后台“免费书导出铜币/次”配置扣铜币。
+  - 扣每日额度、扣额外次数、扣银币/铜币都移动到文件发送成功之后；发送失败不扣。
+  - 同一本书同一天重复使用同一种额度记录不重复扣次数。
+- 数据库兼容：
+  - `reader_users` 新增 `export_extra_quota`。
+  - `reader_cdks` 新增 `cdk_type`、`export_quota`。
+- 验证：
+  - `npm run admin:build`：通过。
+  - `node --test tests/health-routes.test.js tests/reader-api-routes.test.js tests/upload-api-routes.test.js tests/auth-service.test.js tests/admin-content-routes.test.js tests/config-service.test.js tests/user-currency.test.js tests/bot-api-routes.test.js tests/bot-runtime-modules.test.js tests/bot-export-errors.test.js tests/bot-job-queue.test.js tests/bot-ui-formatters.test.js`：51 项通过。
+
+## 2026-06-23：Legado 书源分类入口补充
+
+- Legado 本地书源发现页新增分类入口：修仙、玄幻、都市、武侠、游戏体育、轻小说、H、骨科、同人、纯爱、美食、言情、无CP、NPH。
+- 分类入口使用 `/reader-api/search?tag=...&sort=cache_desc`，优先展示已有正文缓存的书籍。
+- `/reader-api/search` 的 `tag` 参数现在同时匹配 `book_metadata.tags` 和 `book_metadata.category`，避免分类字段有值但标签为空时搜不到。
+- 后台总览“站别数量”卡片改为显示全部站点明细，不再折叠为“其余站别”，并在卡片内自适应排布。
+- 后台书籍页快捷筛选从热搜标签改为 `book_metadata.category` 分类聚合；搜索框支持按标签/分类搜索，CSV 导出同步支持分类筛选。
+- Legado 发现页继续扩充：
+  - 保留原入口。
+  - 新增 22 个固定 `category=` 分类入口。
+  - 新增 15 个热门 `tag=` 标签入口。
+  - 新增默认平台映射里的 17 个站点入口。
+- 书源详情、目录、章节 URL 改为 `/reader-api/...` 相对路径，除 `bookSourceUrl` 主域名外不再硬编码本地 reader 地址。
+- 后端元信息上传兼容 `category` 字符串，以及 `categories` / `categoryList` 数组，自动拆分、去重并统一保存为中文逗号分隔。
+- `/reader-api/search` 新增 `category=` 精确分类筛选，按 `,，、/|·` 拆分 `book_metadata.category` 后匹配。
+- Docker 构建新增自动版本参数：
+  - `npm run docker:build` 会注入 `PO18_APP_VERSION`、`PO18_BUILD_DATE`、`PO18_BUILD_REVISION`。
+  - 后台顶部和系统页显示镜像、版本、短提交和构建时间，避免同为 `v1.0` 时无法判断是否更新。
+  - 仍可通过构建环境变量手动覆盖 `PO18_IMAGE_TAG` / `PO18_APP_VERSION`。
+- 验证：
+  - `node --test tests\control-panel.test.js tests\health-routes.test.js tests\reader-api-routes.test.js tests\book-chapters.test.js tests\upload-api-routes.test.js tests\admin-content-routes.test.js`：32 项通过。
 
 ## 2026-06-21：后台站别数量卡片优化
 
