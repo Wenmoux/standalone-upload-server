@@ -11,7 +11,7 @@ const CLOUD_COLORS = [
     "#ec4899"
 ];
 
-const DEFAULT_FONT_FAMILY = "Noto Sans CJK SC, Noto Sans CJK TC, Microsoft YaHei, PingFang SC, Arial, sans-serif";
+const DEFAULT_FONT_FAMILY = "WenQuanYi Zen Hei, Noto Sans CJK SC, Microsoft YaHei, PingFang SC, Arial, sans-serif";
 
 function escapeXml(value = "") {
     return String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[m]));
@@ -148,7 +148,7 @@ function renderWordCloudPngBuffer(rows = [], options = {}) {
         fitTo: { mode: "original" },
         font: {
             loadSystemFonts: true,
-            defaultFontFamily: String(options.defaultFontFamily || "Noto Sans CJK SC")
+            defaultFontFamily: String(options.defaultFontFamily || "WenQuanYi Zen Hei")
         }
     });
     return Buffer.from(resvg.render().asPng());
