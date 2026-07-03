@@ -11,6 +11,8 @@ const CLOUD_COLORS = [
     "#ec4899"
 ];
 
+const DEFAULT_FONT_FAMILY = "Noto Sans CJK SC, Noto Sans CJK TC, Microsoft YaHei, PingFang SC, Arial, sans-serif";
+
 function escapeXml(value = "") {
     return String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[m]));
 }
@@ -106,6 +108,7 @@ function renderWordCloudSvg(rows = [], options = {}) {
     const height = Number(options.height || 760);
     const title = String(options.title || "热搜词云").trim();
     const subtitle = String(options.subtitle || "").trim();
+    const fontFamily = String(options.fontFamily || DEFAULT_FONT_FAMILY).trim();
     const { placed } = layoutWordCloud(rows, { ...options, width, height });
     const generatedAt = String(options.generatedAt || "").trim();
     const words = placed.map((item, index) => {
@@ -117,7 +120,7 @@ function renderWordCloudSvg(rows = [], options = {}) {
     const empty = placed.length ? "" : `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" font-size="34" fill="#64748b">暂无可生成词云的数据</text>`;
     return [
         `<?xml version="1.0" encoding="UTF-8"?>`,
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${escapeXml(fontFamily)}">`,
         `<rect width="100%" height="100%" rx="34" fill="#f8fafc"/>`,
         `<rect x="24" y="24" width="${width - 48}" height="${height - 48}" rx="28" fill="#ffffff" stroke="#e2e8f0"/>`,
         `<text x="60" y="74" font-size="34" font-weight="800" fill="#0f172a">${escapeXml(title)}</text>`,
@@ -133,8 +136,27 @@ function renderWordCloudSvgBuffer(rows = [], options = {}) {
     return Buffer.from(renderWordCloudSvg(rows, options), "utf8");
 }
 
+function renderWordCloudPngBuffer(rows = [], options = {}) {
+    let Resvg;
+    try {
+        ({ Resvg } = require("@resvg/resvg-js"));
+    } catch (err) {
+        throw new Error(`word cloud PNG renderer is unavailable: ${err.message || String(err)}`);
+    }
+    const svg = renderWordCloudSvg(rows, options);
+    const resvg = new Resvg(svg, {
+        fitTo: { mode: "original" },
+        font: {
+            loadSystemFonts: true,
+            defaultFontFamily: String(options.defaultFontFamily || "Noto Sans CJK SC")
+        }
+    });
+    return Buffer.from(resvg.render().asPng());
+}
+
 module.exports = {
     layoutWordCloud,
+    renderWordCloudPngBuffer,
     renderWordCloudSvg,
     renderWordCloudSvgBuffer
 };

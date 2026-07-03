@@ -25,7 +25,7 @@ const { startBotHealthServer } = require("./health-server");
 const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const { createTaskSchedulers } = require("./task-schedulers");
-const { renderWordCloudSvgBuffer } = require("./word-cloud");
+const { renderWordCloudPngBuffer, renderWordCloudSvgBuffer } = require("./word-cloud");
 const { createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
 const { createTelegramPollingRuntime } = require("./polling-runtime");
 const {
@@ -413,9 +413,11 @@ function parseWordCloudArgs(args = "") {
     return { platform: parsed.platform, limit, sourceLimit };
 }
 
-async function sendWordCloudResult(chatId, svg, caption) {
+async function sendWordCloudResult(chatId, rows, renderOptions, caption) {
+    const svg = renderWordCloudSvgBuffer(rows, renderOptions);
     try {
-        return await sendPhoto(chatId, svg, "po18-word-cloud.svg", caption);
+        const png = renderWordCloudPngBuffer(rows, renderOptions);
+        return await sendPhoto(chatId, png, "po18-word-cloud.png", caption);
     } catch (err) {
         const dir = await fs.mkdtemp(path.join(os.tmpdir(), "po18-wordcloud-"));
         const filePath = path.join(dir, "po18-word-cloud.svg");
@@ -438,12 +440,12 @@ async function handleWordCloud(message, args = "") {
         return editMessage(message.chat.id, progress.message_id, "暂无热搜词或热门标签，先搜索几次或等榜单数据积累后再试。").catch(() => {});
     }
     const topWords = rows.slice(0, 8).map((row) => row.text).join(" / ");
-    const svg = renderWordCloudSvgBuffer(rows, {
+    const renderOptions = {
         title: `${label} 热搜词云`,
         subtitle: `热搜词 + 热门书籍标签 · ${rows.length} 个关键词`,
         generatedAt: new Date(payload.generated_at || Date.now()).toLocaleString("zh-CN", { hour12: false })
-    });
-    await sendWordCloudResult(message.chat.id, svg, [
+    };
+    await sendWordCloudResult(message.chat.id, rows, renderOptions, [
         `${label} 热搜词云`,
         `Top：${topWords}`,
         `来源：热搜词 ${payload.sources?.hot_keywords || 0}，标签 ${payload.sources?.tags || 0}`

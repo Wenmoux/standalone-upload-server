@@ -1,4 +1,4 @@
-const TAG_SPLIT_RE = /[,，、|/\s:：;；#＃·•・]+/u;
+const TAG_SPLIT_RE = /[,，、/\s:：;；|#]+/u;
 
 function clampInt(value, min, max, fallback) {
     const parsed = Math.trunc(Number(value));
@@ -51,6 +51,29 @@ function mergeCloudRows(...groups) {
 function createWordCloudService(options = {}) {
     const query = options.query;
     const getHotKeywords = options.getHotKeywords || (async () => []);
+    const cacheTtlMs = clampInt(options.cacheTtlMs ?? process.env.PO18_WORD_CLOUD_CACHE_TTL_MS, 0, 3600000, 300000);
+    const cache = new Map();
+
+    function cacheKey({ limit, hotLimit, sourceLimit, platform }) {
+        return [platform || "", limit, hotLimit, sourceLimit].join("|");
+    }
+
+    function readCache(key) {
+        if (!cacheTtlMs) return null;
+        const row = cache.get(key);
+        if (!row) return null;
+        if (row.expiresAt <= Date.now()) {
+            cache.delete(key);
+            return null;
+        }
+        return JSON.parse(JSON.stringify(row.payload));
+    }
+
+    function writeCache(key, payload) {
+        if (!cacheTtlMs) return;
+        cache.set(key, { expiresAt: Date.now() + cacheTtlMs, payload: JSON.parse(JSON.stringify(payload)) });
+        while (cache.size > 30) cache.delete(cache.keys().next().value);
+    }
 
     async function hotTagRows({ platform = "", sourceLimit = 300, limit = 80 } = {}) {
         if (typeof query !== "function") return [];
@@ -59,41 +82,45 @@ function createWordCloudService(options = {}) {
         const safeLimit = clampInt(limit, 5, 200, 80);
         const params = [safePlatform, safeSourceLimit, safeLimit];
         const result = await query(
-            `WITH ranked AS (
-                SELECT DISTINCT ON (m.book_id)
-                       m.book_id,
-                       m.tags,
-                       m.category,
-                       m.platform,
-                       COALESCE(bs.cache_count, 0)::int AS cache_count,
-                       (
-                         COALESCE(m.total_popularity, 0)
-                         + COALESCE(m.monthly_popularity, 0) * 2
-                         + COALESCE(m.weekly_popularity, 0) * 3
-                         + COALESCE(m.favorites_count, 0) * 5
-                         + COALESCE(m.comments_count, 0) * 2
-                         + COALESCE(bs.cache_count, 0) * 20
-                       )::int AS heat,
-                       COALESCE(m.updated_at, m.created_at) AS updated_at,
-                       m.id
-                FROM book_metadata m
-                LEFT JOIN book_stats bs ON bs.book_id = m.book_id
-                WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(m.platform, ''))) = $1)
-                  AND COALESCE(bs.cache_count, 0) > 0
-                ORDER BY m.book_id,
-                         COALESCE(bs.cache_count, 0) DESC,
-                         COALESCE(m.subscribed_chapters, m.total_chapters, m.chapter_count, 0) DESC,
-                         COALESCE(m.updated_at, m.created_at) DESC,
-                         m.id DESC
+            `WITH source_books AS (
+                SELECT bs.book_id,
+                       bs.platform,
+                       bs.cache_count,
+                       bs.updated_at
+                FROM book_stats bs
+                WHERE bs.cache_count > 0
+                  AND ($1::text = '' OR LOWER(TRIM(COALESCE(bs.platform, ''))) = $1)
+                ORDER BY bs.cache_count DESC, bs.updated_at DESC, bs.book_id ASC
+                LIMIT $2
              ),
              hot_books AS (
-                SELECT *
-                FROM ranked
-                ORDER BY heat DESC, cache_count DESC, updated_at DESC, id DESC
+                SELECT meta.tags,
+                       meta.category,
+                       source_books.cache_count,
+                       (
+                         COALESCE(meta.total_popularity, 0)
+                         + COALESCE(meta.monthly_popularity, 0) * 2
+                         + COALESCE(meta.weekly_popularity, 0) * 3
+                         + COALESCE(meta.favorites_count, 0) * 5
+                         + COALESCE(meta.comments_count, 0) * 2
+                         + COALESCE(source_books.cache_count, 0) * 20
+                       )::int AS heat,
+                       COALESCE(meta.updated_at, meta.created_at, source_books.updated_at) AS updated_at,
+                       meta.id
+                FROM source_books
+                JOIN LATERAL (
+                    SELECT m.*
+                    FROM book_metadata m
+                    WHERE m.book_id = source_books.book_id
+                      AND ($1::text = '' OR LOWER(TRIM(COALESCE(m.platform, source_books.platform, ''))) = $1)
+                    ORDER BY COALESCE(m.updated_at, m.created_at) DESC, m.id DESC
+                    LIMIT 1
+                ) meta ON true
+                ORDER BY heat DESC, source_books.cache_count DESC, updated_at DESC, meta.id DESC
                 LIMIT $2
              ),
              words AS (
-                SELECT trim(regexp_split_to_table(CONCAT_WS(',', category, tags), '[,，、|/\\s:：;；#＃·•・]+')) AS tag,
+                SELECT trim(regexp_split_to_table(CONCAT_WS(',', category, tags), '[,，、/:：;；|#[:space:]]+')) AS tag,
                        GREATEST(1, heat) AS heat,
                        GREATEST(1, cache_count) AS cache_count
                 FROM hot_books
@@ -117,6 +144,9 @@ function createWordCloudService(options = {}) {
         const hotLimit = clampInt(options.hotLimit, 5, 100, Math.min(40, limit));
         const sourceLimit = clampInt(options.sourceLimit, 20, 2000, 300);
         const platform = String(options.platform || "").trim().toLowerCase().slice(0, 40);
+        const key = cacheKey({ limit, hotLimit, sourceLimit, platform });
+        const cached = readCache(key);
+        if (cached) return { ...cached, cached: true };
         const [hotRows, tagRows] = await Promise.all([
             getHotKeywords(hotLimit).catch(() => []),
             hotTagRows({ platform, sourceLimit, limit: Math.max(limit, 80) }).catch(() => [])
@@ -136,9 +166,10 @@ function createWordCloudService(options = {}) {
                 rank: index + 1,
                 sources: row.sources
             }));
-        return {
+        const payload = {
             rows,
             generated_at: new Date().toISOString(),
+            cached: false,
             limit,
             sourceLimit,
             platform,
@@ -147,6 +178,8 @@ function createWordCloudService(options = {}) {
                 tags: tagRows.length
             }
         };
+        writeCache(key, payload);
+        return payload;
     }
 
     return {

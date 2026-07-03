@@ -748,6 +748,7 @@ async function initPg() {
         CREATE INDEX IF NOT EXISTS idx_pg_book_metadata_title_trgm ON book_metadata USING GIN (title gin_trgm_ops);
         CREATE INDEX IF NOT EXISTS idx_pg_book_metadata_author_trgm ON book_metadata USING GIN (author gin_trgm_ops);
         CREATE INDEX IF NOT EXISTS idx_pg_book_metadata_tags_trgm ON book_metadata USING GIN (tags gin_trgm_ops);
+        CREATE INDEX IF NOT EXISTS idx_book_stats_platform_cache ON book_stats((LOWER(TRIM(COALESCE(platform, '')))), cache_count DESC, book_id);
         CREATE INDEX IF NOT EXISTS idx_pg_chapter_cache_book_id ON chapter_cache(book_id);
         CREATE INDEX IF NOT EXISTS idx_pg_chapter_cache_chapter_id ON chapter_cache(chapter_id);
         CREATE INDEX IF NOT EXISTS idx_pg_chapter_cache_updated ON chapter_cache(updated_at);

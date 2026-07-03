@@ -70,6 +70,7 @@ LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
       org.opencontainers.image.created="${PO18_BUILD_DATE}" \
       org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
+RUN apk add --no-cache font-noto-cjk
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
@@ -122,7 +123,7 @@ LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
       org.opencontainers.image.created="${PO18_BUILD_DATE}" \
       org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
-RUN apk add --no-cache postgresql-client
+RUN apk add --no-cache postgresql-client font-noto-cjk
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json

@@ -71,6 +71,8 @@ class PgBotClient {
     async request(path, options = {}) {
         const { baseUrl, ...fetchOptions } = options;
         delete fetchOptions.headers;
+        const requestTimeoutMs = positiveInt(fetchOptions.timeoutMs ?? this.requestTimeoutMs, this.requestTimeoutMs);
+        delete fetchOptions.timeoutMs;
         const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
         if (this.botToken) headers["X-Bot-Token"] = this.botToken;
         const url = `${baseUrl || this.baseUrl}${path}`;
@@ -87,7 +89,7 @@ class PgBotClient {
         const run = async () => {
             this.metrics.requests += 1;
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+            const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
             try {
                 const response = await fetch(url, { ...fetchOptions, headers, signal: controller.signal });
                 const data = await response.json().catch(() => ({}));
@@ -101,7 +103,7 @@ class PgBotClient {
                 return data;
             } catch (err) {
                 this.metrics.errors += 1;
-                if (err.name === "AbortError") throw new Error(`Bot API timeout after ${this.requestTimeoutMs}ms: ${path}`);
+                if (err.name === "AbortError") throw new Error(`Bot API timeout after ${requestTimeoutMs}ms: ${path}`);
                 throw err;
             } finally {
                 clearTimeout(timer);
@@ -346,7 +348,8 @@ class PgBotClient {
         if (options.sourceLimit) qs.set("sourceLimit", String(options.sourceLimit));
         if (options.platform) qs.set("platform", String(options.platform));
         const suffix = qs.toString() ? `?${qs}` : "?limit=60";
-        return this.request(`/bot-api/word-cloud${suffix}`);
+        const timeoutMs = positiveInt(options.timeoutMs ?? process.env.PO18_WORD_CLOUD_TIMEOUT_MS, 60000);
+        return this.request(`/bot-api/word-cloud${suffix}`, { timeoutMs });
     }
 
     async top(currency = "copper", limit = 10) {

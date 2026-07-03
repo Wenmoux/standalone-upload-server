@@ -19,6 +19,7 @@
     "docker:push": "node scripts/docker-push.js"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "express": "^4.18.2",
