@@ -178,22 +178,6 @@ const { buildExport } = createExportBuilder({
     buildZip
 });
 const { pikpakConfig, webdavRequest, pikpakList, pikpakSearch } = createRemoteStorage();
-const {
-    persistentJobTypes,
-    recoverSystemJob,
-    scheduleExport,
-    scheduleMyBookshelf,
-    scheduleShare,
-    scheduleShareBookshelf
-} = createTaskSchedulers({
-    botTaskQueue,
-    sendMessage,
-    isGroup,
-    sendExport,
-    handleMyBookshelf,
-    handleShare,
-    handleShareBookshelf
-});
 if (!TELEGRAM_TOKEN) {
     console.error("缺少 TELEGRAM_BOT_TOKEN");
     process.exit(1);
@@ -226,6 +210,23 @@ const {
     parseLoginFields,
     hasPo18Auth,
     fetchPo18Bookshelf
+});
+
+const {
+    persistentJobTypes,
+    recoverSystemJob,
+    scheduleExport,
+    scheduleMyBookshelf,
+    scheduleShare,
+    scheduleShareBookshelf
+} = createTaskSchedulers({
+    botTaskQueue,
+    sendMessage,
+    isGroup,
+    sendExport,
+    handleMyBookshelf,
+    handleShare,
+    handleShareBookshelf
 });
 
 const { handleTasks, handleTask, handleCancelJob } = createTaskStatusHandlers({

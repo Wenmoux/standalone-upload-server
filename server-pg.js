@@ -52,6 +52,7 @@ const { createBookChapterService } = require("./services/book-chapters");
 const { createConfigService } = require("./services/config");
 const { createBotSettingsService } = require("./services/bot-settings");
 const { createErrorResponseNormalizer } = require("./services/error-response");
+const { dbUnavailableMessage, isPgUnavailableError: isPgConnectionError } = require("./services/db-errors");
 const { sendCsv } = require("./services/admin-exports");
 const { remoteBackupStatus, uploadBackupToRemote } = require("./services/remote-backups");
 const { createAuthService } = require("./services/auth");
@@ -760,24 +761,6 @@ async function collectCachedSystemStatus() {
     const cached = getFreshCache(adminSystemStatusCache, ADMIN_SYSTEM_CACHE_MS);
     if (cached) return cached;
     return setFreshCache(adminSystemStatusCache, await collectStatus(CONFIG_FILE));
-}
-
-function isPgConnectionError(err) {
-    const code = String(err?.code || "");
-    const message = String(err?.message || "");
-    return (
-        ["57P03", "ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "EPIPE", "ENOTFOUND"].includes(code) ||
-        /terminat|timeout|connect|connection|ECONN|ETIMEDOUT|recovery mode|not yet accepting connections/i.test(message)
-    );
-}
-
-function dbUnavailableMessage(err) {
-    const code = String(err?.code || "");
-    const message = String(err?.message || "");
-    if (code === "57P03" || /recovery mode|not yet accepting connections/i.test(message)) {
-        return "Database is starting or recovering, please retry later";
-    }
-    return "Database temporarily unavailable, please retry later";
 }
 
 process.on("unhandledRejection", (reason) => {

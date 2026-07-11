@@ -1,4 +1,6 @@
 const assert = require("assert/strict");
+const fs = require("fs/promises");
+const path = require("path");
 const test = require("node:test");
 const { createSearchCache, helpLinesFromCommands } = require("../bot/bot-session");
 const { meText, registerText, signSuccessText, startHelpText, walletText } = require("../bot/account-formatters");
@@ -6,6 +8,14 @@ const { botHealthPayload } = require("../bot/health-server");
 const { createTelegramPollingRuntime } = require("../bot/polling-runtime");
 const { createSearchQueryParser, parseBookId } = require("../bot/search-query");
 const { createTaskSchedulers } = require("../bot/task-schedulers");
+
+test("bot entrypoint initializes PO18 account handlers before task schedulers", async () => {
+    const source = await fs.readFile(path.join(__dirname, "..", "bot", "telegram-bot.js"), "utf8");
+    const accountHandlers = source.indexOf("} = createPo18AccountHandlers({");
+    const taskSchedulers = source.indexOf("} = createTaskSchedulers({");
+    assert.ok(accountHandlers >= 0, "PO18 account handler initialization is missing");
+    assert.ok(taskSchedulers > accountHandlers, "task schedulers must not read handleMyBookshelf before initialization");
+});
 
 test("bot health payload reports readiness from injected state", () => {
     const now = Date.now();
