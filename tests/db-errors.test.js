@@ -5,6 +5,7 @@ const { dbUnavailableMessage, isPgUnavailableError } = require("../services/db-e
 test("PostgreSQL resource errors are treated as temporarily unavailable", () => {
     assert.equal(isPgUnavailableError({ code: "53100", message: "could not write file: No space left on device" }), true);
     assert.equal(isPgUnavailableError({ code: "53300", message: "too many connections" }), true);
+    assert.equal(isPgUnavailableError({ code: "55P03", message: "migration lock unavailable" }), true);
     assert.equal(isPgUnavailableError({ code: "08006", message: "connection failure" }), true);
     assert.equal(isPgUnavailableError({ code: "42P01", message: "relation does not exist" }), false);
 });

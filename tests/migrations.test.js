@@ -2,7 +2,7 @@ const assert = require("assert/strict");
 const fs = require("fs/promises");
 const path = require("path");
 const test = require("node:test");
-const { checksumSql, listMigrationFiles, listRollbackFiles, verifyMigrationChecksum } = require("../pg-store");
+const { adoptLegacyBaseline, checksumSql, listMigrationFiles, listRollbackFiles, verifyMigrationChecksum } = require("../pg-store");
 
 test("migration files use sortable versioned names", async () => {
     const files = await listMigrationFiles();
@@ -26,6 +26,38 @@ test("baseline migration owns initial schema and initPg only invokes migrations"
     assert.match(baseline, /CREATE TABLE IF NOT EXISTS chapter_cache/);
     assert.match(baseline, /CREATE TABLE IF NOT EXISTS reader_users/);
     assert.match(store, /async function initPg\(\) \{\s+await runMigrations\(\);\s+\}/);
+});
+
+test("legacy migration history adopts the consolidated baseline without executing it", async () => {
+    const files = await listMigrationFiles();
+    const queries = [];
+    const client = {
+        async query(sql, params = []) {
+            queries.push({ sql, params });
+            if (/to_regclass/.test(sql)) {
+                return {
+                    rows: [{
+                        table_0: true,
+                        table_1: true,
+                        table_2: true,
+                        table_3: true,
+                        table_4: true,
+                        table_5: true,
+                        table_6: true,
+                        table_7: true,
+                        table_8: true
+                    }]
+                };
+            }
+            return { rows: [] };
+        }
+    };
+    const applied = new Map([["010_word_cloud_indexes", "legacy-checksum"]]);
+
+    assert.equal(await adoptLegacyBaseline(client, files, applied), true);
+    assert.equal(applied.has("001_baseline"), true);
+    assert.match(queries[1].sql, /INSERT INTO schema_migrations/);
+    assert.equal(queries[1].params[0], "001_baseline");
 });
 
 test("applied migration checksum drift fails unless explicitly allowed", () => {

@@ -17,6 +17,18 @@ const pool = new Pool({
 const MIGRATIONS_DIR = path.join(__dirname, "db", "migrations");
 const ROLLBACKS_DIR = path.join(__dirname, "db", "rollbacks");
 const MIGRATION_LOCK_KEY = 182018;
+const BASELINE_VERSION = "001_baseline";
+const LEGACY_BASELINE_TABLES = [
+    "book_metadata",
+    "chapter_cache",
+    "reader_users",
+    "admin_users",
+    "system_jobs",
+    "book_stats",
+    "bot_audit_logs",
+    "reader_search_requests",
+    "reader_book_reviews"
+];
 
 const bookColumns = [
     "id",
@@ -153,15 +165,50 @@ async function ensureSchemaMigrations(client) {
     `);
 }
 
+async function adoptLegacyBaseline(client, files, applied) {
+    const baseline = files.find((migration) => migration.version === BASELINE_VERSION);
+    if (!baseline || applied.has(BASELINE_VERSION) || applied.size === 0) return false;
+
+    const checks = LEGACY_BASELINE_TABLES.map(
+        (table, index) => `to_regclass($${index + 1}) IS NOT NULL AS table_${index}`
+    ).join(", ");
+    const result = await client.query(
+        `SELECT ${checks}`,
+        LEGACY_BASELINE_TABLES.map((table) => `public.${table}`)
+    );
+    const row = result.rows[0] || {};
+    if (!LEGACY_BASELINE_TABLES.every((_, index) => row[`table_${index}`] === true)) return false;
+
+    const sql = await fs.readFile(baseline.path, "utf8");
+    const checksum = checksumSql(sql);
+    await client.query(
+        `INSERT INTO schema_migrations(version, name, checksum, duration_ms, app_version)
+         VALUES ($1, $2, $3, 0, $4)
+         ON CONFLICT (version) DO NOTHING`,
+        [baseline.version, baseline.name, checksum, String(process.env.PO18_APP_VERSION || "").slice(0, 120)]
+    );
+    applied.set(baseline.version, checksum);
+    console.log(`[pg-migrate] adopted ${baseline.version} for existing schema`);
+    return true;
+}
+
 async function runMigrations() {
     const client = await pool.connect();
+    let lockHeld = false;
     try {
-        await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+        const lockResult = await client.query("SELECT pg_try_advisory_lock($1) locked", [MIGRATION_LOCK_KEY]);
+        lockHeld = lockResult.rows[0]?.locked === true;
+        if (!lockHeld) {
+            const err = new Error("database migrations are running in another instance");
+            err.code = "55P03";
+            throw err;
+        }
         await ensureSchemaMigrations(client);
         const files = await listMigrationFiles();
         const appliedResult = await client.query("SELECT version, checksum FROM schema_migrations");
         const applied = new Map(appliedResult.rows.map((row) => [row.version, row.checksum]));
         const executed = [];
+        await adoptLegacyBaseline(client, files, applied);
 
         for (const migration of files) {
             const sql = await fs.readFile(migration.path, "utf8");
@@ -199,7 +246,7 @@ async function runMigrations() {
             total: files.length
         };
     } finally {
-        await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]).catch(() => {});
+        if (lockHeld) await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]).catch(() => {});
         client.release();
     }
 }
@@ -276,6 +323,7 @@ module.exports = {
     listRollbackFiles,
     checksumSql,
     verifyMigrationChecksum,
+    adoptLegacyBaseline,
     bookColumns,
     chapterColumns,
     pick,

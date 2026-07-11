@@ -13,6 +13,7 @@ function isPgUnavailableError(err) {
         code.startsWith("08") ||
         code.startsWith("53") ||
         code === "57P03" ||
+        code === "55P03" ||
         NETWORK_ERROR_CODES.has(code) ||
         /terminat|timeout|connect|connection|ECONN|ETIMEDOUT|recovery mode|not yet accepting connections|no space left on device/i.test(message)
     );
