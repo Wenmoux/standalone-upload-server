@@ -72,6 +72,7 @@ import { api } from "../services/api";
 import { number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const rows = ref([]);
 const counts = ref({});
 const status = ref("pending");
@@ -133,8 +134,13 @@ async function quickApprove(row) {
 }
 
 async function quickReject(row) {
-  if (!window.confirm("确认快速驳回该纠错？")) return;
-  await api(`/admin-api/corrections/${row.id}/reject`, { method: "POST", body: JSON.stringify({ note: "快速驳回" }) });
+  const confirmation = await confirmAction({
+    title: "快速驳回纠错",
+    message: `将驳回纠错 #${row.id}，不会修改当前章节正文。`,
+    confirmLabel: "驳回纠错"
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/corrections/${row.id}/reject`, { method: "POST", body: JSON.stringify({ note: confirmation.reason || "快速驳回", reason: confirmation.reason }) });
   await load();
   toast("已快速驳回纠错");
 }

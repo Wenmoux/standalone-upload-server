@@ -28,13 +28,28 @@ function createReaderApiRoutes(deps = {}) {
         slowSearchContext,
         chapterListOrderSql,
         chapterText,
+        textFromHtml,
         listBookReviews,
         normalizeCorrectionText,
-        correctionCharLength
+        correctionCharLength,
+        readerRumService
     } = deps;
 
     router.use(createReaderAuthRoutes(deps));
     router.use(createReaderTtsRoutes(deps));
+
+    router.post("/reader-api/performance", requireReader, async (req, res, next) => {
+        try {
+            if (!readerRumService || typeof readerRumService.recordEvents !== "function") {
+                return res.status(503).json({ error: "reader performance collection unavailable" });
+            }
+            const user = await currentReaderUser(req);
+            const result = await readerRumService.recordEvents(user?.id || null, req.body?.events || req.body || []);
+            res.json({ success: true, accepted: result.accepted });
+        } catch (err) {
+            next(err);
+        }
+    });
 
     router.get("/reader-api/me/bookshelf", requireLibraryAccess, async (req, res, next) => {
         try {

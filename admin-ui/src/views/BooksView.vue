@@ -219,6 +219,7 @@ import { api } from "../services/api";
 import { number, splitTags, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 
 const filters = reactive({ q: "", tag: "", category: "", platform: "" });
 const sortValue = ref("updated_desc");
@@ -501,7 +502,15 @@ function exportBooksCsv() {
 
 async function batchExportTxt() {
   if (!selectedRows.value.length) return;
-  if (selectedRows.value.length > 8 && !window.confirm(`将打开 ${selectedRows.value.length} 个 TXT 导出页面，继续？`)) return;
+  if (selectedRows.value.length > 8) {
+    const confirmation = await confirmAction({
+      title: "批量打开导出页面",
+      message: `将打开 ${selectedRows.value.length} 个 TXT 导出页面，浏览器可能会拦截部分弹窗。`,
+      confirmLabel: "继续导出",
+      requireReason: false
+    });
+    if (!confirmation.confirmed) return;
+  }
   selectedRows.value.forEach((row) => exportBookTxt(row.book_id));
 }
 
@@ -510,9 +519,14 @@ async function batchChangePlatform() {
   const platform = window.prompt("输入新的站别代码，例如 po18 / popo / fanqie / haitang", filters.platform || "po18");
   if (!platform) return;
   const label = platform.trim();
-  if (!window.confirm(`确认把已选 ${selectedRows.value.length} 本的站别改为 ${label}？`)) return;
+  const confirmation = await confirmAction({
+    title: "批量修改站别",
+    message: `将把已选 ${selectedRows.value.length} 本书的站别改为 ${label}，可能影响搜索和来源识别。`,
+    confirmLabel: "修改站别"
+  });
+  if (!confirmation.confirmed) return;
   for (const row of selectedRows.value) {
-    await api(`/admin-api/books/${row.id}`, { method: "PUT", body: JSON.stringify({ platform: label }) });
+    await api(`/admin-api/books/${row.id}`, { method: "PUT", body: JSON.stringify({ platform: label, reason: confirmation.reason }) });
   }
   selectedBookIds.value = new Set();
   await loadBooks(page.value);
@@ -526,9 +540,15 @@ async function batchDeleteBooks() {
   const deleteMode = { 1: "metadata", 2: "cache", 3: "all" }[String(choice).trim()];
   if (!deleteMode) return toast("已取消：请输入 1、2 或 3");
   const labels = { metadata: "仅删除元信息", cache: "仅删除章节缓存", all: "全部删除" };
-  if (!window.confirm(`确认对 ${selectedRows.value.length} 本执行：${labels[deleteMode]}？此操作不可恢复。`)) return;
+  const confirmation = await confirmAction({
+    title: "批量删除书籍数据",
+    message: `将对 ${selectedRows.value.length} 本执行“${labels[deleteMode]}”，该操作不可恢复。`,
+    confirmLabel: "批量删除",
+    phrase: `DELETE ${selectedRows.value.length}`
+  });
+  if (!confirmation.confirmed) return;
   for (const row of selectedRows.value) {
-    await api(`/admin-api/books/${row.id}?deleteMode=${deleteMode}`, { method: "DELETE" });
+    await api(`/admin-api/books/${row.id}?deleteMode=${deleteMode}`, { method: "DELETE", body: JSON.stringify({ reason: confirmation.reason }) });
   }
   selectedBookIds.value = new Set();
   await loadBooks(Math.min(page.value, totalPages.value));
@@ -594,8 +614,14 @@ async function deleteBook(row) {
   const deleteMode = { 1: "metadata", 2: "cache", 3: "all" }[String(choice).trim()];
   if (!deleteMode) return toast("已取消：请输入 1、2 或 3");
   const labels = { metadata: "仅删除元信息", cache: "仅删除章节缓存", all: "全部删除" };
-  if (!window.confirm(`确认执行：${labels[deleteMode]}？此操作不可恢复。`)) return;
-  await api(`/admin-api/books/${row.id}?deleteMode=${deleteMode}`, { method: "DELETE" });
+  const confirmation = await confirmAction({
+    title: "删除书籍数据",
+    message: `将对《${row.title || row.book_id}》执行“${labels[deleteMode]}”，该操作不可恢复。`,
+    confirmLabel: "确认删除",
+    phrase: `DELETE ${row.book_id}`
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/books/${row.id}?deleteMode=${deleteMode}`, { method: "DELETE", body: JSON.stringify({ reason: confirmation.reason }) });
   await loadBooks(page.value);
   if (String(currentBookId.value) === String(row.book_id)) {
     currentBookId.value = "";
@@ -613,7 +639,7 @@ async function cleanupStaleBooks() {
       .slice(0, 6)
       .map((book) => `- ${book.title || book.book_id || "-"} / ${book.book_id || "-"} / ${book.platform || "-"} / ${book.source_update_date || book.latest_chapter_date || "-"} / ${number(book.metadata_chapter_count || 0)}章`)
       .join("\n");
-    const ok = window.confirm([
+    const message = [
       `将删除 ${preview.platform || "po18"} 平台、原站更新时间早于 ${preview.cutoff}、章节数小于 ${number(preview.maxChapterCount)} 的书籍。`,
       "",
       `元信息：${number(preview.metadataCount)} 条`,
@@ -623,12 +649,18 @@ async function cleanupStaleBooks() {
       "样例：",
       sample || "-",
       "",
-      "确认执行？此操作不可恢复。"
-    ].join("\n"));
-    if (!ok) return;
+      "该操作不可恢复。"
+    ].join("\n");
+    const confirmation = await confirmAction({
+      title: "清理旧 PO18 书籍",
+      message,
+      confirmLabel: "执行清理",
+      phrase: "CLEANUP"
+    });
+    if (!confirmation.confirmed) return;
     const result = await api("/admin-api/books/cleanup-stale", {
       method: "POST",
-      body: JSON.stringify({ confirm: true })
+      body: JSON.stringify({ confirm: true, reason: confirmation.reason })
     });
     await loadBooks(1);
     toast(`已清理：元信息 ${number(result.deletedMetadata)}，章节 ${number(result.deletedChapters)}`);
@@ -684,8 +716,13 @@ async function saveChapter(form) {
 }
 
 async function deleteChapter(row) {
-  if (!window.confirm("删除该章节缓存？")) return;
-  await api(`/admin-api/chapters/${row.id}`, { method: "DELETE" });
+  const confirmation = await confirmAction({
+    title: "删除章节缓存",
+    message: `将删除章节“${row.title || row.chapter_id}”的缓存正文。`,
+    confirmLabel: "删除章节"
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/chapters/${row.id}`, { method: "DELETE", body: JSON.stringify({ reason: confirmation.reason }) });
   chapters.value = chapters.value.filter((chapter) => String(chapter.id) !== String(row.id));
   selectedChapterIds.value = new Set([...selectedChapterIds.value].filter((id) => id !== String(row.id)));
   toast("已删除章节");
@@ -695,10 +732,16 @@ async function deleteSelectedChapters() {
   const rows = selectedChapterRows.value.slice();
   if (!rows.length) return;
   if (!currentBookId.value) return toast("请先打开一本书的章节列表");
-  if (!window.confirm(`删除已选 ${rows.length} 章缓存？元信息会保留。`)) return;
+  const confirmation = await confirmAction({
+    title: "批量删除章节缓存",
+    message: `将删除已选 ${rows.length} 章缓存，书籍元信息会保留。`,
+    confirmLabel: "批量删除",
+    phrase: `DELETE ${rows.length}`
+  });
+  if (!confirmation.confirmed) return;
   const data = await api(`/admin-api/books/${encodeURIComponent(currentBookId.value)}/chapters/bulk`, {
     method: "DELETE",
-    body: JSON.stringify({ ids: rows.map((row) => row.id) })
+    body: JSON.stringify({ ids: rows.map((row) => row.id), reason: confirmation.reason })
   });
   const deletedIds = new Set((data.deletedIds || rows.map((row) => row.id)).map((id) => String(id)));
   chapters.value = chapters.value.filter((chapter) => !deletedIds.has(String(chapter.id)));
@@ -708,8 +751,14 @@ async function deleteSelectedChapters() {
 
 async function deleteCurrentBookChapters() {
   if (!currentBookId.value) return toast("请先打开一本书的章节列表");
-  if (!window.confirm(`删除《${currentBookTitle.value || currentBookId.value}》的全部章节缓存？元信息会保留。`)) return;
-  const data = await api(`/admin-api/books/${encodeURIComponent(currentBookId.value)}/chapters`, { method: "DELETE" });
+  const confirmation = await confirmAction({
+    title: "删除整本章节缓存",
+    message: `将删除《${currentBookTitle.value || currentBookId.value}》的全部章节缓存，元信息会保留。`,
+    confirmLabel: "删除全部缓存",
+    phrase: `DELETE ${currentBookId.value}`
+  });
+  if (!confirmation.confirmed) return;
+  const data = await api(`/admin-api/books/${encodeURIComponent(currentBookId.value)}/chapters`, { method: "DELETE", body: JSON.stringify({ reason: confirmation.reason }) });
   chapters.value = [];
   clearChapterSelection();
   toast(`已删除 ${number(data.deletedChapters ?? data.deleted ?? 0)} 章缓存`);

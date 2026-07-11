@@ -1,6 +1,6 @@
 {
   "name": "po18-upload-sidecar",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "main": "server-pg.js",
   "scripts": {
@@ -10,9 +10,14 @@
     "admin:dev": "npm --prefix admin-ui run dev",
     "admin:build": "npm --prefix admin-ui run build && node scripts/publish-admin-ui.mjs",
     "test": "node --test \"tests/*.test.js\"",
+    "test:coverage": "c8 --all --include services/**/*.js --include routes/**/*.js --exclude services/tts.js --check-coverage --lines 35 --functions 35 --branches 30 --statements 35 node --test \"tests/*.test.js\"",
     "test:smoke": "playwright test --config=playwright.config.js",
     "test:pg": "node scripts/run-pg-integration.js",
+    "test:docker-smoke": "node scripts/docker-smoke.js",
     "check:context": "node scripts/check-build-context.js",
+    "check:utf8": "node scripts/check-utf8.js",
+    "lint": "eslint .",
+    "format:check": "prettier --check eslint.config.js .prettierrc.json services/openapi.js services/error-response.js services/po18-crawler-http.js routes/openapi.js bot/search-handlers.js bot/social-handlers.js cirno-src/src/mixins/reader-navigation.js tests/openapi-error-response.test.js tests/po18-crawler-http.test.js tests/bot-search-social-handlers.test.js tests/reader-navigation.test.js",
     "db:rollback": "node scripts/migrate-rollback.js",
     "audit:prod": "npm audit --omit=dev",
     "docker:build": "node scripts/docker-build.js",
@@ -21,6 +26,7 @@
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "compression": "^1.8.1",
+    "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "express-session": "^1.17.3",
@@ -29,6 +35,10 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@playwright/test": "^1.60.0",
+    "c8": "^10.1.3",
+    "eslint": "^9.39.5",
+    "globals": "^15.15.0",
+    "prettier": "^3.9.5"
   }
 }

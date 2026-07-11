@@ -1,7 +1,7 @@
 const assert = require("assert/strict");
 const crypto = require("crypto");
 const test = require("node:test");
-const { createAuthService, cdkDuration, csvCell, todayDateKey } = require("../services/auth");
+const { adminRoleAllows, createAuthService, cdkDuration, csvCell, normalizeAdminRole, todayDateKey } = require("../services/auth");
 
 function mockRes() {
     return {
@@ -124,4 +124,32 @@ test("auth service exposes telegram identity helpers and bot user lookup", async
     const user = await service.findBotUserByTelegramId(" 100 ");
     assert.equal(user.telegram_id, "100");
     assert.match(calls[0].sql, /FROM reader_users WHERE telegram_id = \$1/);
+});
+
+test("admin roles enforce the documented access matrix", () => {
+    const request = (method, path) => ({ method, path });
+
+    assert.equal(normalizeAdminRole("OPERATOR"), "operator");
+    assert.equal(normalizeAdminRole("unknown"), "viewer");
+    assert.equal(adminRoleAllows("owner", request("DELETE", "/admin-api/auth/admins/2")), true);
+
+    assert.equal(adminRoleAllows("operator", request("GET", "/admin-api/books")), true);
+    assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/books")), true);
+    assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/backup")), true);
+    assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/backup/restore")), false);
+    assert.equal(adminRoleAllows("operator", request("PUT", "/admin-api/config/telegram")), false);
+
+    assert.equal(adminRoleAllows("moderator", request("GET", "/admin-api/corrections")), true);
+    assert.equal(adminRoleAllows("moderator", request("POST", "/admin-api/corrections/1/approve")), true);
+    assert.equal(adminRoleAllows("moderator", request("DELETE", "/admin-api/books/1")), false);
+
+    assert.equal(adminRoleAllows("viewer", request("GET", "/admin-api/books")), true);
+    assert.equal(adminRoleAllows("viewer", request("GET", "/admin-api/config/telegram")), false);
+    assert.equal(adminRoleAllows("viewer", request("GET", "/admin-api/system/api-tokens")), false);
+    assert.equal(adminRoleAllows("viewer", request("POST", "/admin-api/auth/logout")), true);
+    assert.equal(adminRoleAllows("viewer", request("POST", "/admin-api/jobs/1/cancel")), false);
+
+    for (const role of ["operator", "moderator", "viewer"]) {
+        assert.equal(adminRoleAllows(role, request("GET", "/admin-api/auth/admins")), false);
+    }
 });

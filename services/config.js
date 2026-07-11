@@ -1,3 +1,5 @@
+const { EPUB_STYLE_OPTIONS, normalizeEpubExportConfig, parseEpubExportConfig } = require("./epub-style-config");
+
 const DEFAULT_PLATFORM_LABELS = {
     po18: "PO18",
     popo: "POPO",
@@ -23,7 +25,9 @@ function cleanPlatformKey(value = "") {
 }
 
 function normalizePlatformKey(value = "") {
-    return cleanPlatformKey(value).toLowerCase().replace(/[\s_-]+/g, "");
+    return cleanPlatformKey(value)
+        .toLowerCase()
+        .replace(/[\s_-]+/g, "");
 }
 
 function parsePlatformLabels(value = "") {
@@ -79,7 +83,9 @@ function exportPricingPayload(config = {}) {
         unlockCost: nonNegativeInt(config.unlockCost, 100),
         freeCopperCost: nonNegativeInt(config.freeCopperCost, 100),
         paidChapterSilverCost: nonNegativeInt(config.paidChapterSilverCost, 10),
-        dailyQuotaByLevel: parseDailyQuotaByLevel(config.dailyQuotaByLevel || config.daily_quota_by_level || {})
+        dailyQuotaByLevel: parseDailyQuotaByLevel(config.dailyQuotaByLevel || config.daily_quota_by_level || {}),
+        epub: normalizeEpubExportConfig(config.epub || config.epub_config || {}),
+        epubStyles: EPUB_STYLE_OPTIONS.map((item) => ({ ...item }))
     };
 }
 
@@ -148,17 +154,19 @@ function createConfigService(options = {}) {
     }
 
     async function exportPricingConfig() {
-        const [unlockCost, freeCopperCost, paidChapterSilverCost, dailyQuotaByLevel] = await Promise.all([
+        const [unlockCost, freeCopperCost, paidChapterSilverCost, dailyQuotaByLevel, epubConfig] = await Promise.all([
             configGet("bot_export_unlock_cost"),
             configGet("bot_export_free_copper_cost"),
             configGet("bot_export_paid_chapter_silver_cost"),
-            configGet("bot_export_daily_quota_by_level")
+            configGet("bot_export_daily_quota_by_level"),
+            configGet("bot_epub_style_config")
         ]);
         return exportPricingPayload({
             unlockCost: nonNegativeInt(unlockCost, process.env.PO18_BOT_EXPORT_UNLOCK_COST ?? 100),
             freeCopperCost: nonNegativeInt(freeCopperCost, process.env.PO18_BOT_EXPORT_FREE_COPPER_COST ?? 100),
             paidChapterSilverCost: nonNegativeInt(paidChapterSilverCost, process.env.PO18_BOT_EXPORT_PAID_CHAPTER_SILVER_COST ?? 10),
-            dailyQuotaByLevel: parseDailyQuotaByLevel(dailyQuotaByLevel || process.env.PO18_BOT_EXPORT_DAILY_QUOTA_BY_LEVEL || "{}")
+            dailyQuotaByLevel: parseDailyQuotaByLevel(dailyQuotaByLevel || process.env.PO18_BOT_EXPORT_DAILY_QUOTA_BY_LEVEL || "{}"),
+            epub: parseEpubExportConfig(epubConfig || process.env.PO18_EPUB_STYLE_CONFIG || "{}")
         });
     }
 
@@ -186,5 +194,6 @@ module.exports = {
     normalizeDailyQuotaByLevel,
     normalizePlatformKey,
     parseDailyQuotaByLevel,
+    parseEpubExportConfig,
     parsePlatformLabels
 };

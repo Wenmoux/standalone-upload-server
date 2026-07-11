@@ -1,4 +1,31 @@
 const express = require("express");
+const { assertSafeHttpTarget } = require("../services/network-security");
+
+const DEFAULT_PROXY_RESPONSE_LIMIT = 10 * 1024 * 1024;
+
+function proxyResponseLimit() {
+    const configured = Number(process.env.PO18_TTS_PROXY_MAX_RESPONSE_BYTES || DEFAULT_PROXY_RESPONSE_LIMIT);
+    if (!Number.isFinite(configured)) return DEFAULT_PROXY_RESPONSE_LIMIT;
+    return Math.max(1024, Math.min(Math.trunc(configured), 50 * 1024 * 1024));
+}
+
+async function readLimitedBody(response, limit, abort) {
+    const declared = Number(response.headers.get("content-length") || 0);
+    if (declared > limit) throw Object.assign(new Error("TTS API 响应过大"), { status: 502 });
+    if (!response.body) return Buffer.alloc(0);
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of response.body) {
+        const buffer = Buffer.from(chunk);
+        size += buffer.length;
+        if (size > limit) {
+            abort();
+            throw Object.assign(new Error("TTS API 响应过大"), { status: 502 });
+        }
+        chunks.push(buffer);
+    }
+    return Buffer.concat(chunks, size);
+}
 
 function createReaderTtsRoutes(deps = {}) {
     const router = express.Router();
@@ -12,14 +39,17 @@ function createReaderTtsRoutes(deps = {}) {
         synthesizeAliyunTts,
         synthesizeAzureTts,
         synthesizeElevenLabsTts,
-        synthesizeCartesiaTts
+        synthesizeCartesiaTts,
+        validateTtsProxyTarget = assertSafeHttpTarget,
+        fetchTtsProxy = fetch
     } = deps;
     const EDGE_TTS_FALLBACK_VOICES = edgeTtsFallbackVoices || [];
 
     router.post("/reader-api/tts/proxy", requireReader, async (req, res, next) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60000);
         try {
-            const target = new URL(String(req.body?.url || "").trim());
-            if (!["http:", "https:"].includes(target.protocol)) return res.status(400).json({ error: "TTS API 只支持 http/https" });
+            const target = await validateTtsProxyTarget(req.body?.url);
             const method = String(req.body?.method || "POST").toUpperCase() === "PUT" ? "PUT" : "POST";
             const rawHeaders = req.body?.headers && typeof req.body.headers === "object" && !Array.isArray(req.body.headers) ? req.body.headers : {};
             const headers = {};
@@ -28,15 +58,14 @@ function createReaderTtsRoutes(deps = {}) {
                 if (!safeKey || ["host", "content-length", "connection"].includes(safeKey)) continue;
                 headers[key] = String(value);
             }
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 60000);
-            const response = await fetch(target, {
+            const response = await fetchTtsProxy(target, {
                 method,
                 headers,
                 body: String(req.body?.body || ""),
-                signal: controller.signal
-            }).finally(() => clearTimeout(timer));
-            const buffer = Buffer.from(await response.arrayBuffer());
+                signal: controller.signal,
+                redirect: "error"
+            });
+            const buffer = await readLimitedBody(response, proxyResponseLimit(), () => controller.abort());
             res.status(response.status);
             const contentType = response.headers.get("content-type");
             if (contentType) res.setHeader("Content-Type", contentType);
@@ -45,7 +74,10 @@ function createReaderTtsRoutes(deps = {}) {
             res.send(buffer);
         } catch (err) {
             if (err.name === "AbortError") return res.status(504).json({ error: "TTS API 请求超时" });
+            if (err.status) return res.status(err.status).json({ error: err.message });
             next(err);
+        } finally {
+            clearTimeout(timer);
         }
     });
 
@@ -65,7 +97,7 @@ function createReaderTtsRoutes(deps = {}) {
         }
     });
 
-    router.post("/reader-api/tts/edge", requireReader, async (req, res, next) => {
+    router.post("/reader-api/tts/edge", requireReader, async (req, res) => {
         try {
             const text = String(req.body?.text || "").trim();
             if (!text) return res.status(400).json({ error: "缺少朗读文本" });
@@ -126,5 +158,6 @@ function createReaderTtsRoutes(deps = {}) {
 }
 
 module.exports = {
-    createReaderTtsRoutes
+    createReaderTtsRoutes,
+    readLimitedBody
 };

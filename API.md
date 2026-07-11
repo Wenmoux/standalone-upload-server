@@ -6,6 +6,94 @@
 http://localhost:3100
 ```
 
+机器可读端点索引：
+
+```text
+GET /openapi.json
+GET /api-docs
+```
+
+`/openapi.json` 由运行中的 Express 路由栈生成，避免端点清单与实现漂移。错误响应保留原有 `error` 字段，并新增稳定的 `code` 与 `request_id`；响应头同时返回 `X-Request-Id`。
+
+## v2.0 运行时端点、数据质量与备份扩展
+
+- 迁移 `018_data_quality_guards` 为新写入增加非空标识、非负计数、任务状态、书评投票和纠错状态约束；约束使用 `NOT VALID`，不会因历史脏数据阻断升级。
+- 远端 WebDAV/S3 备份支持 `PO18_BACKUP_ENCRYPTION_KEY`。配置后上传前使用 AES-256-GCM 加密，远端文件增加 `.enc` 后缀，密钥不会写入数据库或备份元数据。
+- 现有 API 路径、请求字段和响应字段未重命名或删除。
+
+## 5. v2.0 管理、安全和可观测性扩展
+
+以下均为新增接口或新增可选字段；原有接口路径、请求字段和响应字段未重命名或删除。
+
+### 5.1 管理员访问角色
+
+```http
+GET    /admin-api/auth/access
+GET    /admin-api/auth/admins
+POST   /admin-api/auth/admins
+PUT    /admin-api/auth/admins/:id
+DELETE /admin-api/auth/admins/:id
+```
+
+- `GET /admin-api/auth/access` 返回 `{ "role": "owner|operator|moderator|viewer" }`。
+- 旧 `POST /admin-api/auth/login` 和 `GET /admin-api/auth/me` 的 `user` 仍保持 `{id, username}`。
+- 管理员 CRUD 仅 owner 可用；最后一个 owner 不能删除或降级，当前登录管理员不能删除自己。
+
+### 5.2 后台审计和内部 Token
+
+```http
+GET  /admin-api/system/admin-audit?page=1&limit=50&action=&status=&actor=&request_id=
+GET  /admin-api/system/api-tokens
+POST /admin-api/system/api-tokens/:id/revoke
+```
+
+- 审计日志为追加式记录，数据库触发器拒绝更新和删除；密码、Cookie、Token、数据库连接等字段会脱敏。
+- Token 列表只返回脱敏前缀、Scope、允许 IP、最近使用和吊销状态，数据库不保存原始 Token。
+- Bot 默认 Scope：`bot:read,bot:user,bot:export,bot:po18`；`bot:admin` 需显式配置。
+
+### 5.3 备份验证
+
+```http
+POST /admin-api/backup/verify
+Content-Type: application/json
+
+{"file":"po18-pg-YYYYMMDD-HHMMSS.dump"}
+```
+
+新生成和新上传的 PostgreSQL dump 会自动：
+
+- 流式计算 SHA-256 并写入同名 `.json` 元数据。
+- 执行 `pg_restore --list` 验证 custom archive 可读取。
+- 恢复前重新核对 SHA-256 和归档结构。
+
+验证接口返回 `verification.sha256`、`verification.archive_verified_at` 和 `verification.archive_entries`，同时返回刷新后的 `backups` 列表。
+
+### 5.4 Metrics 扩展
+
+`GET /metrics` 新增：
+
+- `po18_crawler_source_requests_total{source,result}`
+- `po18_crawler_source_consecutive_failures{source}`
+- `po18_crawler_source_circuit_open{source}`
+- `po18_crawler_request_retries_total{source}`
+- `po18_system_jobs{state}`
+- `po18_system_job_retries_total`
+- `po18_system_job_expired_leases`
+- `po18_system_job_retries_exhausted`
+- `po18_system_job_cancel_requests`
+
+`GET /admin-api/metrics/summary` 新增 `crawler` 和 `system_jobs` 节点，用于后台来源健康和持久任务状态卡片。
+
+### 5.5 新增迁移
+
+- `011_chapter_stats_incremental`
+- `012_admin_audit_logs`
+- `013_system_job_leases`
+- `014_api_tokens`
+- `015_admin_roles`
+
+所有迁移都有对应 rollback；书籍唯一键和现有 API 字段未在本轮修改。
+
 ## 阅读器页面与读者账号 API
 
 阅读器页面：
@@ -478,16 +566,20 @@ POST /api/parse/check-cache
 {
   "cached": true,
   "chapterIds": ["6424173", "6424174"],
-  "cachedChapters": ["6424173", "6424174"]
+  "cachedChapters": ["6424173", "6424174"],
+  "chapters": [
+    { "chapterId": "6424173", "chapterOrder": 1 },
+    { "chapterId": "6424174", "chapterOrder": 2 }
+  ]
 }
 ```
 
 说明：
 
 - 该接口现在只接受 `bookId`，不再支持单章检查。
-- 服务端只返回该书已缓存的 `chapterId` 列表，不返回章节标题等额外字段。
+- `chapterIds` / `cachedChapters` 保持旧版字符串数组，方便旧脚本只判断缓存命中。
+- `chapters` 是新增对象数组，包含已缓存章节的 `chapterId` 和 `chapterOrder`。
 - 油猴脚本会先检查本地缓存；本地不存在时，再按 `bookId` 请求本接口，把服务端返回的 `chapterId` 合并到本地缓存后再决定是否上传。
-- `cachedChapters` 为兼容字段，内容与 `chapterIds` 相同。
 
 ### 4. 删除某书全部章节缓存
 
@@ -778,6 +870,27 @@ GET  /admin-api/backup/download
 GET  /admin-api/backup/config
 GET  /admin-api/backup/diagnostics
 ```
+
+`GET/PUT /admin-api/config/export` 除原有扣费字段外，新增可选 EPUB 配置：
+
+```json
+{
+  "epub": {
+    "styleId": "style1",
+    "includeColophon": true,
+    "colophonTitle": "制作说明",
+    "colophonText": "本书由 PO18 Reader 根据本地缓存内容生成……",
+    "introTitle": "作品简介",
+    "showTopImage": true
+  },
+  "epubStyles": [
+    { "id": "style1", "name": "样式一 · 江湖纸卷" },
+    { "id": "crane", "name": "仙鹤章头" }
+  ]
+}
+```
+
+`epubStyles` 为只读样式清单；保存时只提交 `epub`。`/bot-api/export-pricing` 同步返回该配置，现有字段保持不变。
 
 ## PowerShell 测试
 

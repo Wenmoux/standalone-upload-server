@@ -1,22 +1,28 @@
 const assert = require("assert/strict");
 const test = require("node:test");
-const {
-    createConfigService,
-    exportPricingPayload,
-    normalizePlatformKey,
-    parsePlatformLabels
-} = require("../services/config");
+const { createConfigService, exportPricingPayload, normalizePlatformKey, parsePlatformLabels } = require("../services/config");
 
 test("config helpers normalize labels and pricing", () => {
     assert.equal(normalizePlatformKey(" PO-18 "), "po18");
     assert.deepEqual(parsePlatformLabels('{" PO18 ":" Main ","empty":"","bad":null}'), { PO18: "Main" });
-    assert.deepEqual(exportPricingPayload({ unlockCost: -1, freeCopperCost: "12.8", paidChapterSilverCost: "bad" }), {
-        unlockCost: 0,
-        freeCopperCost: 12,
-        paidChapterSilverCost: 10,
-        dailyQuotaByLevel: {}
-    });
-    assert.deepEqual(exportPricingPayload({ dailyQuotaByLevel: { 3: "2", 2: "1", bad: 9 } }).dailyQuotaByLevel, { "2": 1, "3": 2 });
+    const pricing = exportPricingPayload({ unlockCost: -1, freeCopperCost: "12.8", paidChapterSilverCost: "bad" });
+    assert.deepEqual(
+        {
+            unlockCost: pricing.unlockCost,
+            freeCopperCost: pricing.freeCopperCost,
+            paidChapterSilverCost: pricing.paidChapterSilverCost,
+            dailyQuotaByLevel: pricing.dailyQuotaByLevel
+        },
+        {
+            unlockCost: 0,
+            freeCopperCost: 12,
+            paidChapterSilverCost: 10,
+            dailyQuotaByLevel: {}
+        }
+    );
+    assert.equal(pricing.epub.styleId, "style1");
+    assert.ok(pricing.epubStyles.some((style) => style.id === "crane"));
+    assert.deepEqual(exportPricingPayload({ dailyQuotaByLevel: { 3: "2", 2: "1", bad: 9 } }).dailyQuotaByLevel, { 2: 1, 3: 2 });
 });
 
 test("config service reads, writes, builds platform payload and export pricing", async (t) => {
@@ -36,7 +42,8 @@ test("config service reads, writes, builds platform payload and export pricing",
         bot_export_unlock_cost: "",
         bot_export_free_copper_cost: "250",
         bot_export_paid_chapter_silver_cost: "bad",
-        bot_export_daily_quota_by_level: "{\"2\":1,\"3\":2}"
+        bot_export_daily_quota_by_level: '{"2":1,"3":2}',
+        bot_epub_style_config: JSON.stringify({ styleId: "crane", includeColophon: false, introTitle: "简介" })
     };
     const service = createConfigService({
         cleanPgText: (value) => String(value || "").replace(/\u0000/g, ""),
@@ -71,14 +78,19 @@ test("config service reads, writes, builds platform payload and export pricing",
     assert.equal(labels.qidian, "\u8d77\u70b9");
 
     const platforms = await service.platformConfigPayload();
-    assert.deepEqual(platforms.platforms.map((row) => row.value), ["po18", "qidian", "custom"]);
+    assert.deepEqual(
+        platforms.platforms.map((row) => row.value),
+        ["po18", "qidian", "custom"]
+    );
     assert.equal(platforms.platforms[0].label, "PO18 Custom");
     assert.equal(platforms.platforms[1].label, "\u8d77\u70b9");
 
-    assert.deepEqual(await service.exportPricingConfig(), {
-        unlockCost: 75,
-        freeCopperCost: 250,
-        paidChapterSilverCost: 12,
-        dailyQuotaByLevel: { "2": 1, "3": 2 }
-    });
+    const exportConfig = await service.exportPricingConfig();
+    assert.equal(exportConfig.unlockCost, 75);
+    assert.equal(exportConfig.freeCopperCost, 250);
+    assert.equal(exportConfig.paidChapterSilverCost, 12);
+    assert.deepEqual(exportConfig.dailyQuotaByLevel, { 2: 1, 3: 2 });
+    assert.equal(exportConfig.epub.styleId, "crane");
+    assert.equal(exportConfig.epub.includeColophon, false);
+    assert.equal(exportConfig.epub.introTitle, "简介");
 });

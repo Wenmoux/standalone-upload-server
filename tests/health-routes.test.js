@@ -30,6 +30,22 @@ test("prometheus metrics text aggregates request, event and bot queue data", asy
                 body: { background_tasks: { running: 1, queued: 2, locks: 3, concurrency: 4 } }
             })
         },
+        crawlerSnapshotProvider: () => ({
+            sourceHealth: { source: "po18", state: "open", successes: 8, failures: 2, consecutiveFailures: 2 },
+            stats: { requestRetries: 5 }
+        }),
+        systemJobMetricsProvider: async () => ({
+            available: true,
+            queued: 2,
+            running: 1,
+            succeeded: 5,
+            failed: 1,
+            canceled: 1,
+            retries: 3,
+            expired_leases: 1,
+            exhausted: 1,
+            cancel_requested: 1
+        }),
         readJsonLinesTail: (file) => {
             if (file === "requests") {
                 return [
@@ -53,6 +69,9 @@ test("prometheus metrics text aggregates request, event and bot queue data", asy
     assert.match(text, /po18_bot_api_errors_total 1/);
     assert.match(text, /po18_backup_events_total\{event="backup-created",level="info"\} 1/);
     assert.match(text, /po18_bot_queue_jobs\{state="queued"\} 2/);
+    assert.match(text, /po18_crawler_source_circuit_open\{source="po18"\} 1/);
+    assert.match(text, /po18_system_jobs\{state="queued"\} 2/);
+    assert.match(text, /po18_system_job_retries_total 3/);
 });
 
 test("reader performance summary groups core reader endpoints and budgets", () => {
@@ -104,6 +123,13 @@ test("metrics summary returns reader p95, endpoint budgets and asset checks", as
             reader_entry_js_bytes: 10,
             reader_entry_css_bytes: 10
         },
+        crawlerSnapshotProvider: () => ({
+            running: true,
+            paused: false,
+            sourceHealth: { source: "po18", state: "closed", successes: 4, failures: 1 },
+            stats: { booksProcessed: 3 }
+        }),
+        systemJobMetricsProvider: async () => ({ available: true, queued: 1, retries: 2 }),
         readJsonLinesTail: (file) => {
             if (file === "requests") {
                 return [
@@ -123,6 +149,8 @@ test("metrics summary returns reader p95, endpoint budgets and asset checks", as
     assert.equal(payload.reader_api.p95_duration_ms, 250);
     assert.equal(payload.reader_performance.breached[0], "search");
     assert.equal(payload.reader_assets.available, true);
+    assert.equal(payload.crawler.source_health.source, "po18");
+    assert.equal(payload.system_jobs.retries, 2);
     assert.equal(payload.reader_assets.checks.find((item) => item.name === "reader largest js").ok, false);
     assert.equal(collectReaderAssetBudget(distDir, { reader_entry_js_bytes: 20, reader_entry_css_bytes: 20 }).checks.every((item) => item.ok), true);
 });

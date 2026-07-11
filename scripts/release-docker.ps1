@@ -1,5 +1,5 @@
 param(
-    [string]$Image = "wenmoux/reader:v1.0",
+    [string]$Image = "wenmoux/reader:v2.0",
     [int]$SetupPort = 13100,
     [int]$ReaderPort = 13200,
     [switch]$NoPush
@@ -7,8 +7,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 $name = "po18-release-test-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
+$previousImageTag = $env:PO18_IMAGE_TAG
 
-docker build --target app -t $Image .
+try {
+    $env:PO18_IMAGE_TAG = $Image
+    node scripts/docker-build.js
+    if ($LASTEXITCODE -ne 0) { throw "Docker build failed with exit code $LASTEXITCODE" }
+}
+finally {
+    $env:PO18_IMAGE_TAG = $previousImageTag
+}
 
 try {
     docker run -d --rm --name $name -p "${SetupPort}:3100" -p "${ReaderPort}:3200" $Image | Out-Null
@@ -34,6 +42,13 @@ finally {
 }
 
 if (-not $NoPush) {
-    docker push $Image
+    $env:PO18_IMAGE_TAG = $Image
+    try {
+        node scripts/docker-push.js
+        if ($LASTEXITCODE -ne 0) { throw "Docker push failed with exit code $LASTEXITCODE" }
+    }
+    finally {
+        $env:PO18_IMAGE_TAG = $previousImageTag
+    }
     docker buildx imagetools inspect $Image
 }

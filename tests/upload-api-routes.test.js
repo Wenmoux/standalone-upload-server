@@ -229,10 +229,10 @@ test("upload API checks cache and deletes book chapters", async () => {
     const events = [];
     const router = createUploadApiRoutes(baseDeps({
         query: async (sql, params) => {
-            if (/SELECT chapter_id/.test(sql)) {
+            if (/SELECT chapter_id, chapter_order/.test(sql)) {
                 assert.deepEqual(params, ["b1"]);
                 assert.match(sql, /ORDER BY chapter_id ASC/);
-                return { rows: [{ chapter_id: 2 }, { chapter_id: "10" }] };
+                return { rows: [{ chapter_id: 2, chapter_order: 1 }, { chapter_id: "10", chapter_order: 9 }] };
             }
             if (/DELETE FROM chapter_cache/.test(sql)) {
                 assert.deepEqual(params, ["b1"]);
@@ -253,7 +253,11 @@ test("upload API checks cache and deletes book chapters", async () => {
         assert.deepEqual(await cache.json(), {
             cached: true,
             chapterIds: ["2", "10"],
-            cachedChapters: ["2", "10"]
+            cachedChapters: ["2", "10"],
+            chapters: [
+                { chapterId: "2", chapterOrder: 1 },
+                { chapterId: "10", chapterOrder: 9 }
+            ]
         });
 
         const deleted = await fetch(`${base}/api/chapters/b1`, {

@@ -1,6 +1,5 @@
 ﻿const fs = require("fs/promises");
 const { createWriteStream } = require("fs");
-const http = require("http");
 const { pipeline } = require("stream/promises");
 const os = require("os");
 const path = require("path");
@@ -25,15 +24,18 @@ const { startBotHealthServer } = require("./health-server");
 const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const { createTaskSchedulers } = require("./task-schedulers");
-const { renderWordCloudPngBuffer, renderWordCloudSvgBuffer } = require("./word-cloud");
 const { createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
 const { createTelegramPollingRuntime } = require("./polling-runtime");
+const { createPo18AccountHandlers } = require("./po18-account-handlers");
+const { createShareHandlers } = require("./share-handlers");
+const { createTaskStatusHandlers } = require("./task-status-handlers");
+const { createSearchHandlers } = require("./search-handlers");
+const { createSocialHandlers } = require("./social-handlers");
 const {
     meText,
     registerText,
     signSuccessText,
-    startHelpText,
-    walletText
+    startHelpText
 } = require("./account-formatters");
 const {
     escapeHtml,
@@ -106,7 +108,7 @@ const {
     botUserProvider: () => botUser,
     longTextThreshold: BOT_GROUP_LONG_TEXT_THRESHOLD
 });
-const { botTaskQueue } = createBotTaskRuntime({
+const { botTaskQueue, recoverPersistentJobs } = createBotTaskRuntime({
     client,
     sendMessage,
     escapeHtml,
@@ -132,7 +134,6 @@ const {
     reviewVoteActions,
     currencyLabel,
     transactionLine,
-    nonNegativeInt,
     normalizeExportPricing,
     paidExportChapterCount,
     exportQuote,
@@ -143,6 +144,23 @@ const {
     redPacketMarkup
 } = createBotUi({ escapeHtml, cleanText, truncate, isVolumeChapter, crowdVoteCost: CROWD_VOTE_COST });
 const { po18Fetch, parseLoginFields, hasPo18Auth, fetchPo18Bookshelf, fetchPo18PurchasedChapters } = createPo18Client({ cleanText });
+const { handleShare, handleShareBookshelf } = createShareHandlers({
+    client,
+    sendMessage,
+    editMessage,
+    ensureRegistered,
+    escapeHtml,
+    isVolumeChapter,
+    userDisplayName,
+    bookToSharePayload,
+    extractCacheIds,
+    chapterToSharePayload,
+    fetchPo18PurchasedChapters,
+    fetchPo18Bookshelf,
+    hasPo18Auth,
+    rewardCopper: PO18_BOOKSHELF_SHARE_REWARD_COPPER,
+    rewardMinChapters: PO18_BOOKSHELF_SHARE_REWARD_MIN_CHAPTERS
+});
 const { buildExport } = createExportBuilder({
     client,
     exportMaxChapters: EXPORT_MAX_CHAPTERS,
@@ -160,7 +178,14 @@ const { buildExport } = createExportBuilder({
     buildZip
 });
 const { pikpakConfig, webdavRequest, pikpakList, pikpakSearch } = createRemoteStorage();
-const { scheduleExport, scheduleMyBookshelf, scheduleShare, scheduleShareBookshelf } = createTaskSchedulers({
+const {
+    persistentJobTypes,
+    recoverSystemJob,
+    scheduleExport,
+    scheduleMyBookshelf,
+    scheduleShare,
+    scheduleShareBookshelf
+} = createTaskSchedulers({
     botTaskQueue,
     sendMessage,
     isGroup,
@@ -176,10 +201,39 @@ if (!TELEGRAM_TOKEN) {
 
 let botUser = null;
 const searchCache = createSearchCache({ maxSize: Number(process.env.TELEGRAM_SEARCH_CACHE_MAX || 200) });
-const po18LoginSessions = new Map();
 const privateExportStarts = new Map();
 let commandRegistry = null;
+let persistentJobsRecovered = false;
 const commandSettingsState = { at: 0, payload: null };
+
+const {
+    handleLoginPo18,
+    handleMyBookshelf,
+    handlePo18Code,
+    handlePo18Logout,
+    handlePo18Set,
+    handlePo18Status
+} = createPo18AccountHandlers({
+    client,
+    ensureRegistered,
+    sendMessage,
+    sendPhoto,
+    editMessage,
+    deliverLongGroupResult,
+    escapeHtml,
+    callback,
+    po18Fetch,
+    parseLoginFields,
+    hasPo18Auth,
+    fetchPo18Bookshelf
+});
+
+const { handleTasks, handleTask, handleCancelJob } = createTaskStatusHandlers({
+    client,
+    ensureRegistered,
+    sendMessage,
+    escapeHtml
+});
 
 
 
@@ -192,7 +246,19 @@ function getCommandRegistry() {
     const withBookshelfCooldown = (message, label, handler) => withCooldown(message, "mybookshelf", BOT_BOOKSHELF_COOLDOWN_MS, label, handler);
     const withPikpakCooldown = (message, label, handler) => withCooldown(message, "pikpak", BOT_PIKPAK_COOLDOWN_MS, label, handler);
 
-    registerAccountCommands(registry, { handleStart, handleRegister, handleMe, handleSign, handleRedeem, handleGive, handleTop, handleTransactions });
+    registerAccountCommands(registry, {
+        handleStart,
+        handleRegister,
+        handleMe,
+        handleSign,
+        handleRedeem,
+        handleGive,
+        handleTop,
+        handleTransactions,
+        handleTasks,
+        handleTask,
+        handleCancelJob
+    });
     registerSearchCommands(registry, { withSearchCooldown, withInfoCooldown, handleSearch, handleHot, handleWordCloud, handleRandom, handleInfo });
     registerSocialCommands(registry, { handleMyFav, handleRedPacket, handleClaimRedPacket, handleCrowd, handleReview, handleReviews });
     registerIntegrationCommands(registry, {
@@ -321,11 +387,6 @@ async function handleRegister(message, payload) {
     await sendMessage(message.chat.id, registerText(result, { escapeHtml, scholarText }));
 }
 
-async function handleWallet(message) {
-    const user = await ensureRegistered(message.from);
-    await sendMessage(message.chat.id, walletText(user, { escapeHtml, scholarText }));
-}
-
 async function handleMe(message) {
     await ensureRegistered(message.from);
     const data = await client.me(message.from.id);
@@ -350,282 +411,66 @@ async function handleSign(message) {
     }
 }
 
-async function sendBookCards(target, rows, title) {
-    const message = typeof target === "object" ? target : null;
-    const chatId = message ? message.chat.id : target;
-    const text = [`<b>${escapeHtml(title)}</b>`, "", ...rows.map((book, index) => bookListItem(book, index + 1))].join("\n\n");
-    if (message) return deliverLongGroupResult(message, text, { reply_markup: listActions(rows) }, { title });
-    return sendMessage(chatId, text, { reply_markup: listActions(rows) });
-}
+const {
+    handleHot,
+    handleInfo,
+    handleRandom,
+    handleSearch,
+    handleSearchRequestSubmit,
+    handleWordCloud,
+    sendBookCards
+} = createSearchHandlers({
+    client,
+    searchLimit: SEARCH_LIMIT,
+    defaultRecommendPlatform: DEFAULT_RECOMMEND_PLATFORM,
+    parseSearchQuery,
+    parsePlatformSuffix,
+    platformLabel,
+    rememberSearch,
+    ensureRegistered,
+    userDisplayName,
+    escapeHtml,
+    sendMessage,
+    editMessage,
+    sendDocument,
+    sendPhoto,
+    deliverLongGroupResult,
+    bookListItem,
+    listActions,
+    searchPager,
+    searchRequestActions,
+    mergeKeyboards,
+    detailCardText,
+    bookActions
+});
 
-async function handleSearch(message, rawQuery, page = 1, editTarget = null) {
-    const query = rawQuery.trim();
-    if (!query) return sendMessage(message.chat.id, "用法：/search 关键词 [-qd|-fq] 或 /search #标签 [-qd|-fq]");
-    const { params, type, keyword, platform, cleanQuery } = parseSearchQuery(query);
-    if (!keyword) return sendMessage(message.chat.id, "用法：/search 关键词 [-qd|-fq] 或 /search #标签 [-qd|-fq]");
-    params.page = page;
-    const data = await client.searchBooks(params);
-    await client.recordSearch(keyword, type, data.total).catch(() => {});
-    const label = platformLabel(platform);
-    if (!data.rows.length) {
-        const searchKey = rememberSearch(query);
-        const text = [
-            `没找到「${escapeHtml(cleanQuery || query)}」在 ${escapeHtml(label)} 的相关书。`,
-            "可以提交到缺书需求列表，后台会统计后续补库优先级。"
-        ].join("\n");
-        const markup = searchRequestActions(searchKey);
-        if (editTarget) return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: `${label} 搜索无结果`, editTarget });
-        return sendMessage(message.chat.id, text, { reply_markup: markup });
-    }
-    const visibleCount = (Number(data.page || page) - 1) * Number(data.limit || SEARCH_LIMIT) + data.rows.length;
-    const totalText = data.total_is_estimated && data.has_more ? `${visibleCount}+` : data.total;
-    const header = `${escapeHtml(label)} · 找到 ${totalText} 本，当前第 ${data.page} 页`;
-    const searchKey = rememberSearch(query);
-    if (editTarget) {
-        const text = [`<b>${escapeHtml(query)}</b>`, header, "", ...data.rows.map((book, index) => bookListItem(book, (data.page - 1) * data.limit + index + 1))].join("\n\n");
-        const pager = searchPager(searchKey, data.page, data.total, data.limit);
-        const actions = listActions(data.rows);
-        await deliverLongGroupResult(message, text, { reply_markup: mergeKeyboards(actions, pager) }, { title: `${label} 搜索结果`, editTarget });
-    } else {
-        const text = [`<b>${escapeHtml(query)}</b>`, header, "", ...data.rows.map((book, index) => bookListItem(book, (data.page - 1) * data.limit + index + 1))].join("\n\n");
-        const pager = searchPager(searchKey, data.page, data.total, data.limit);
-        const actions = listActions(data.rows);
-        await deliverLongGroupResult(message, text, { reply_markup: mergeKeyboards(actions, pager) }, { title: `${label} 搜索结果` });
-    }
-}
-
-async function handleHot(message, args = "") {
-    const { platform } = parsePlatformSuffix(args, { defaultPlatform: DEFAULT_RECOMMEND_PLATFORM });
-    const data = await client.searchBooks({ page: 1, limit: SEARCH_LIMIT, sort: "popularity_desc", platform, cache_min: 1, fast: 1 });
-    const keywords = await client.hotKeywords(8).catch(() => ({ rows: [] }));
-    const title = keywords.rows?.length
-        ? `${platformLabel(platform)} 热门排行\n热搜：${keywords.rows.map((row) => `${row.keyword}(${row.count})`).join(" / ")}`
-        : `${platformLabel(platform)} 热门排行`;
-    await sendBookCards(message, data.rows, title);
-}
-
-function parseWordCloudArgs(args = "") {
-    const parsed = parsePlatformSuffix(args, { defaultPlatform: "" });
-    const limitMatch = parsed.query.match(/\b(\d{1,3})\b/);
-    const limit = limitMatch ? Math.max(20, Math.min(100, Number(limitMatch[1]))) : 60;
-    const sourceLimitMatch = parsed.query.match(/(?:source|books|书)[=:：]?(\d{2,4})/i);
-    const sourceLimit = sourceLimitMatch ? Math.max(50, Math.min(2000, Number(sourceLimitMatch[1]))) : 300;
-    return { platform: parsed.platform, limit, sourceLimit };
-}
-
-async function sendWordCloudResult(chatId, rows, renderOptions, caption) {
-    const svg = renderWordCloudSvgBuffer(rows, renderOptions);
-    try {
-        const png = renderWordCloudPngBuffer(rows, renderOptions);
-        return await sendPhoto(chatId, png, "po18-word-cloud.png", caption);
-    } catch (err) {
-        const dir = await fs.mkdtemp(path.join(os.tmpdir(), "po18-wordcloud-"));
-        const filePath = path.join(dir, "po18-word-cloud.svg");
-        try {
-            await fs.writeFile(filePath, svg);
-            return await sendDocument(chatId, filePath, caption);
-        } finally {
-            await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
-        }
-    }
-}
-
-async function handleWordCloud(message, args = "") {
-    const { platform, limit, sourceLimit } = parseWordCloudArgs(args);
-    const label = platformLabel(platform);
-    const progress = await sendMessage(message.chat.id, `正在生成 ${escapeHtml(label)} 热搜词云...`);
-    const payload = await client.wordCloud({ limit, sourceLimit, platform });
-    const rows = payload.rows || [];
-    if (!rows.length) {
-        return editMessage(message.chat.id, progress.message_id, "暂无热搜词或热门标签，先搜索几次或等榜单数据积累后再试。").catch(() => {});
-    }
-    const topWords = rows.slice(0, 8).map((row) => row.text).join(" / ");
-    const renderOptions = {
-        title: `${label} 热搜词云`,
-        subtitle: `热搜词 + 热门书籍标签 · ${rows.length} 个关键词`,
-        generatedAt: new Date(payload.generated_at || Date.now()).toLocaleString("zh-CN", { hour12: false })
-    };
-    await sendWordCloudResult(message.chat.id, rows, renderOptions, [
-        `${label} 热搜词云`,
-        `Top：${topWords}`,
-        `来源：热搜词 ${payload.sources?.hot_keywords || 0}，标签 ${payload.sources?.tags || 0}`
-    ].join("\n"));
-    await editMessage(message.chat.id, progress.message_id, "词云已生成。").catch(() => {});
-}
-
-async function handleRandom(message, args = "") {
-    const { platform } = parsePlatformSuffix(args, { defaultPlatform: DEFAULT_RECOMMEND_PLATFORM });
-    const page = Math.max(1, Math.floor(Math.random() * 30) + 1);
-    const data = await client.searchBooks({ page, limit: SEARCH_LIMIT, sort: "updated_desc", platform, cache_min: 1, fast: 1 });
-    if (!data.rows.length) return sendMessage(message.chat.id, "暂时没有可推荐的书。");
-    await sendBookCards(message, data.rows, `${platformLabel(platform)} 随机推荐`);
-}
-
-async function handleInfo(message, bookId, editTarget = null) {
-    const id = bookId.trim();
-    if (!id) return sendMessage(message.chat.id, "用法：/info 书号");
-    const [{ book }, chapters, reviews] = await Promise.all([
-        client.getBook(id),
-        client.getChapters(id),
-        client.listBookReviews(id, message.from?.id || "", 3).catch(() => null)
-    ]);
-    const text = detailCardText(book, chapters.rows || [], reviews);
-    const markup = bookActions(book.book_id, book.detail_url);
-    if (editTarget) return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "书籍详情", editTarget });
-    return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "书籍详情" });
-}
-
-async function handleFeedback(message, bookId, feedback, source = "info", editTarget = null) {
-    const id = String(bookId || "").trim();
-    if (!id) return sendMessage(message.chat.id, "缺少书号");
-    await ensureRegistered(message.from);
-    const result = await client.feedback(message.from.id, id, feedback, source);
-    const isLike = result.feedback === "like";
-    const text = result.already_exists
-        ? `这本你已经点过${isLike ? "喜欢" : "不喜欢"}了。`
-        : (isLike ? "记住了，以后往这个方向多推。" : "记下了，以后少推这类。");
-    if (editTarget) {
-        await handleInfo(message, id, editTarget).catch(() => {});
-        return text;
-    }
-    return sendMessage(message.chat.id, [
-        text,
-        `喜欢 ${result.counts?.like_count || 0} · 不喜欢 ${result.counts?.dislike_count || 0}`
-    ].join("\n"), { reply_markup: bookActions(id) });
-}
-
-async function handleSearchRequestSubmit(message, rawQuery) {
-    const query = String(rawQuery || "").trim();
-    if (!query) return "提交已过期，请重新搜索后再点提交。";
-    const { params, type, keyword, platform, cleanQuery } = parseSearchQuery(query);
-    if (!keyword) return "搜索词无效，请重新搜索后再提交。";
-    await ensureRegistered(message.from);
-    const result = await client.submitSearchRequest(message.from.id, {
-        query,
-        clean_query: cleanQuery || keyword || query,
-        type,
-        platform: platform || "",
-        result_count: 0,
-        source: "bot_search_no_result",
-        telegram_username: message.from.username || "",
-        nickname: userDisplayName(message.from)
-    });
-    return result.already_exists
-        ? "这个搜索需求你已经提交过了。"
-        : "已提交到缺书需求列表。";
-}
-
-async function handleCrowd(message, rawBook = "", editTarget = null) {
-    await ensureRegistered(message.from);
-    const bookId = parseBookId(rawBook);
-    if (!bookId) {
-        const data = await client.crowdLeaderboard(message.from.id, 10);
-        const stats = data.stats || {};
-        const text = [
-            "<b>众筹榜</b>",
-            "",
-            "用法：/crowd 书籍链接 或 /crowd 书号",
-            `每次支持消耗 ${CROWD_VOTE_COST} 银币。`,
-            "",
-            "<b>当前排行榜</b>",
-            ...(data.leaderboard || []).map((row) => `${row.rank || "-"} · ${escapeHtml(row.title || row.book_id)} · ${Number(row.supporter_count || 0)} 人`),
-            ...(data.leaderboard?.length ? [] : ["暂无投票记录"]),
-            "",
-            `总计：${Number(stats.total_books || 0)} 本书 · ${Number(stats.total_votes || 0)} 次支持 · ${Number(stats.total_silver || 0)} 银币`
-        ].join("\n");
-        if (editTarget) return deliverLongGroupResult(message, text, {}, { title: "众筹榜", editTarget });
-        return deliverLongGroupResult(message, text, {}, { title: "众筹榜" });
-    }
-    const result = await client.crowdBook(bookId, message.from.id, 10);
-    const text = crowdCardText(result, result.book?.supported_by_me);
-    const markup = crowdActions(result.book?.book_id || bookId, result.book?.detail_url || "");
-    if (editTarget) return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "众筹详情", editTarget });
-    return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "众筹详情" });
-}
-
-async function handleCrowdVote(message, bookId, editTarget = null) {
-    const id = parseBookId(bookId);
-    if (!id) return sendMessage(message.chat.id, "缺少书号");
-    await ensureRegistered(message.from);
-    const result = await client.crowdVote(id, message.from.id, CROWD_VOTE_COST);
-    const text = crowdCardText(result, true);
-    const markup = crowdActions(result.book?.book_id || id, result.book?.detail_url || "");
-    if (editTarget) {
-        await editMessage(editTarget.chatId, editTarget.messageId, text, { reply_markup: markup }).catch(() => {});
-        return result.already_exists
-            ? "你已支持过这本书"
-            : `支持成功，消耗 ${result.vote_cost || CROWD_VOTE_COST} 银币`;
-    }
-    return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "众筹详情" });
-}
-
-function parseReviewArgs(args = "") {
-    const text = String(args || "").trim();
-    if (!text) return { bookId: "", content: "" };
-    const first = text.split(/\s+/)[0] || "";
-    const bookId = parseBookId(first);
-    if (!bookId) return { bookId: "", content: "" };
-    return {
-        bookId,
-        content: text.slice(first.length).trim()
-    };
-}
-
-async function handleReviews(message, rawBook = "", editTarget = null) {
-    await ensureRegistered(message.from);
-    const bookId = parseBookId(rawBook);
-    if (!bookId) return sendMessage(message.chat.id, "用法：/reviews 书号");
-    const payload = await client.listBookReviews(bookId, message.from.id, 5);
-    const text = bookReviewsText(bookId, payload);
-    const markup = bookReviewsActions(bookId);
-    if (editTarget) return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "书评", editTarget });
-    return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "书评" });
-}
-
-async function handleReview(message, args = "") {
-    const { bookId, content } = parseReviewArgs(args);
-    if (!bookId || !content) return sendMessage(message.chat.id, "用法：/review 书号 内容");
-    await ensureRegistered(message.from);
-    const result = await client.publishBookReview(bookId, message.from.id, content);
-    const channelText = result.channel?.sent
-        ? "频道：已推送"
-        : result.channel?.skipped
-            ? `频道：未推送（${escapeHtml(result.channel.skipped)}）`
-            : result.channel?.error
-                ? `频道：推送失败（${escapeHtml(result.channel.error)}）`
-                : "频道：未推送";
-    const lines = [
-        "书评已发布。",
-        `书号：<code>${escapeHtml(bookId)}</code>`,
-        `消耗：${Number(result.cost || 0)} 铜`,
-        `当前铜币：${Number(result.user?.copper_coins || 0)}`,
-        channelText,
-        "",
-        `赞会给你 +100 铜，踩会扣 1 铜；同一用户重复点击不会重复结算。`
-    ];
-    return sendMessage(message.chat.id, lines.join("\n"), { reply_markup: bookReviewsActions(bookId) });
-}
-
-async function handleReviewVote(message, reviewId, vote, editTarget = null) {
-    await ensureRegistered(message.from);
-    const result = await client.voteBookReview(reviewId, message.from.id, vote);
-    if (editTarget && result.review) {
-        await editMessage(editTarget.chatId, editTarget.messageId, reviewChannelText(result.review), {
-            reply_markup: reviewVoteActions(result.review)
-        }).catch(() => {});
-    }
-    if (result.already_exists) return vote === "like" ? "你已经赞过了" : "你已经踩过了";
-    if (Number(result.reward_delta || 0) > 0) return `已赞，作者 +${result.reward_delta} 铜`;
-    if (Number(result.reward_delta || 0) < 0) return `已踩，作者 ${result.reward_delta} 铜`;
-    return "已更新";
-}
-
-async function handleMyFav(message) {
-    await ensureRegistered(message.from);
-    const data = await client.listBookshelf(message.from.id);
-    if (!data.rows.length) return sendMessage(message.chat.id, "你的书架还没有书。");
-    await sendBookCards(message, data.rows.slice(0, 20), `我的收藏：${data.rows.length} 本`);
-}
+const {
+    handleCrowd,
+    handleCrowdVote,
+    handleFeedback,
+    handleMyFav,
+    handleReview,
+    handleReviews,
+    handleReviewVote
+} = createSocialHandlers({
+    client,
+    crowdVoteCost: CROWD_VOTE_COST,
+    ensureRegistered,
+    handleInfo,
+    parseBookId,
+    sendBookCards,
+    sendMessage,
+    editMessage,
+    deliverLongGroupResult,
+    escapeHtml,
+    bookActions,
+    crowdCardText,
+    crowdActions,
+    bookReviewsText,
+    bookReviewsActions,
+    reviewChannelText,
+    reviewVoteActions
+});
 
 async function handleRedeem(message, args) {
     await ensureRegistered(message.from);
@@ -795,110 +640,6 @@ async function handlePikpak(message, args) {
     return deliverLongGroupResult(message, lines.join("\n"), {}, { title: "PikPak 目录" });
 }
 
-async function handlePo18Set(message, args) {
-    await ensureRegistered(message.from);
-    const parts = String(args || "").split(/\s+/).filter(Boolean);
-    if (parts.length < 2) return sendMessage(message.chat.id, "用法：/po18set 账号 密码");
-    await client.savePo18Account(message.from.id, { account: parts[0], password: parts.slice(1).join(" "), last_status: "account_saved" });
-    return sendMessage(message.chat.id, "PO18 账号密码已保存。接着发 /loginpo18 获取验证码。");
-}
-
-async function handleLoginPo18(message) {
-    await ensureRegistered(message.from);
-    const account = await client.po18Account(message.from.id);
-    if (!account.account) return sendMessage(message.chat.id, "先用 /po18set 账号 密码 保存登录信息。");
-    const loginUrl = "https://members.po18.tw/apps/login.php?u=https://www.po18.tw/site/alarm";
-    const { response, cookies } = await po18Fetch(loginUrl, { redirect: "follow" });
-    if (!response.ok) return sendMessage(message.chat.id, `获取登录页失败：HTTP ${response.status}`);
-    const html = await response.text();
-    const fields = parseLoginFields(html);
-    const captcha = await po18Fetch(`https://members.po18.tw/apps/images.php?${Date.now()}`, {
-        redirect: "follow",
-        headers: { Referer: loginUrl }
-    }, cookies);
-    if (!captcha.response.ok) {
-        return sendMessage(message.chat.id, `PO18 验证码获取失败：HTTP ${captcha.response.status}。稍后重试 /loginpo18，或先在浏览器确认 PO18 账号能打开登录页。`);
-    }
-    const contentType = String(captcha.response.headers.get("content-type") || "").toLowerCase();
-    const image = Buffer.from(await captcha.response.arrayBuffer());
-    if (!image.length) {
-        return sendMessage(message.chat.id, "PO18 验证码图片为空，可能是 PO18 登录页临时跳转、风控或验证码接口没返回图片。请稍后重试 /loginpo18。");
-    }
-    if (/text\/html|application\/json|text\/plain/.test(contentType)) {
-        return sendMessage(message.chat.id, "PO18 没有返回验证码图片，而是返回了页面内容。请稍后重试 /loginpo18，或先在浏览器打开 PO18 登录页确认没有验证/风控。");
-    }
-    po18LoginSessions.set(String(message.from.id), { fields, cookies: captcha.cookies, account: account.account, password: account.password || "", createdAt: Date.now() });
-    return sendPhoto(message.chat.id, image, "po18-captcha.jpg", "PO18 验证码来了，发 /po18code xxxx 提交。");
-}
-
-async function handlePo18Code(message, args) {
-    await ensureRegistered(message.from);
-    const code = String(args || "").trim().split(/\s+/)[0];
-    if (!code) return sendMessage(message.chat.id, "用法：/po18code 验证码");
-    const session = po18LoginSessions.get(String(message.from.id));
-    if (!session) return sendMessage(message.chat.id, "先发 /loginpo18 获取验证码。");
-    const fields = { ...session.fields, account: session.account, pwd: session.password, captcha: code };
-    if (!fields.remember_me) fields.remember_me = "1";
-    const body = new URLSearchParams(fields);
-    const result = await po18Fetch("https://members.po18.tw/apps/login.php", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            Origin: "https://members.po18.tw",
-            Referer: "https://members.po18.tw/apps/login.php?u=https://www.po18.tw/site/alarm"
-        },
-        body
-    }, session.cookies);
-    if (hasPo18Auth(result.cookies)) {
-        await client.savePo18Account(message.from.id, { account: session.account, password: session.password, cookies: result.cookies, last_status: "login_ok" });
-        po18LoginSessions.delete(String(message.from.id));
-        return sendMessage(message.chat.id, "PO18 登录成功，Cookie 已保存。");
-    }
-    return sendMessage(message.chat.id, "验证码不对或登录失败，重新发 /loginpo18 再试。");
-}
-
-async function handlePo18Status(message) {
-    await ensureRegistered(message.from);
-    const account = await client.po18Account(message.from.id);
-    const ok = account.cookies?.length && hasPo18Auth(account.cookies);
-    return sendMessage(message.chat.id, [
-        `PO18 账号：${escapeHtml(account.account || "未绑定")}`,
-        `状态：${ok ? "已保存 Cookie" : "未登录/已失效"}`,
-        account.updated_at ? `更新时间：${escapeHtml(String(account.updated_at).slice(0, 19).replace("T", " "))}` : ""
-    ].filter(Boolean).join("\n"));
-}
-
-async function handlePo18Logout(message) {
-    po18LoginSessions.delete(String(message.from.id));
-    await client.clearPo18Account(message.from.id);
-    return sendMessage(message.chat.id, "PO18 登录状态已清除。");
-}
-
-async function handleMyBookshelf(message) {
-    await ensureRegistered(message.from);
-    const account = await client.po18Account(message.from.id);
-    if (!account.cookies?.length || !hasPo18Auth(account.cookies)) return sendMessage(message.chat.id, "还没绑定 PO18 账号，先 /po18set 账号 密码，再 /loginpo18。");
-    const progress = await sendMessage(message.chat.id, `正在拉取你的 PO18 书架（账号：${escapeHtml(account.account || "?")}），请稍候...`);
-    const books = await fetchPo18Bookshelf(account.cookies);
-    if (!books.length) return editMessage(message.chat.id, progress.message_id, "没拉到已购书籍。要么书架是空的，要么 Cookie 失效了。").catch(() => {});
-    let added = 0;
-    for (const book of books) {
-        await client.addBookshelf(message.from.id, book.book_id).catch(() => {});
-        added += 1;
-    }
-    const lines = [`<b>我的 PO18 书架</b>（共 ${books.length} 本，已加入收藏 ${added} 本）`, ""];
-    for (const book of books.slice(0, 30)) {
-        lines.push(`• ${escapeHtml(book.title || book.book_id)} / ${escapeHtml(book.author || "未知")}`);
-        lines.push(`  /info_${book.book_id}`);
-    }
-    if (books.length > 30) lines.push("", `还有 ${books.length - 30} 本未展示。`);
-    const shareMarkup = { reply_markup: { inline_keyboard: [[{ text: "上传共享已购书架", callback_data: callback(["sharebs"]) }]] } };
-    await deliverLongGroupResult(message, lines.join("\n"), shareMarkup, {
-        title: "PO18 书架",
-        editTarget: { chatId: message.chat.id, messageId: progress.message_id }
-    }).catch(() => sendMessage(message.chat.id, lines.join("\n"), shareMarkup));
-}
-
 async function sendExport(chat, from, bookId, format) {
     const chatId = typeof chat === "object" ? chat.id : chat;
     const groupExport = typeof chat === "object" && isGroup(chat);
@@ -928,7 +669,7 @@ async function sendExport(chat, from, bookId, format) {
     const progress = await sendMessage(chatId, `正在生成 ${format.toUpperCase()}：<code>${escapeHtml(id)}</code>`);
     let result = null;
     try {
-        result = await buildExport(bookData.book, format, from);
+        result = await buildExport(bookData.book, format, from, { epub: pricingData.pricing?.epub || pricingData.epub || {} });
         const quote = exportQuote(result, pricing);
         const paidBook = Number(quote.paidChapters || 0) > 0;
         const user = permission.user || {};
@@ -1067,401 +808,6 @@ async function sendExport(chat, from, bookId, format) {
     } finally {
         if (result?.filePath) await fs.rm(path.dirname(result.filePath), { recursive: true, force: true }).catch(() => {});
     }
-}
-
-function shareBookId(book = {}) {
-    return String(book.book_id || book.bookId || book.bid || "").trim();
-}
-
-function shareBookTitle(book = {}) {
-    return book.title || shareBookId(book) || "-";
-}
-
-function isPo18ShareBook(book = {}) {
-    return /po18/i.test(String(book.platform || ""))
-        || /po18\.tw/i.test(String(book.detail_url || book.detailUrl || ""));
-}
-
-function normalizeShareBook(input = {}, fallbackId = "") {
-    const bookId = shareBookId(input) || String(fallbackId || "").trim();
-    return {
-        ...input,
-        book_id: bookId,
-        platform: input.platform || "po18",
-        detail_url: input.detail_url || input.detailUrl || (bookId ? `https://www.po18.tw/books/${bookId}/articles` : "")
-    };
-}
-
-function positiveNumber(value) {
-    const n = Number(value || 0);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function shareChapterOrder(chapter = {}, fallback = 0) {
-    const order = positiveNumber(chapter.chapter_order ?? chapter.chapterOrder ?? chapter.order);
-    return order || positiveNumber(fallback);
-}
-
-function boolish(value) {
-    if (value === true || value === 1) return true;
-    const text = String(value ?? "").trim().toLowerCase();
-    if (!text) return false;
-    return ["1", "true", "yes", "paid", "vip", "charge", "needpay"].includes(text)
-        || /付费|付費|收费|收費|订阅|訂閱|订购|訂購|购买|購買|vip/i.test(text);
-}
-
-function explicitFreeChapter(chapter = {}) {
-    if (chapter.is_free === true || chapter.isFree === true || chapter.free === true) return true;
-    for (const key of ["price", "chapterPrice", "chapter_price", "cost", "fee"]) {
-        if (chapter[key] !== undefined && Number(chapter[key]) === 0) return true;
-    }
-    const text = String(chapter.access || chapter.accessText || chapter.status || chapter.mark || "");
-    return /免费|免費/.test(text) && !/付费|付費|订阅|訂閱|订购|訂購|购买|購買/.test(text);
-}
-
-function explicitPaidChapter(chapter = {}) {
-    if (explicitFreeChapter(chapter)) return false;
-    for (const key of ["is_paid", "isPaid", "paid", "vip", "isVip", "is_vip", "requiresPayment", "requires_payment"]) {
-        if (chapter[key] !== undefined && boolish(chapter[key])) return true;
-    }
-    for (const key of ["price", "chapterPrice", "chapter_price", "cost", "fee"]) {
-        if (chapter[key] !== undefined && Number(chapter[key]) > 0) return true;
-    }
-    const text = String(chapter.access || chapter.accessText || chapter.status || chapter.mark || "");
-    return /付费|付費|收费|收費|订阅|訂閱|订购|訂購|购买|購買|vip/i.test(text);
-}
-
-function rewardableShareChapter(book = {}, chapter = {}, index = 0) {
-    if (isVolumeChapter(chapter) || explicitFreeChapter(chapter)) return false;
-    if (explicitPaidChapter(chapter)) return true;
-    const freeChapters = positiveNumber(book.free_chapters ?? book.freeChapters);
-    const paidChapters = positiveNumber(book.paid_chapters ?? book.paidChapters);
-    const totalChapters = positiveNumber(book.total_chapters ?? book.totalChapters ?? book.chapter_count ?? book.chapterCount);
-    const inferredFree = !freeChapters && paidChapters && totalChapters > paidChapters ? totalChapters - paidChapters : freeChapters;
-    if (inferredFree > 0) return shareChapterOrder(chapter, index) > inferredFree;
-    if (paidChapters > 0 && totalChapters > 0) return true;
-    return false;
-}
-
-async function resolveShareBook(bookId, fallbackBook = null) {
-    const fallback = fallbackBook ? normalizeShareBook(fallbackBook, bookId) : null;
-    try {
-        const data = await client.getBook(bookId);
-        if (data?.book) return normalizeShareBook({ ...(fallback || {}), ...data.book }, bookId);
-    } catch (err) {
-        if (!fallback) throw err;
-        console.warn(`[share] book metadata fallback ${bookId}: ${err.message || String(err)}`);
-    }
-    if (fallback) return fallback;
-    throw new Error(`book not found: ${bookId}`);
-}
-
-async function localShareChapters(bookId) {
-    try {
-        const data = await client.getChapters(bookId, true);
-        return (data.rows || []).filter((chapter) => String(chapter.chapter_id || chapter.chapterId || chapter.id || "").trim());
-    } catch (err) {
-        console.warn(`[share] local chapters unavailable ${bookId}: ${err.message || String(err)}`);
-        return [];
-    }
-}
-
-async function notifyShareProgress(options, state) {
-    if (typeof options.onProgress !== "function") return;
-    await options.onProgress(state).catch(() => {});
-}
-
-async function shareBookForUser(message, inputBook, options = {}) {
-    const bookId = shareBookId(inputBook);
-    if (!bookId) throw new Error("missing book id");
-    const uploader = userDisplayName(message.from);
-    const uploaderId = String(message.from.id || "");
-    const book = await resolveShareBook(bookId, inputBook);
-    await notifyShareProgress(options, { phase: "metadata", book });
-
-    const meta = await client.shareMetadata([bookToSharePayload(book, uploader, uploaderId)]);
-    const metaStats = meta.stats || {};
-    if (meta.success === false || Number(metaStats.failed || 0) > 0) {
-        return {
-            book,
-            status: "metadata_failed",
-            error: (metaStats.errors || ["共享书籍信息失败"])[0],
-            total: 0,
-            uploaded: 0,
-            rewardableUploaded: 0,
-            skipped: 0,
-            failed: 0
-        };
-    }
-
-    let chapters = await localShareChapters(book.book_id);
-    if (!chapters.length && isPo18ShareBook(book)) {
-        const account = options.account !== undefined ? options.account : await client.po18Account(message.from.id).catch(() => null);
-        if (account?.cookies?.length && hasPo18Auth(account.cookies)) {
-            await notifyShareProgress(options, { phase: "po18", book });
-            try {
-                chapters = (await fetchPo18PurchasedChapters(book.book_id, account.cookies))
-                    .filter((chapter) => String(chapter.chapter_id || chapter.chapterId || chapter.id || "").trim());
-            } catch (err) {
-                return {
-                    book,
-                    status: "chapter_fetch_failed",
-                    error: err.message || String(err),
-                    total: 0,
-                    uploaded: 0,
-                    rewardableUploaded: 0,
-                    skipped: 0,
-                    failed: 0
-                };
-            }
-        }
-    }
-
-    if (!chapters.length) {
-        return { book, status: "no_chapters", total: 0, uploaded: 0, rewardableUploaded: 0, skipped: 0, failed: 0 };
-    }
-
-    await notifyShareProgress(options, { phase: "cache", book, total: chapters.length });
-    const cache = await client.checkSharedCache(book.book_id);
-    const cachedIds = extractCacheIds(cache);
-    const uploadItems = chapters
-        .map((chapter, index) => ({ chapter, index: index + 1, chapterId: String(chapter.chapter_id || chapter.chapterId || chapter.id || index + 1) }))
-        .filter((item) => !cachedIds.has(item.chapterId));
-    const skipped = chapters.length - uploadItems.length;
-
-    if (!uploadItems.length) {
-        return { book, status: "cached", total: chapters.length, uploaded: 0, rewardableUploaded: 0, skipped, failed: 0 };
-    }
-
-    let uploaded = 0;
-    let rewardableUploaded = 0;
-    let failed = 0;
-    for (let i = 0; i < uploadItems.length; i += 1) {
-        const item = uploadItems[i];
-        if (i === 0 || (i + 1) % 10 === 0 || i + 1 === uploadItems.length) {
-            await notifyShareProgress(options, {
-                phase: "upload",
-                book,
-                current: i + 1,
-                uploadTotal: uploadItems.length,
-                skipped,
-                uploaded,
-                rewardableUploaded,
-                failed,
-                total: chapters.length
-            });
-        }
-        const payload = {
-            ...chapterToSharePayload(book, item.chapter, item.index, uploader, uploaderId),
-            source: "telegram_bot"
-        };
-        if (!payload.html || !payload.text) {
-            failed += 1;
-            continue;
-        }
-        try {
-            await client.shareChapter(payload);
-            uploaded += 1;
-            if (rewardableShareChapter(book, item.chapter, item.index)) rewardableUploaded += 1;
-        } catch (err) {
-            failed += 1;
-            console.error(`[share] ${book.book_id}/${payload.chapterId}: ${err.message}`);
-        }
-    }
-
-    return {
-        book,
-        status: failed ? (uploaded ? "partial" : "failed") : "uploaded",
-        total: chapters.length,
-        uploaded,
-        rewardableUploaded,
-        skipped,
-        failed
-    };
-}
-
-async function handleShare(message, bookId) {
-    const id = String(bookId || "").trim();
-    if (!id) return sendMessage(message.chat.id, "用法：共享 书号");
-    await ensureRegistered(message.from);
-    const progress = await sendMessage(message.chat.id, `正在共享：<code>${escapeHtml(id)}</code>\n准备书籍信息...`);
-    const stats = await shareBookForUser(message, { book_id: id }, {
-        onProgress: (state) => {
-            const title = escapeHtml(shareBookTitle(state.book));
-            if (state.phase === "metadata") {
-                return editMessage(message.chat.id, progress.message_id, `正在共享：<code>${escapeHtml(id)}</code>\n准备书籍信息...`);
-            }
-            if (state.phase === "po18") {
-                return editMessage(message.chat.id, progress.message_id, [
-                    "已共享书籍信息，本地没有正文缓存。",
-                    `书籍：${title}`,
-                    "正在用 PO18 登录态拉取已购章节..."
-                ].join("\n"));
-            }
-            if (state.phase === "cache") {
-                return editMessage(message.chat.id, progress.message_id, `已共享书籍信息，正在检查正文缓存...\n书籍：${title}`);
-            }
-            if (state.phase === "upload") {
-                return editMessage(message.chat.id, progress.message_id, [
-                    `正在上传正文：${state.current}/${state.uploadTotal}`,
-                    `书籍：${title}`,
-                    `已上传 ${state.uploaded} 章 / 可奖励付费新增 ${state.rewardableUploaded || 0} 章`,
-                    `跳过 ${state.skipped} 章 / 失败 ${state.failed} 章`
-                ].join("\n"));
-            }
-            return null;
-        }
-    });
-
-    if (stats.status === "metadata_failed") {
-        await editMessage(message.chat.id, progress.message_id, `共享失败：${escapeHtml(stats.error || "共享书籍信息失败")}`).catch(() => {});
-        return;
-    }
-    if (stats.status === "chapter_fetch_failed") {
-        await editMessage(message.chat.id, progress.message_id, [
-            "已共享书籍信息，但拉取 PO18 已购章节失败。",
-            `书籍：${escapeHtml(shareBookTitle(stats.book))}`,
-            `原因：${escapeHtml(stats.error || "未知错误")}`
-        ].join("\n")).catch(() => {});
-        return;
-    }
-    if (stats.status === "no_chapters") {
-        await editMessage(message.chat.id, progress.message_id, [
-            "已共享书籍信息，但本地没有正文缓存。",
-            `书籍：${escapeHtml(shareBookTitle(stats.book))}`,
-            "如果这是 PO18 已购书，请先 /po18set 账号 密码，再 /loginpo18 后重试。"
-        ].join("\n")).catch(() => {});
-        return;
-    }
-    if (stats.status === "cached") {
-        await editMessage(message.chat.id, progress.message_id, `正文已是最新。\n共 ${stats.total} 章，跳过 ${stats.skipped} 章。`).catch(() => {});
-        return;
-    }
-
-    await editMessage(message.chat.id, progress.message_id, [
-        "正文上传完成。",
-        `书籍：${escapeHtml(shareBookTitle(stats.book))}`,
-        `新增 ${stats.uploaded} 章 / 可奖励付费新增 ${stats.rewardableUploaded || 0} 章`,
-        `跳过 ${stats.skipped} 章 / 失败 ${stats.failed} 章`
-    ].join("\n")).catch(() => {});
-}
-
-function bulkShareProgressText(summary, state = null) {
-    const lines = [
-        "<b>PO18 已购书架上传共享</b>",
-        `进度：${summary.done}/${summary.total}`,
-        `成功：${summary.successBooks} 本 / 奖励：${summary.rewardCopper} 铜币`,
-        `新增：${summary.uploadedChapters} 章 / 可奖励付费新增：${summary.rewardableChapters} 章`,
-        `跳过：${summary.skippedChapters} 章 / 失败章节：${summary.failedChapters} 章`,
-        `失败书籍：${summary.failedBooks} 本`
-    ];
-    if (state?.book) {
-        lines.push("", `当前：${escapeHtml(shareBookTitle(state.book))}（${escapeHtml(shareBookId(state.book))}）`);
-        if (state.phase === "po18") lines.push("状态：正在用 PO18 登录态拉取已购章节");
-        else if (state.phase === "cache") lines.push(`状态：检查共享缓存（共 ${state.total || 0} 章）`);
-        else if (state.phase === "upload") lines.push(`状态：上传 ${state.current}/${state.uploadTotal}，本书已上传 ${state.uploaded} 章，可奖励 ${state.rewardableUploaded || 0} 章`);
-        else lines.push("状态：准备书籍信息");
-    }
-    return lines.join("\n");
-}
-
-async function handleShareBookshelf(message) {
-    await ensureRegistered(message.from);
-    const account = await client.po18Account(message.from.id);
-    if (!account.cookies?.length || !hasPo18Auth(account.cookies)) return sendMessage(message.chat.id, "还没绑定 PO18 账号，先 /po18set 账号 密码，再 /loginpo18。");
-    const progress = await sendMessage(message.chat.id, `正在拉取你的 PO18 书架（账号：${escapeHtml(account.account || "?")}），准备上传共享...`);
-    const books = await fetchPo18Bookshelf(account.cookies);
-    if (!books.length) {
-        await editMessage(message.chat.id, progress.message_id, "没拉到已购书籍。要么书架是空的，要么 Cookie 失效了。").catch(() => {});
-        return { total: 0 };
-    }
-
-    for (const book of books) {
-        await client.addBookshelf(message.from.id, book.book_id).catch(() => {});
-    }
-
-    const summary = {
-        total: books.length,
-        done: 0,
-        successBooks: 0,
-        failedBooks: 0,
-        rewardedBooks: 0,
-        rewardCopper: 0,
-        uploadedChapters: 0,
-        rewardableChapters: 0,
-        skippedChapters: 0,
-        failedChapters: 0
-    };
-    let lastEditAt = 0;
-    const editProgress = async (state = null, force = false) => {
-        const now = Date.now();
-        if (!force && now - lastEditAt < 2500) return;
-        lastEditAt = now;
-        await editMessage(message.chat.id, progress.message_id, bulkShareProgressText(summary, state)).catch(() => {});
-    };
-
-    await editProgress(null, true);
-    for (const book of books) {
-        let stats;
-        try {
-            stats = await shareBookForUser(message, book, {
-                account,
-                onProgress: (state) => editProgress(state, false)
-            });
-        } catch (err) {
-            stats = {
-                book: normalizeShareBook(book),
-                status: "failed",
-                error: err.message || String(err),
-                total: 0,
-                uploaded: 0,
-                rewardableUploaded: 0,
-                skipped: 0,
-                failed: 0
-            };
-        }
-
-        summary.done += 1;
-        summary.uploadedChapters += Number(stats.uploaded || 0);
-        summary.rewardableChapters += Number(stats.rewardableUploaded || 0);
-        summary.skippedChapters += Number(stats.skipped || 0);
-        summary.failedChapters += Number(stats.failed || 0);
-        if (Number(stats.uploaded || 0) > 0) summary.successBooks += 1;
-        if (stats.status === "failed" || stats.status === "metadata_failed" || stats.status === "chapter_fetch_failed" || stats.status === "no_chapters") summary.failedBooks += 1;
-
-        if (Number(stats.rewardableUploaded || 0) > PO18_BOOKSHELF_SHARE_REWARD_MIN_CHAPTERS && PO18_BOOKSHELF_SHARE_REWARD_COPPER > 0) {
-            try {
-                await client.addCurrency(
-                    message.from.id,
-                    "copper",
-                    PO18_BOOKSHELF_SHARE_REWARD_COPPER,
-                    "po18_bookshelf_share_reward",
-                    `${shareBookId(stats.book)} paid_uploaded=${stats.rewardableUploaded} uploaded=${stats.uploaded} tgid=${message.from.id}`
-                );
-                summary.rewardedBooks += 1;
-                summary.rewardCopper += PO18_BOOKSHELF_SHARE_REWARD_COPPER;
-            } catch (err) {
-                console.warn(`[share-bookshelf] reward failed ${shareBookId(stats.book)}: ${err.message || String(err)}`);
-            }
-        }
-        await client.recordUserEvent(
-            message.from.id,
-            "po18_bookshelf_share",
-            `${shareBookId(stats.book)} status=${stats.status} uploaded=${stats.uploaded || 0} paid_uploaded=${stats.rewardableUploaded || 0} skipped=${stats.skipped || 0} failed=${stats.failed || 0}`
-        ).catch(() => {});
-        await editProgress({ phase: "done", book: stats.book }, true);
-    }
-
-    await editMessage(message.chat.id, progress.message_id, [
-        "<b>PO18 已购书架上传共享完成</b>",
-        `处理：${summary.done}/${summary.total} 本`,
-        `成功新增：${summary.successBooks} 本 / 失败：${summary.failedBooks} 本`,
-        `新增章节：${summary.uploadedChapters} / 可奖励付费新增：${summary.rewardableChapters}`,
-        `跳过：${summary.skippedChapters} / 失败章节：${summary.failedChapters}`,
-        `奖励：${summary.rewardedBooks} 本，合计 ${summary.rewardCopper} 铜币`,
-        `奖励规则：单本本次新增付费章节 > ${PO18_BOOKSHELF_SHARE_REWARD_MIN_CHAPTERS} 章奖励 ${PO18_BOOKSHELF_SHARE_REWARD_COPPER} 铜币；免费章节和已有章节不计入。`
-    ].join("\n")).catch(() => {});
-    return summary;
 }
 
 async function handleMessage(message) {
@@ -1624,6 +970,15 @@ const botRuntime = createTelegramPollingRuntime({
     onConnected(user) {
         botUser = user;
         console.log(`[telegram-bot] @${user.username} connected to ${client.baseUrl}`);
+        if (!persistentJobsRecovered) {
+            persistentJobsRecovered = true;
+            recoverPersistentJobs(persistentJobTypes, recoverSystemJob)
+                .then((count) => console.log(`[bot-task] recovered ${count} persistent jobs`))
+                .catch((err) => {
+                    persistentJobsRecovered = false;
+                    console.warn(`[bot-task] recovery failed: ${err.message || String(err)}`);
+                });
+        }
     }
 });
 

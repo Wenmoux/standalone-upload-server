@@ -106,6 +106,7 @@ import { api } from "../services/api";
 import { dateOnly, number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const rows = ref([]);
 const loading = ref(false);
 const modal = reactive({ open: false, id: null, title: "", model: {} });
@@ -220,17 +221,30 @@ async function save(form) {
 async function grant(row) {
   const duration = window.prompt("授权时长：7d / 30d / 365d / permanent", "30d");
   if (!duration) return;
+  const confirmation = await confirmAction({
+    title: "调整会员权限",
+    message: `将为 ${row.nickname || row.username || row.id} 设置会员时长：${duration}。`,
+    confirmLabel: "确认授权"
+  });
+  if (!confirmation.confirmed) return;
   await api(`/admin-api/users/${row.id}/membership`, {
     method: "POST",
-    body: JSON.stringify({ duration_type: duration })
+    body: JSON.stringify({ duration_type: duration, reason: confirmation.reason })
   });
   await load();
   toast("已授权");
 }
 
 async function remove(row) {
-  if (!window.confirm("删除该用户？")) return;
-  await api(`/admin-api/users/${row.id}`, { method: "DELETE" });
+  const label = row.nickname || row.username || row.id;
+  const confirmation = await confirmAction({
+    title: "删除用户",
+    message: `将永久删除用户 ${label}，该操作不可恢复。`,
+    confirmLabel: "删除用户",
+    phrase: `DELETE ${row.id}`
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/users/${row.id}`, { method: "DELETE", body: JSON.stringify({ reason: confirmation.reason }) });
   await load();
   toast("已删除用户");
 }

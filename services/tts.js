@@ -335,7 +335,7 @@ async function synthesizeAzureTts({ text, settings, rate, pitch, volume }) {
     return Buffer.from(await response.arrayBuffer());
 }
 
-async function synthesizeElevenLabsTts({ text, settings, rate }) {
+async function synthesizeElevenLabsTts({ text, settings }) {
     const apiKey = String(settings.ttsElevenKey || settings.apiKey || "").trim();
     const voiceId = String(settings.ttsElevenVoiceId || settings.voice || "").trim();
     if (!apiKey || !voiceId) throw Object.assign(new Error("请填写 ElevenLabs API Key 和 Voice ID"), { status: 400 });

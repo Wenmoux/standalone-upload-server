@@ -72,6 +72,8 @@ function baseDeps(overrides = {}) {
         chapterColumns: [],
         numericChapterFields: new Set(),
         saveChapter: async () => {},
+        sendDirectMessage: async () => {},
+        readerPublicUrl: "https://reader.example",
         ...overrides
     };
 }
@@ -103,6 +105,51 @@ test("admin content routes protect and expose cdks, transactions and crowd data"
         const requestsBody = await requests.json();
         assert.equal(requestsBody.rows[0].query, "missing");
         assert.equal(requestsBody.summary.total, 2);
+    });
+});
+
+test("admin search request workflow marks cached requests and notifies telegram users once", async () => {
+    const sent = [];
+    const updates = [];
+    const router = createAdminContentRoutes(baseDeps({
+        query: async (sql, params = []) => {
+            updates.push({ sql, params });
+            if (/RETURNING id, telegram_id/.test(sql)) {
+                return {
+                    rows: [
+                        { id: 1, telegram_id: "42", telegram_username: "reader", nickname: "读者", notified_at: null },
+                        { id: 2, telegram_id: "42", telegram_username: "reader", nickname: "读者", notified_at: null }
+                    ]
+                };
+            }
+            return { rows: [] };
+        },
+        sendDirectMessage: async (chatId, text, options) => sent.push({ chatId, text, options })
+    }));
+
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/admin-api/search-requests/resolve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({
+                query: "缺少的书",
+                platform: "qidian",
+                search_type: "search",
+                status: "cached",
+                book_id: "123",
+                note: "已经缓存完成",
+                notify: true
+            })
+        });
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.updated, 2);
+        assert.equal(body.notification.sent, 1);
+        assert.equal(sent.length, 1);
+        assert.equal(sent[0].chatId, "42");
+        assert.match(sent[0].text, /缺少的书/);
+        assert.equal(sent[0].options.replyMarkup.inline_keyboard[0][0].url, "https://reader.example/#/detail?bid=123");
+        assert.ok(updates.some((item) => /notified_at=CURRENT_TIMESTAMP/.test(item.sql)));
     });
 });
 

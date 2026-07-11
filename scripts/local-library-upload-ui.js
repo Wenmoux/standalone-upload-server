@@ -312,6 +312,8 @@ function createApp(defaults = {}) {
     return app;
 }
 
+// Legacy fallback kept temporarily for CLI rollback compatibility.
+// eslint-disable-next-line no-unused-vars
 function pageHtml(defaults = {}) {
     const state = {
         root: defaults.root || DEFAULT_ROOT,

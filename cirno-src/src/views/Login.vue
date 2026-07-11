@@ -40,7 +40,7 @@
         </div>
         <div class="button">
           <a-checkbox v-model:checked="remUser" class="checkbox" v-if="mode === 'login'">
-            记住密码
+            记住账号
           </a-checkbox>
           <div class="mode-tip" v-else>注册后会自动进入书架</div>
           <div class="login-button">
@@ -75,6 +75,7 @@
 
 <script>
 import sideImage from '@/assets/side.png'
+import { markReaderSession } from '@/utils/reader-session'
 let telegramScriptLoading = null
 
 export default {
@@ -93,11 +94,19 @@ export default {
     }
   },
   created() {
-    if (localStorage.getItem('loginInfo')) {
-      let json = JSON.parse(localStorage.getItem('loginInfo'))
-      this.userName = json.userName
-      this.password = json.passwd
-      this.remUser = true
+    const stored = localStorage.getItem('loginInfo')
+    if (!stored) return
+    try {
+      const json = JSON.parse(stored)
+      this.userName = String(json.userName || '')
+      this.remUser = Boolean(this.userName)
+      if (this.remUser) {
+        localStorage.setItem('loginInfo', JSON.stringify({ userName: this.userName }))
+      } else {
+        localStorage.removeItem('loginInfo')
+      }
+    } catch {
+      localStorage.removeItem('loginInfo')
     }
   },
   methods: {
@@ -132,15 +141,14 @@ export default {
       return true
     },
     applyLogin(res) {
-      localStorage.setItem('login_token', res.data.login_token || 'local-session')
+      markReaderSession(res.data.reader_info || {})
       localStorage.setItem('account', res.data.reader_info.account)
       const isPasswordLogin = !res.data.telegram_login
       if (isPasswordLogin && this.remUser && this.mode === 'login') {
         localStorage.setItem(
           'loginInfo',
           JSON.stringify({
-            userName: this.userName,
-            passwd: this.password
+            userName: this.userName
           })
         )
       }

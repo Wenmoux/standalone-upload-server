@@ -10,7 +10,7 @@ function createAdminConfigRoutes(options = {}) {
     const dailyReportConfig = options.dailyReportConfig || (async () => ({ enabled: false, time: "22:00", adminIds: "", lastDate: "" }));
     const dailyReportRecipients = options.dailyReportRecipients || (async () => []);
     const channelDailyReportRecipients = options.channelDailyReportRecipients || (async () => []);
-    const parseTelegramPushTypes = options.parseTelegramPushTypes || ((value) => Array.isArray(value) ? value : []);
+    const parseTelegramPushTypes = options.parseTelegramPushTypes || ((value) => (Array.isArray(value) ? value : []));
     const parseDailyReportTime = options.parseDailyReportTime || ((value) => ({ value: String(value || "22:00") }));
     const platformConfigPayload = options.platformConfigPayload || (async () => ({ labels: {} }));
     const cleanPlatformKey = options.cleanPlatformKey || ((value) => String(value || "").trim());
@@ -27,10 +27,9 @@ function createAdminConfigRoutes(options = {}) {
             const loginBotId = telegramLoginBotIdFromToken(effectiveToken);
             const pushConfig = await telegramPushConfig();
             const reportConfig = await dailyReportConfig();
-            const reportRecipients = [...new Set([
-                ...(await dailyReportRecipients(reportConfig)),
-                ...(await channelDailyReportRecipients())
-            ])];
+            const reportRecipients = [
+                ...new Set([...(await dailyReportRecipients(reportConfig)), ...(await channelDailyReportRecipients())])
+            ];
             res.json({
                 enabled: pushConfig.enabled,
                 pushTypes: pushConfig.pushTypes,
@@ -43,7 +42,7 @@ function createAdminConfigRoutes(options = {}) {
                 dailyReportLastDate: reportConfig.lastDate,
                 loginEnabled: !!loginBotId,
                 loginBotId,
-                loginTokenSource: storedToken ? "admin_config" : (fallbackToken ? "env" : ""),
+                loginTokenSource: storedToken ? "admin_config" : fallbackToken ? "env" : "",
                 loginMaxAgeSeconds: Number(process.env.TELEGRAM_LOGIN_MAX_AGE_SECONDS || 86400)
             });
         } catch (err) {
@@ -60,9 +59,12 @@ function createAdminConfigRoutes(options = {}) {
             await configSet("telegram_push_types", JSON.stringify(selectedPushTypes));
             await configSet("telegram_bot_token", req.body.botToken || "");
             await configSet("telegram_chat_id", req.body.chatId || "");
-            if ("dailyReportEnabled" in (req.body || {})) await configSet("telegram_daily_report_enabled", req.body.dailyReportEnabled ? "1" : "0");
-            if ("dailyReportTime" in (req.body || {})) await configSet("telegram_daily_report_time", parseDailyReportTime(req.body.dailyReportTime).value);
-            if ("dailyReportAdminIds" in (req.body || {})) await configSet("telegram_daily_report_admin_ids", String(req.body.dailyReportAdminIds || "").trim());
+            if ("dailyReportEnabled" in (req.body || {}))
+                await configSet("telegram_daily_report_enabled", req.body.dailyReportEnabled ? "1" : "0");
+            if ("dailyReportTime" in (req.body || {}))
+                await configSet("telegram_daily_report_time", parseDailyReportTime(req.body.dailyReportTime).value);
+            if ("dailyReportAdminIds" in (req.body || {}))
+                await configSet("telegram_daily_report_admin_ids", String(req.body.dailyReportAdminIds || "").trim());
             res.json({ success: true });
         } catch (err) {
             next(err);
@@ -80,7 +82,8 @@ function createAdminConfigRoutes(options = {}) {
     router.put("/admin-api/config/platforms", requireAdmin, async (req, res, next) => {
         try {
             const input = req.body?.labels || {};
-            if (!input || typeof input !== "object" || Array.isArray(input)) return res.status(400).json({ error: "labels must be an object" });
+            if (!input || typeof input !== "object" || Array.isArray(input))
+                return res.status(400).json({ error: "labels must be an object" });
             const labels = {};
             for (const [key, label] of Object.entries(input)) {
                 const cleanKey = cleanPlatformKey(key);
@@ -118,15 +121,19 @@ function createAdminConfigRoutes(options = {}) {
             const nextConfig = exportPricingPayload({
                 unlockCost: req.body?.unlockCost ?? req.body?.unlock_cost ?? current.unlockCost,
                 freeCopperCost: req.body?.freeCopperCost ?? req.body?.free_copper_cost ?? current.freeCopperCost,
-                paidChapterSilverCost: req.body?.paidChapterSilverCost ?? req.body?.paid_chapter_silver_cost ?? current.paidChapterSilverCost,
-                dailyQuotaByLevel: req.body?.dailyQuotaByLevel ?? req.body?.daily_quota_by_level ?? current.dailyQuotaByLevel
+                paidChapterSilverCost:
+                    req.body?.paidChapterSilverCost ?? req.body?.paid_chapter_silver_cost ?? current.paidChapterSilverCost,
+                dailyQuotaByLevel: req.body?.dailyQuotaByLevel ?? req.body?.daily_quota_by_level ?? current.dailyQuotaByLevel,
+                epub: req.body?.epub ?? req.body?.epub_config ?? current.epub
             });
-            await Promise.all([
+            const writes = [
                 configSet("bot_export_unlock_cost", String(nextConfig.unlockCost)),
                 configSet("bot_export_free_copper_cost", String(nextConfig.freeCopperCost)),
                 configSet("bot_export_paid_chapter_silver_cost", String(nextConfig.paidChapterSilverCost)),
                 configSet("bot_export_daily_quota_by_level", JSON.stringify(nextConfig.dailyQuotaByLevel || {}))
-            ]);
+            ];
+            if (nextConfig.epub) writes.push(configSet("bot_epub_style_config", JSON.stringify(nextConfig.epub)));
+            await Promise.all(writes);
             res.json({ success: true, ...nextConfig });
         } catch (err) {
             next(err);

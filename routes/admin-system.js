@@ -10,9 +10,13 @@ function createAdminSystemRoutes(options = {}) {
     const collectAdminSystemOverview = options.collectAdminSystemOverview || (async () => ({}));
     const collectDataQuality = options.collectDataQuality || (async () => ({}));
     const collectBotAdminOverview = options.collectBotAdminOverview || (async () => ({}));
+    const readerRumSummary = options.readerRumSummary || (async () => ({ metrics: [], routes: [] }));
     const botCommandSettings = options.botCommandSettings || (async () => ({ commands: [] }));
     const saveBotCommandSettings = options.saveBotCommandSettings || (async () => ({ commands: [] }));
     const listBotAuditLogs = options.listBotAuditLogs || (async () => ({ rows: [] }));
+    const listAdminAuditLogs = options.listAdminAuditLogs || (async () => ({ rows: [], total: 0, page: 1, limit: 50 }));
+    const listApiTokens = options.listApiTokens || (async () => ({ rows: [] }));
+    const revokeApiToken = options.revokeApiToken;
     const listSystemJobs = options.listSystemJobs || (async () => ({ rows: [] }));
     const getSystemJob = options.getSystemJob || (async () => null);
     const retrySystemJob = options.retrySystemJob;
@@ -53,6 +57,14 @@ function createAdminSystemRoutes(options = {}) {
     router.get("/admin-api/system/overview", requireAdmin, async (req, res, next) => {
         try {
             res.json(await collectAdminSystemOverview());
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/admin-api/reader-rum", requireAdmin, async (req, res, next) => {
+        try {
+            res.json(await readerRumSummary({ days: req.query.days }));
         } catch (err) {
             next(err);
         }
@@ -159,6 +171,35 @@ function createAdminSystemRoutes(options = {}) {
                 file: runtimeLogFile,
                 text: filterLogText(readLogTail(runtimeLogFile), filter)
             });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/admin-api/system/admin-audit", requireAdmin, async (req, res, next) => {
+        try {
+            res.json(await listAdminAuditLogs(req.query || {}));
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/admin-api/system/api-tokens", requireAdmin, async (req, res, next) => {
+        try {
+            res.json(await listApiTokens());
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.post("/admin-api/system/api-tokens/:id/revoke", requireAdmin, async (req, res, next) => {
+        try {
+            if (typeof revokeApiToken !== "function") return res.status(503).json({ error: "API token management unavailable" });
+            const id = Number(req.params.id);
+            if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid API token id" });
+            const token = await revokeApiToken(id);
+            if (!token) return res.status(404).json({ error: "API token not found" });
+            res.json({ success: true, token });
         } catch (err) {
             next(err);
         }

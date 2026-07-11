@@ -1,4 +1,4 @@
-const { query } = require("../pg-store");
+const { pool, query } = require("../pg-store");
 
 function adminActor(req) {
     return req?.session?.adminUser?.username || "admin";
@@ -51,14 +51,57 @@ async function collectSystemJobInfo() {
     return info;
 }
 
-async function createSystemJob({ type, input = {}, createdBy = "" } = {}) {
-    const result = await query(
-        `INSERT INTO system_jobs(type, status, progress, input_json, created_by)
-         VALUES ($1, 'queued', 0, $2::jsonb, $3)
-         RETURNING id, type, status, progress, created_at`,
-        [String(type || "job").slice(0, 120), JSON.stringify(input || {}), String(createdBy || "").slice(0, 120)]
-    );
-    return result.rows[0];
+async function collectSystemJobMetrics() {
+    try {
+        const exists = await query("SELECT to_regclass('public.system_jobs')::text regclass");
+        if (!exists.rows[0]?.regclass) return { available: false };
+        const result = await query(
+            `SELECT
+                COUNT(*) FILTER (WHERE status='queued')::int queued,
+                COUNT(*) FILTER (WHERE status='running')::int running,
+                COUNT(*) FILTER (WHERE status='succeeded')::int succeeded,
+                COUNT(*) FILTER (WHERE status='failed')::int failed,
+                COUNT(*) FILTER (WHERE status='canceled')::int canceled,
+                COUNT(*) FILTER (WHERE status='running' AND lease_expires_at < CURRENT_TIMESTAMP)::int expired_leases,
+                COUNT(*) FILTER (WHERE cancel_requested_at IS NOT NULL AND status='running')::int cancel_requested,
+                COALESCE(SUM(GREATEST(attempt - 1, 0)), 0)::int retries,
+                COUNT(*) FILTER (WHERE status='failed' AND attempt >= max_attempts)::int exhausted
+             FROM system_jobs`
+        );
+        return { available: true, ...result.rows[0] };
+    } catch (err) {
+        return { available: false, error: err.message || String(err) };
+    }
+}
+
+async function createSystemJob({ type, input = {}, createdBy = "", priority = 0, maxAttempts = 3, idempotencyKey = "", nextRunAt = null } = {}) {
+    const params = [
+        String(type || "job").slice(0, 120),
+        JSON.stringify(input || {}),
+        String(createdBy || "").slice(0, 120),
+        Math.max(-1000, Math.min(1000, Math.trunc(Number(priority || 0)))),
+        Math.max(1, Math.min(100, Math.trunc(Number(maxAttempts || 3)))),
+        String(idempotencyKey || "").trim().slice(0, 240),
+        nextRunAt || null
+    ];
+    try {
+        const result = await query(
+            `INSERT INTO system_jobs(type, status, progress, input_json, created_by, priority, max_attempts, idempotency_key, next_run_at)
+             VALUES ($1, 'queued', 0, $2::jsonb, $3, $4, $5, $6, $7)
+             RETURNING id, type, status, progress, priority, max_attempts, attempt, idempotency_key, next_run_at, created_at`,
+            params
+        );
+        return result.rows[0];
+    } catch (err) {
+        if (err.code !== "23505" || !params[5]) throw err;
+        const existing = await query(
+            `SELECT id, type, status, progress, priority, max_attempts, attempt, idempotency_key, next_run_at, created_at
+             FROM system_jobs WHERE idempotency_key=$1 AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
+            [params[5]]
+        );
+        if (existing.rows[0]) return { ...existing.rows[0], duplicate: true };
+        throw err;
+    }
 }
 
 async function updateSystemJob(id, fields = {}) {
@@ -68,6 +111,10 @@ async function updateSystemJob(id, fields = {}) {
         progress: fields.progress,
         result_json: fields.result ? JSON.stringify(fields.result) : undefined,
         error: fields.error,
+        next_run_at: fields.nextRunAt,
+        heartbeat_at: fields.heartbeat ? "CURRENT_TIMESTAMP" : undefined,
+        lease_expires_at: fields.leaseExpiresAt,
+        cancel_requested_at: fields.cancelRequested ? "CURRENT_TIMESTAMP" : undefined,
         started_at: fields.started ? "CURRENT_TIMESTAMP" : undefined,
         finished_at: fields.finished ? "CURRENT_TIMESTAMP" : undefined
     };
@@ -75,7 +122,7 @@ async function updateSystemJob(id, fields = {}) {
     const params = [];
     for (const [key, value] of Object.entries(patch)) {
         if (value === undefined) continue;
-        if (key === "started_at" || key === "finished_at") {
+        if (["started_at", "finished_at", "heartbeat_at", "cancel_requested_at"].includes(key)) {
             sets.push(`${key} = ${value}`);
             continue;
         }
@@ -88,7 +135,9 @@ async function updateSystemJob(id, fields = {}) {
         `UPDATE system_jobs
          SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP
          WHERE id = $${params.length}
-         RETURNING id, type, status, progress, error, created_at, started_at, finished_at, updated_at`,
+         RETURNING id, type, status, progress, error, priority, max_attempts, attempt, idempotency_key,
+                   next_run_at, lease_expires_at, heartbeat_at, cancel_requested_at,
+                   created_at, started_at, finished_at, updated_at`,
         params
     );
     return result.rows[0] || null;
@@ -122,7 +171,7 @@ async function runTrackedJob(req, type, input, worker) {
     }
 }
 
-async function listSystemJobs({ page = 1, limit = 30, status = "", type = "" } = {}) {
+async function listSystemJobs({ page = 1, limit = 30, status = "", type = "", createdBy = "" } = {}) {
     const safePage = Math.max(1, Number(page || 1));
     const safeLimit = Math.min(100, Math.max(1, Number(limit || 30)));
     const offset = (safePage - 1) * safeLimit;
@@ -136,10 +185,16 @@ async function listSystemJobs({ page = 1, limit = 30, status = "", type = "" } =
         params.push(String(type).trim());
         where.push(`type = $${params.length}`);
     }
+    if (createdBy) {
+        params.push(String(createdBy).trim());
+        where.push(`created_by = $${params.length}`);
+    }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const total = await query(`SELECT COUNT(*)::int count FROM system_jobs ${whereSql}`, params);
     const rows = await query(
         `SELECT id, type, status, progress, input_json, result_json, error, created_by,
+                priority, max_attempts, attempt, idempotency_key, next_run_at, lease_expires_at,
+                heartbeat_at, cancel_requested_at, locked_by, locked_at,
                 created_at, started_at, finished_at, updated_at
          FROM system_jobs
          ${whereSql}
@@ -153,6 +208,8 @@ async function listSystemJobs({ page = 1, limit = 30, status = "", type = "" } =
 async function getSystemJob(id) {
     const result = await query(
         `SELECT id, type, status, progress, input_json, result_json, error, created_by,
+                priority, max_attempts, attempt, idempotency_key, next_run_at, lease_expires_at,
+                heartbeat_at, cancel_requested_at, locked_by, locked_at,
                 created_at, started_at, finished_at, updated_at
          FROM system_jobs
          WHERE id = $1`,
@@ -164,10 +221,20 @@ async function getSystemJob(id) {
 async function cancelSystemJob(id, { actor = "" } = {}) {
     const job = await getSystemJob(id);
     if (!job) return null;
-    if (String(job.status || "") !== "queued") {
-        const err = new Error("only queued jobs can be canceled");
+    const status = String(job.status || "");
+    if (!['queued', 'running'].includes(status)) {
+        const err = new Error("only queued or running jobs can be canceled");
         err.status = 409;
         throw err;
+    }
+    if (status === "running") {
+        const result = await query(
+            `UPDATE system_jobs SET cancel_requested_at=CURRENT_TIMESTAMP, error=$2, updated_at=CURRENT_TIMESTAMP
+             WHERE id=$1 AND status='running'
+             RETURNING id, type, status, progress, error, cancel_requested_at, updated_at`,
+            [id, actor ? `cancel requested by ${String(actor).slice(0, 120)}` : "cancel requested"]
+        );
+        return result.rows[0] || null;
     }
     return updateSystemJob(id, {
         status: "canceled",
@@ -177,11 +244,100 @@ async function cancelSystemJob(id, { actor = "" } = {}) {
     });
 }
 
+async function claimSystemJobs({ workerId, types = [], limit = 1, leaseSeconds = 120 } = {}) {
+    const worker = String(workerId || "worker").trim().slice(0, 120) || "worker";
+    const safeTypes = (Array.isArray(types) ? types : []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, 100);
+    const safeLimit = Math.max(1, Math.min(20, Math.trunc(Number(limit || 1))));
+    const safeLeaseSeconds = Math.max(15, Math.min(3600, Math.trunc(Number(leaseSeconds || 120))));
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const result = await client.query(
+            `WITH candidates AS (
+                SELECT id
+                FROM system_jobs
+                WHERE (
+                    (status='queued' AND (next_run_at IS NULL OR next_run_at <= CURRENT_TIMESTAMP))
+                    OR (status='running' AND lease_expires_at IS NOT NULL AND lease_expires_at < CURRENT_TIMESTAMP)
+                )
+                  AND cancel_requested_at IS NULL
+                  AND attempt < max_attempts
+                  AND ($1::text[] = '{}'::text[] OR type = ANY($1::text[]))
+                ORDER BY priority DESC, created_at ASC, id ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT $2
+             )
+             UPDATE system_jobs job
+             SET status='running', locked_by=$3, locked_at=CURRENT_TIMESTAMP,
+                 lease_expires_at=CURRENT_TIMESTAMP + ($4::text || ' seconds')::interval,
+                 heartbeat_at=CURRENT_TIMESTAMP, started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
+                 attempt=attempt+1, updated_at=CURRENT_TIMESTAMP
+             FROM candidates
+             WHERE job.id=candidates.id
+             RETURNING job.*`,
+            [safeTypes, safeLimit, worker, safeLeaseSeconds]
+        );
+        await client.query("COMMIT");
+        return result.rows;
+    } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function claimSystemJob(id, { workerId, leaseSeconds = 120 } = {}) {
+    const worker = String(workerId || "worker").trim().slice(0, 120) || "worker";
+    const safeLeaseSeconds = Math.max(15, Math.min(3600, Math.trunc(Number(leaseSeconds || 120))));
+    const result = await query(
+        `UPDATE system_jobs
+         SET status='running', locked_by=$2, locked_at=CURRENT_TIMESTAMP,
+             lease_expires_at=CURRENT_TIMESTAMP + ($3::text || ' seconds')::interval,
+             heartbeat_at=CURRENT_TIMESTAMP, started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
+             attempt=attempt+1, updated_at=CURRENT_TIMESTAMP
+         WHERE id=$1
+           AND cancel_requested_at IS NULL
+           AND attempt < max_attempts
+           AND (
+             (status='queued' AND (next_run_at IS NULL OR next_run_at <= CURRENT_TIMESTAMP))
+             OR (status='running' AND lease_expires_at IS NOT NULL AND lease_expires_at < CURRENT_TIMESTAMP)
+           )
+         RETURNING *`,
+        [id, worker, safeLeaseSeconds]
+    );
+    return result.rows[0] || null;
+}
+
+async function heartbeatSystemJob(id, { workerId, progress, leaseSeconds = 120 } = {}) {
+    const safeLeaseSeconds = Math.max(15, Math.min(3600, Math.trunc(Number(leaseSeconds || 120))));
+    const params = [id, String(workerId || "").slice(0, 120), safeLeaseSeconds];
+    let progressSql = "";
+    if (progress !== undefined && Number.isFinite(Number(progress))) {
+        params.push(Math.max(0, Math.min(100, Math.trunc(Number(progress)))));
+        progressSql = `, progress=$${params.length}`;
+    }
+    const result = await query(
+        `UPDATE system_jobs
+         SET heartbeat_at=CURRENT_TIMESTAMP,
+             lease_expires_at=CURRENT_TIMESTAMP + ($3::text || ' seconds')::interval,
+             updated_at=CURRENT_TIMESTAMP${progressSql}
+         WHERE id=$1 AND status='running' AND locked_by=$2
+         RETURNING id, status, progress, heartbeat_at, lease_expires_at, cancel_requested_at`,
+        params
+    );
+    return result.rows[0] || null;
+}
+
 module.exports = {
     cancelSystemJob,
+    claimSystemJob,
+    claimSystemJobs,
     collectSystemJobInfo,
+    collectSystemJobMetrics,
     createSystemJob,
     getSystemJob,
+    heartbeatSystemJob,
     listSystemJobs,
     runTrackedJob,
     updateSystemJob

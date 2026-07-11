@@ -26,6 +26,69 @@
       </div>
     </section>
 
+    <section v-if="user?.role === 'owner'" class="panel">
+      <div class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-title">管理员与角色</p>
+            <p class="section-desc">owner 管理系统；operator 维护书库；moderator 审核内容；viewer 只读。</p>
+          </div>
+          <button class="secondary" type="button" @click="loadAdminUsers">刷新管理员</button>
+        </div>
+        <div class="toolbar compact">
+          <input v-model.trim="newAdmin.username" placeholder="新管理员用户名" />
+          <input v-model="newAdmin.password" type="password" placeholder="密码至少 10 位" />
+          <select v-model="newAdmin.role"><option value="owner">owner</option><option value="operator">operator</option><option value="moderator">moderator</option><option value="viewer">viewer</option></select>
+          <button type="button" @click="createAdminUser">新增管理员</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>账号</th><th>角色</th><th>创建/登录</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="admin in adminUsers" :key="admin.id">
+                <td><strong>{{ admin.username }}</strong><br /><small>#{{ admin.id }}</small></td>
+                <td><select v-model="adminRoles[admin.id]"><option value="owner">owner</option><option value="operator">operator</option><option value="moderator">moderator</option><option value="viewer">viewer</option></select></td>
+                <td>{{ time(admin.created_at) }}<br /><small>登录 {{ time(admin.last_login_at) }}</small></td>
+                <td class="button-row">
+                  <button class="secondary" type="button" :disabled="adminRoles[admin.id] === admin.role" @click="saveAdminRole(admin)">保存角色</button>
+                  <button class="danger secondary" type="button" :disabled="Number(admin.id) === Number(user.id)" @click="deleteAdminUser(admin)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-title">内部 API Token</p>
+            <p class="section-desc">仅显示脱敏前缀、权限范围、最近来源和吊销状态，数据库不保存原始 Token。</p>
+          </div>
+          <button class="secondary" type="button" @click="loadApiTokens">刷新 Token</button>
+        </div>
+        <div v-if="!apiTokens.length" class="empty-block">暂无已登记 Token，服务启动完成后会自动登记环境变量中的 Bot/Upload Token。</div>
+        <div v-else class="table-wrap">
+          <table>
+            <thead><tr><th>名称</th><th>类型</th><th>Token</th><th>Scope</th><th>最近使用</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="token in apiTokens" :key="token.id">
+                <td>{{ token.name || "-" }}</td>
+                <td><span class="tag">{{ token.kind }}</span></td>
+                <td><code>{{ token.token_prefix || "-" }}</code></td>
+                <td><span v-for="scope in token.scopes_json || []" :key="scope" class="tag">{{ scope }}</span></td>
+                <td>{{ time(token.last_used_at) }}<br /><small>{{ token.last_used_ip || "-" }}</small></td>
+                <td><span class="tag" :class="token.revoked_at ? 'warn' : 'success'">{{ token.revoked_at ? "已吊销" : "有效" }}</span></td>
+                <td><button class="danger secondary" type="button" :disabled="!!token.revoked_at" @click="revokeToken(token)">吊销</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="section">
         <div class="section-head">
@@ -123,6 +186,9 @@
             <StatCard label="阅读器 API" :value="number(metricsSummary.reader_api?.total || 0)">平均 {{ number(metricsSummary.reader_api?.avg_duration_ms || 0) }}ms / p95 {{ number(metricsSummary.reader_api?.p95_duration_ms || 0) }}ms</StatCard>
             <StatCard label="Bot 队列" :value="`${number(metricsSummary.bot_queue?.running || 0)} / ${number(metricsSummary.bot_queue?.queued || 0)}`">running / queued</StatCard>
             <StatCard label="数据库池" :value="`${number(metricsSummary.database?.idle || 0)} / ${number(metricsSummary.database?.total || 0)}`">waiting {{ number(metricsSummary.database?.waiting || 0) }}</StatCard>
+            <StatCard label="PO18 来源" :value="metricsSummary.crawler?.source_health?.state || 'unknown'">成功 {{ number(metricsSummary.crawler?.source_health?.successes || 0) }} / 失败 {{ number(metricsSummary.crawler?.source_health?.failures || 0) }}</StatCard>
+            <StatCard label="持久任务" :value="`${number(metricsSummary.system_jobs?.running || 0)} / ${number(metricsSummary.system_jobs?.queued || 0)}`">重试 {{ number(metricsSummary.system_jobs?.retries || 0) }} / 过期租约 {{ number(metricsSummary.system_jobs?.expired_leases || 0) }}</StatCard>
+            <StatCard label="真实用户性能" :value="number(readerRum.sessions || 0)">会话 / {{ number(readerRum.samples || 0) }} 个样本</StatCard>
           </div>
           <div class="split observability-grid reader-budget-grid" style="margin-top: 14px">
             <div>
@@ -147,6 +213,28 @@
               <div v-if="readerLargestAssets.length" class="asset-row">
                 <span v-for="item in readerLargestAssets" :key="item.file" class="tag">{{ item.file }} · {{ bytes(item.bytes || 0) }}</span>
               </div>
+            </div>
+          </div>
+          <div class="split observability-grid reader-budget-grid" style="margin-top: 14px">
+            <div>
+              <h3 class="mini-title">浏览器 Web Vitals</h3>
+              <ul class="mini-list">
+                <li v-for="item in readerRumMetrics" :key="item.metric">
+                  <span>{{ rumMetricLabel(item.metric) }}<br />p50 {{ rumValue(item) }} / p95 {{ rumP95(item) }} / {{ number(item.samples || 0) }} 次</span>
+                  <strong :class="Number(item.poor || 0) > 0 ? 'danger-text' : ''">差 {{ number(item.poor || 0) }}</strong>
+                </li>
+                <li v-if="!readerRumMetrics.length"><span>暂无浏览器端样本</span><strong>empty</strong></li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="mini-title">Reader 路由切换 p95</h3>
+              <ul class="mini-list">
+                <li v-for="item in readerRumRoutes" :key="item.route">
+                  <span>{{ item.route || "unknown" }}</span>
+                  <strong>{{ number(item.p95 || 0) }}ms · {{ number(item.samples || 0) }}</strong>
+                </li>
+                <li v-if="!readerRumRoutes.length"><span>暂无路由切换样本</span><strong>empty</strong></li>
+              </ul>
             </div>
           </div>
           <div class="split observability-grid" style="margin-top: 14px">
@@ -204,8 +292,9 @@
             </button>
             <div>
               <strong>{{ backupTypeLabel(item.type) }} · {{ item.file }}</strong>
-              <span>{{ time(item.created_at) }} · {{ bytes(item.bytes) }}<template v-if="item.database"> · {{ item.database }}</template></span>
+              <span>{{ time(item.created_at) }} · {{ bytes(item.bytes) }}<template v-if="item.database"> · {{ item.database }}</template><template v-if="item.sha256"> · SHA-256 {{ item.sha256.slice(0, 12) }}</template><template v-if="item.archive_verified_at"> · 已验证 {{ number(item.archive_entries || 0) }} 项</template></span>
             </div>
+            <button v-if="item.type === 'postgres'" class="secondary" type="button" :disabled="verifyBusy === item.file" @click="verifyBackup(item.file)">{{ verifyBusy === item.file ? "验证中..." : "验证归档" }}</button>
             <button class="secondary" type="button" @click="downloadBackup(item.file)">下载</button>
           </article>
         </div>
@@ -257,12 +346,14 @@
 </template>
 
 <script setup>
-import { computed, inject, onMounted, ref } from "vue";
+import { computed, inject, onMounted, reactive, ref } from "vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";
 import { bytes, number, time, uptime } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
+const { user } = defineProps({ user: { type: Object, default: () => ({}) } });
 const statusLoading = ref(false);
 const statusRows = ref([]);
 const versionLine = ref("检查 server-pg、阅读器、Bot、数据库连接和表结构。");
@@ -282,7 +373,13 @@ const restoreBusy = ref(false);
 const restoreResult = ref("");
 const remoteBackup = ref({});
 const remoteUploadBusy = ref("");
-const metricsSummary = ref({ http: {}, reader_api: {}, bot_queue: {}, backup: {}, database: {}, window: {} });
+const verifyBusy = ref("");
+const metricsSummary = ref({ http: {}, reader_api: {}, bot_queue: {}, backup: {}, database: {}, crawler: {}, system_jobs: {}, window: {} });
+const readerRum = ref({ metrics: [], routes: [], samples: 0, sessions: 0, users: 0 });
+const apiTokens = ref([]);
+const adminUsers = ref([]);
+const adminRoles = reactive({});
+const newAdmin = reactive({ username: "", password: "", role: "viewer" });
 const logFilters = [
   { key: "all", label: "全部" },
   { key: "error", label: "错误" },
@@ -300,6 +397,8 @@ const remoteProviderLabel = computed(() => remoteBackup.value.provider || (remot
 const readerPerformanceRows = computed(() => (metricsSummary.value.reader_performance?.endpoints || []).filter((item) => item.budget_ms));
 const readerAssetChecks = computed(() => metricsSummary.value.reader_assets?.checks || []);
 const readerLargestAssets = computed(() => (metricsSummary.value.reader_assets?.largest || []).slice(0, 4));
+const readerRumMetrics = computed(() => readerRum.value.metrics || []);
+const readerRumRoutes = computed(() => (readerRum.value.routes || []).slice(0, 10));
 
 function statusClass(item) {
   if (item.skipped) return "skip";
@@ -340,6 +439,18 @@ function perfStateLabel(item) {
   return item.ok ? "OK" : "超预算";
 }
 
+function rumMetricLabel(metric) {
+  return ({ page_load: "首屏完成", ttfb: "TTFB", fcp: "FCP", lcp: "LCP", cls: "CLS", inp: "INP", route: "路由切换", long_task: "长任务" }[metric] || metric || "-");
+}
+
+function rumValue(item) {
+  return item.metric === "cls" ? Number(item.p50 || 0).toFixed(3) : `${number(item.p50 || 0)}ms`;
+}
+
+function rumP95(item) {
+  return item.metric === "cls" ? Number(item.p95 || 0).toFixed(3) : `${number(item.p95 || 0)}ms`;
+}
+
 async function loadStatus() {
   statusLoading.value = true;
   try {
@@ -347,7 +458,7 @@ async function loadStatus() {
     const version = data.version || {};
     const revision = String(version.build_revision || version.revision || "").slice(0, 12);
     const buildDate = formatBuildDate(version.build_date);
-    versionLine.value = [version.image || "wenmoux/reader:v1.0", version.version || "-", revision, buildDate, `uptime ${uptime(version.uptime_seconds || 0)}`].filter(Boolean).join(" · ");
+    versionLine.value = [version.image || "wenmoux/reader:v2.0", version.version || "-", revision, buildDate, `uptime ${uptime(version.uptime_seconds || 0)}`].filter(Boolean).join(" · ");
     statusRows.value = data.deep?.checks || data.status || [];
   } catch (err) {
     toast(err.message || String(err));
@@ -422,12 +533,106 @@ async function uploadRemoteBackup(file) {
   }
 }
 
+async function verifyBackup(file) {
+  if (!file) return;
+  verifyBusy.value = file;
+  try {
+    const data = await api("/admin-api/backup/verify", {
+      method: "POST",
+      body: JSON.stringify({ file })
+    });
+    backupRows.value = data.backups || backupRows.value;
+    toast(data.verification?.archive_entries ? `备份验证通过：${data.verification.archive_entries} 个归档项` : "备份验证通过");
+  } catch (err) {
+    toast(err.message || String(err));
+  } finally {
+    verifyBusy.value = "";
+  }
+}
+
 async function loadMetrics() {
   try {
-    metricsSummary.value = await api("/admin-api/metrics/summary");
+    const [metrics, rum] = await Promise.all([
+      api("/admin-api/metrics/summary"),
+      api("/admin-api/reader-rum?days=7")
+    ]);
+    metricsSummary.value = metrics;
+    readerRum.value = rum;
   } catch (err) {
     toast(err.message || String(err));
   }
+}
+
+async function loadApiTokens() {
+  try {
+    const data = await api("/admin-api/system/api-tokens");
+    apiTokens.value = data.rows || [];
+  } catch (err) {
+    toast(err.message || String(err));
+  }
+}
+
+async function revokeToken(token) {
+  const confirmation = await confirmAction({
+    title: "吊销内部 API Token",
+    message: `将立即吊销 ${token.name || token.token_prefix || token.id}，使用该 Token 的 Bot 或上传脚本会停止工作。`,
+    confirmLabel: "吊销 Token",
+    phrase: `REVOKE ${token.id}`
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/system/api-tokens/${token.id}/revoke`, {
+    method: "POST",
+    body: JSON.stringify({ reason: confirmation.reason })
+  });
+  await loadApiTokens();
+  toast("Token 已吊销；请配置新 Token 后重启服务完成轮换");
+}
+
+async function loadAdminUsers() {
+  if (user?.role !== "owner") return;
+  try {
+    const data = await api("/admin-api/auth/admins");
+    adminUsers.value = data.rows || [];
+    for (const admin of adminUsers.value) adminRoles[admin.id] = admin.role || "viewer";
+  } catch (err) {
+    toast(err.message || String(err));
+  }
+}
+
+async function createAdminUser() {
+  await api("/admin-api/auth/admins", { method: "POST", body: JSON.stringify(newAdmin) });
+  Object.assign(newAdmin, { username: "", password: "", role: "viewer" });
+  await loadAdminUsers();
+  toast("管理员已创建");
+}
+
+async function saveAdminRole(admin) {
+  const role = adminRoles[admin.id];
+  const confirmation = await confirmAction({
+    title: "修改管理员角色",
+    message: `将管理员 ${admin.username} 从 ${admin.role} 调整为 ${role}。`,
+    confirmLabel: "保存角色"
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/auth/admins/${admin.id}`, {
+    method: "PUT",
+    body: JSON.stringify({ role, reason: confirmation.reason })
+  });
+  await loadAdminUsers();
+  toast("管理员角色已更新");
+}
+
+async function deleteAdminUser(admin) {
+  const confirmation = await confirmAction({
+    title: "删除管理员",
+    message: `将永久删除管理员 ${admin.username}。`,
+    confirmLabel: "删除管理员",
+    phrase: `DELETE ${admin.id}`
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/auth/admins/${admin.id}`, { method: "DELETE", body: JSON.stringify({ reason: confirmation.reason }) });
+  await loadAdminUsers();
+  toast("管理员已删除");
 }
 
 async function createBackup(type) {
@@ -478,13 +683,19 @@ async function uploadBackup() {
 
 async function restoreBackup() {
   if (!canRestore.value) return;
-  if (!window.confirm(`确认恢复 ${restoreFile.value}？恢复前会自动备份当前数据库。`)) return;
+  const confirmation = await confirmAction({
+    title: "恢复数据库",
+    message: `将使用 ${restoreFile.value} 覆盖当前数据库。恢复前会自动备份当前数据库，完成后服务会重启。`,
+    confirmLabel: "恢复数据库",
+    phrase: "RESTORE"
+  });
+  if (!confirmation.confirmed) return;
   restoreBusy.value = true;
   restoreResult.value = "";
   try {
     const data = await api("/admin-api/backup/restore", {
       method: "POST",
-      body: JSON.stringify({ file: restoreFile.value, confirm: restoreConfirm.value })
+      body: JSON.stringify({ file: restoreFile.value, confirm: restoreConfirm.value, reason: confirmation.reason })
     });
     backupRows.value = data.backups || backupRows.value;
     restoreResult.value = data.restore?.pre_restore_backup?.file
@@ -517,8 +728,14 @@ async function copyDiagnostics() {
 }
 
 async function restart() {
-  if (!window.confirm("确认重启服务？Docker 会按 restart 策略拉起容器。")) return;
-  await api("/admin-api/system/restart", { method: "POST" });
+  const confirmation = await confirmAction({
+    title: "重启服务",
+    message: "重启期间后台、阅读器和 Bot 会短暂不可用，Docker 将按 restart 策略重新拉起容器。",
+    confirmLabel: "重启服务",
+    phrase: "RESTART"
+  });
+  if (!confirmation.confirmed) return;
+  await api("/admin-api/system/restart", { method: "POST", body: JSON.stringify({ reason: confirmation.reason }) });
   toast("已发送重启请求");
 }
 
@@ -528,6 +745,8 @@ function loadAll() {
   loadBackups();
   loadRemoteBackupStatus();
   loadMetrics();
+  loadApiTokens();
+  loadAdminUsers();
   loadLogs(logFilter.value);
   loadDiagnostics();
 }

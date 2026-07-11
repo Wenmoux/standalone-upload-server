@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("fs");
-const { spawn } = require("child_process");
+const { createProcessSupervisor } = require("./process-supervisor");
 let logEvent = () => {};
 try {
     ({ logEvent } = require("./structured-log"));
@@ -74,66 +74,67 @@ function appendLog(name, chunk, stream) {
     }
 }
 
-function start(name, args, env = {}) {
-    const child = spawn(args[0], args.slice(1), {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, ...env }
-    });
-    child.stdout.on("data", (chunk) => appendLog(name, chunk, process.stdout));
-    child.stderr.on("data", (chunk) => appendLog(name, chunk, process.stderr));
-    child.on("exit", (code, signal) => {
-        console.error(`[run-all] ${name} exited${signal ? ` by ${signal}` : ` with ${code}`}`);
-        logEvent(code === 0 ? "info" : "error", "run-all", "child-exit", { child: name, code, signal: signal || "" });
-        stopAll();
-        process.exit(code === null || code === undefined ? 1 : code);
-    });
-    children.push(child);
-    console.log(`[run-all] started ${name}: ${args.join(" ")}`);
-    logEvent("info", "run-all", "child-start", { child: name, command: args.join(" ") });
-}
+async function main() {
+    const loaded = loadConfig(CONFIG_FILE);
+    prepareLogFile();
+    let shuttingDown = false;
+    let supervisor;
 
-function stopAll() {
-    for (const child of children) {
-        if (!child.killed) child.kill("SIGTERM");
+    async function shutdown(code = 0) {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        await supervisor?.stopAll();
+        process.exit(code);
     }
-}
 
-const children = [];
-const loaded = loadConfig(CONFIG_FILE);
-prepareLogFile();
-
-if (!loaded && !process.env.PO18_PG_URL) {
-    console.log(`[run-all] no config found at ${CONFIG_FILE}; starting setup wizard`);
-    logEvent("warn", "run-all", "missing-config", { config_file: CONFIG_FILE });
-    start("setup", ["node", "docker/setup-wizard.js"], {
-        PO18_SETUP_CONFIG_FILE: CONFIG_FILE,
-        PO18_SETUP_HOST: process.env.PO18_SETUP_HOST || process.env.PO18_UPLOAD_HOST || "0.0.0.0",
-        PO18_SETUP_PORT: process.env.PO18_SETUP_PORT || process.env.PO18_UPLOAD_PORT || "3100"
+    supervisor = createProcessSupervisor({
+        baseDelayMs: process.env.PO18_CHILD_RESTART_BASE_MS,
+        maxDelayMs: process.env.PO18_CHILD_RESTART_MAX_MS,
+        stableMs: process.env.PO18_CHILD_RESTART_STABLE_MS,
+        maxRestarts: process.env.PO18_CHILD_RESTART_LIMIT,
+        stopTimeoutMs: process.env.PO18_CHILD_STOP_TIMEOUT_MS,
+        appendLog,
+        logEvent,
+        onFatal: ({ code }) => shutdown(code || 1)
     });
-} else {
-    setDefault("PO18_UPLOAD_HOST", "0.0.0.0");
-    setDefault("PO18_UPLOAD_PORT", "3100");
-    setDefault("PO18_READER_HOST", "0.0.0.0");
-    setDefault("PO18_READER_PORT", "3200");
-    setDefault("PO18_API_BASE", "http://127.0.0.1:3100");
-    setDefault("PO18_SERVER_URL", "http://127.0.0.1:3100");
-    setDefault("BOT_HEALTH_HOST", "0.0.0.0");
-    setDefault("BOT_HEALTH_PORT", "3300");
 
-    start("server-pg", ["node", "server-pg.js"]);
-    start("reader", ["node", "cirno-src/reader-server.js"]);
-
-    if (process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN) {
-        start("bot", ["node", "bot/telegram-bot.js"]);
+    if (!loaded && !process.env.PO18_PG_URL) {
+        console.log(`[run-all] no config found at ${CONFIG_FILE}; starting setup wizard`);
+        logEvent("warn", "run-all", "missing-config", { config_file: CONFIG_FILE });
+        supervisor.start("setup", ["node", "docker/setup-wizard.js"], {
+            PO18_SETUP_CONFIG_FILE: CONFIG_FILE,
+            PO18_SETUP_HOST: process.env.PO18_SETUP_HOST || process.env.PO18_UPLOAD_HOST || "0.0.0.0",
+            PO18_SETUP_PORT: process.env.PO18_SETUP_PORT || process.env.PO18_UPLOAD_PORT || "3100"
+        }, { restart: false });
     } else {
-        console.log("[run-all] TELEGRAM_BOT_TOKEN is empty; bot not started");
-        logEvent("info", "run-all", "bot-skipped", { reason: "TELEGRAM_BOT_TOKEN is empty" });
+        setDefault("PO18_UPLOAD_HOST", "0.0.0.0");
+        setDefault("PO18_UPLOAD_PORT", "3100");
+        setDefault("PO18_READER_HOST", "0.0.0.0");
+        setDefault("PO18_READER_PORT", "3200");
+        setDefault("PO18_API_BASE", "http://127.0.0.1:3100");
+        setDefault("PO18_SERVER_URL", "http://127.0.0.1:3100");
+        setDefault("BOT_HEALTH_HOST", "0.0.0.0");
+        setDefault("BOT_HEALTH_PORT", "3300");
+
+        supervisor.start("server-pg", ["node", "server-pg.js"]);
+        supervisor.start("reader", ["node", "cirno-src/reader-server.js"]);
+
+        if (process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN) {
+            supervisor.start("bot", ["node", "bot/telegram-bot.js"]);
+        } else {
+            console.log("[run-all] TELEGRAM_BOT_TOKEN is empty; bot not started");
+            logEvent("info", "run-all", "bot-skipped", { reason: "TELEGRAM_BOT_TOKEN is empty" });
+        }
+    }
+
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+        process.once(signal, () => shutdown(0));
     }
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.on(signal, () => {
-        stopAll();
-        process.exit(0);
-    });
-}
+if (require.main === module) main().catch((err) => {
+    console.error(err.stack || err.message || String(err));
+    process.exit(1);
+});
+
+module.exports = { loadConfig, main, parseEnvLine };

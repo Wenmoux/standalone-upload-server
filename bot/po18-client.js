@@ -98,7 +98,7 @@ async function po18Fetch(url, options = {}, cookies = []) {
         currentUrl = new URL(location, currentUrl).toString();
         const method = String(requestOptions.method || "GET").toUpperCase();
         if (response.status === 303 || ((response.status === 301 || response.status === 302) && method !== "GET" && method !== "HEAD")) {
-            const { body, ...rest } = requestOptions;
+            const { body: _body, ...rest } = requestOptions;
             requestOptions = { ...rest, method: "GET" };
         }
     }

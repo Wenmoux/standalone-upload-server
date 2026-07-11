@@ -10,7 +10,8 @@ const DEFAULT_REQUIRED_TABLES = [
     "upload_events",
     "schema_migrations",
     "system_jobs",
-    "book_stats"
+    "book_stats",
+    "admin_audit_logs"
 ];
 
 function checkResult(name, ok, fields = {}) {
@@ -206,6 +207,7 @@ function createHealthService(options = {}) {
         const started = Date.now();
         const uploadToken = String(valueOf(options.uploadApiToken) || "");
         const botApiTokenConfigured = String(valueOf(options.botApiToken) || "").length >= 16;
+        const credentialEncryption = valueOf(options.credentialEncryption) || {};
         const botConfigured = !!(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN);
         const checks = await Promise.all([
             Promise.resolve(checkResult(serviceName, true, { required: true, detail: "process alive" })),
@@ -219,6 +221,10 @@ function createHealthService(options = {}) {
             Promise.resolve(checkResult("bot-api-token", botApiTokenConfigured, {
                 required: false,
                 detail: botApiTokenConfigured ? "configured" : "not configured; /bot-api/* returns 503"
+            })),
+            Promise.resolve(checkResult("credential-encryption", !!credentialEncryption.configured, {
+                required: true,
+                detail: credentialEncryption.configured ? `AES-256-GCM active key: ${credentialEncryption.activeKeyId || "configured"}` : "not configured"
             })),
             httpHealthCheck("reader", process.env.READER_HEALTH_URL || "http://127.0.0.1:3200/health/ready", { required: true }),
             botConfigured

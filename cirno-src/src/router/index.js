@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { hasReaderSession } from '@/utils/reader-session'
 
 function redirectBareReaderPathToHashRoute() {
   if (typeof window === 'undefined' || window.location.hash) return
@@ -61,37 +62,6 @@ const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
   routes
 })
-
-let sessionCache = {
-  checkedAt: 0,
-  hasLogin: false
-}
-
-function markLoggedOut() {
-  sessionCache = { checkedAt: 0, hasLogin: false }
-  localStorage.removeItem('login_token')
-}
-
-async function hasReaderSession() {
-  const token = localStorage.getItem('login_token')
-  const now = Date.now()
-  if (token && sessionCache.hasLogin && now - sessionCache.checkedAt < 30000) {
-    return true
-  }
-  try {
-    const res = await fetch('/reader-auth/me', { credentials: 'include' })
-    const data = await res.json()
-    if (data.user) {
-      localStorage.setItem('login_token', 'local-session')
-      sessionCache = { checkedAt: now, hasLogin: true }
-      return true
-    }
-  } catch (e) {
-    // Network errors should fall back to the login page.
-  }
-  markLoggedOut()
-  return false
-}
 
 router.beforeEach(async to => {
   const isLoginPage = to.name === 'Login'

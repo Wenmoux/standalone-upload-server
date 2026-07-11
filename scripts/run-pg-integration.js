@@ -5,7 +5,7 @@ const path = require("path");
 
 const network = `po18-pg-test-${Date.now()}`;
 const pgName = `${network}-db`;
-const image = process.env.PO18_TEST_APP_IMAGE || "wenmoux/reader:v1.0";
+const image = process.env.PO18_TEST_APP_IMAGE || "wenmoux/reader:v2.0";
 const pgImage = process.env.PO18_TEST_PG_IMAGE || "postgres:16-alpine";
 const password = "po18-test-pass";
 const database = "po18";

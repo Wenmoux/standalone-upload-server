@@ -55,7 +55,7 @@
 ## 架构
 
 ```text
-Docker image: wenmoux/reader:v1.0
+Docker image: wenmoux/reader:v2.0
 
 ┌──────────────────────────────────────────────────────────────┐
 │ po18-app                                                     │
@@ -80,8 +80,10 @@ Docker image: wenmoux/reader:v1.0
 适合已有远程 PostgreSQL，或者希望先启动安装向导再配置数据库的场景。
 
 ```bash
-docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v1.0
+docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v2.0
 ```
+
+For a read-only, non-root container, create `/opt/po18/config` with UID/GID `1000` ownership and add `--user 1000:1000 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=256m`. See [DOCKER.md](./DOCKER.md) for the full command and restart supervisor settings.
 
 查看初始化 token：
 
@@ -140,9 +142,9 @@ docker compose -f docker-compose.hub.yml ps
 ### 更新镜像
 
 ```bash
-docker pull wenmoux/reader:v1.0
+docker pull wenmoux/reader:v2.0
 docker rm -f po18-app
-docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v1.0
+docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v2.0
 ```
 
 如果使用 Compose：
@@ -273,6 +275,7 @@ npm test
 ## API 文档
 
 - [API.md](API.md)：阅读器、后台、Bot、上传、书评、健康检查等接口。
+- [`/openapi.json`](http://localhost:3100/openapi.json)：运行时自动生成的 OpenAPI 3.1 端点索引。
 - [DOCKER.md](DOCKER.md)：Docker、安装向导、状态检查、备份恢复和发布流程。
 - [PROJECT_UPDATE_LOG.md](PROJECT_UPDATE_LOG.md)：阶段更新记录。
 

@@ -71,6 +71,7 @@ import { api } from "../services/api";
 import { durationLabel, number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const rows = ref([]);
 const loading = ref(false);
 const cdkType = ref("membership");
@@ -125,8 +126,13 @@ async function generate() {
 }
 
 async function remove(row) {
-  if (!window.confirm("删除该 CDK？")) return;
-  await api(`/admin-api/cdks/${row.id}`, { method: "DELETE" });
+  const confirmation = await confirmAction({
+    title: "删除 CDK",
+    message: `将永久删除 CDK ${row.code || row.id}。已发放但未兑换的注册码会立即失效。`,
+    confirmLabel: "删除 CDK"
+  });
+  if (!confirmation.confirmed) return;
+  await api(`/admin-api/cdks/${row.id}`, { method: "DELETE", body: JSON.stringify({ reason: confirmation.reason }) });
   await load();
   toast("已删除 CDK");
 }

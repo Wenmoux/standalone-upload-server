@@ -8,7 +8,8 @@ const {
     createUploadedPostgresBackup,
     listBackups,
     restorePostgresBackup,
-    resolveBackupFile
+    resolveBackupFile,
+    verifyPostgresBackup
 } = require("../docker/backup-pg");
 const { runTrackedJob } = require("./system-jobs");
 
@@ -97,6 +98,11 @@ async function restoreBackupPayload({ fileName, configFile, backupDir = DEFAULT_
     };
 }
 
+async function verifyBackupPayload({ fileName, backupDir = DEFAULT_BACKUP_DIR } = {}) {
+    const verification = await verifyPostgresBackup({ file: String(fileName || "").trim(), backupDir });
+    return { success: true, verification, backups: await listBackups({ backupDir }) };
+}
+
 async function resolveBackupDownload(fileName, { backupDir = DEFAULT_BACKUP_DIR } = {}) {
     let safeName = String(fileName || "");
     if (!safeName) {
@@ -121,5 +127,6 @@ module.exports = {
     restoreBackupJob,
     restoreBackupPayload,
     uploadBackupJob,
-    validateRestoreRequest
+    validateRestoreRequest,
+    verifyBackupPayload
 };

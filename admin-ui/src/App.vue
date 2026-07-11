@@ -18,11 +18,11 @@
       </div>
       <div class="top-actions">
         <div class="chip version-chip" :title="versionTitle"><span>{{ versionBadge }}</span></div>
-        <div class="chip"><span class="dot"></span><span>{{ user.username }}</span></div>
-        <a class="ghost-button" href="/setup">初始化面板</a>
+        <div class="chip"><span class="dot"></span><span>{{ user.username }} · {{ roleLabel }}</span></div>
+        <a v-if="user.role === 'owner'" class="ghost-button" href="/setup">初始化面板</a>
         <a class="ghost-button" :href="readerLink" target="_blank" rel="noreferrer">阅读器 3200</a>
         <a class="ghost-button" href="/rank" target="_blank" rel="noreferrer">动态榜单</a>
-        <button class="secondary" type="button" @click="backup">备份</button>
+        <button v-if="['owner', 'operator'].includes(user.role || 'owner')" class="secondary" type="button" @click="backup">备份</button>
         <button class="secondary" type="button" @click="logout">退出</button>
       </div>
     </header>
@@ -38,7 +38,7 @@
           </div>
           <nav class="nav admin-nav">
             <button
-              v-for="(item, index) in navItems"
+              v-for="(item, index) in visibleNavItems"
               :key="item.key"
               type="button"
               :class="{ active: activeView === item.key }"
@@ -48,72 +48,83 @@
               <span>{{ item.label }}</span>
             </button>
           </nav>
+          <div class="saved-views">
+            <div class="saved-views-head">
+              <strong>保存视图</strong>
+              <button class="icon-button" type="button" title="保存当前视图" aria-label="保存当前视图" @click="saveCurrentView">＋</button>
+            </div>
+            <p v-if="!savedViews.length" class="saved-views-empty">保存常用筛选后可一键返回。</p>
+            <div v-for="item in savedViews" :key="item.fullPath" class="saved-view-row">
+              <button class="saved-view-link" type="button" :title="item.fullPath" @click="openSavedView(item)">{{ item.label }}</button>
+              <button class="icon-button danger-icon" type="button" title="移除保存视图" aria-label="移除保存视图" @click="removeSavedView(item.fullPath)">×</button>
+            </div>
+          </div>
         </aside>
 
         <div class="content">
-          <KeepAlive>
-            <component :is="activeComponent" :user="user" />
-          </KeepAlive>
+          <RouterView v-slot="{ Component }">
+            <KeepAlive>
+              <component :is="Component" :user="user" />
+            </KeepAlive>
+          </RouterView>
         </div>
       </div>
     </main>
   </section>
 
   <ToastHost :message="toastMessage" />
+  <ConfirmDialog v-bind="confirmState" @cancel="settleConfirmation(false)" @confirm="settleConfirmation(true, $event)" />
 </template>
 
 <script setup>
-import { computed, provide, ref } from "vue";
+import { computed, provide, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import ToastHost from "./components/ToastHost.vue";
+import ConfirmDialog from "./components/ConfirmDialog.vue";
 import LoginView from "./views/LoginView.vue";
-import DashboardView from "./views/DashboardView.vue";
-import BooksView from "./views/BooksView.vue";
-import QualityView from "./views/QualityView.vue";
-import EventsView from "./views/EventsView.vue";
-import UsersView from "./views/UsersView.vue";
-import TransactionsView from "./views/TransactionsView.vue";
-import FeedbackView from "./views/FeedbackView.vue";
-import CorrectionsView from "./views/CorrectionsView.vue";
-import CdksView from "./views/CdksView.vue";
-import PlatformsView from "./views/PlatformsView.vue";
-import BooklistView from "./views/BooklistView.vue";
-import TelegramView from "./views/TelegramView.vue";
-import Po18CrawlerView from "./views/Po18CrawlerView.vue";
-import JobsView from "./views/JobsView.vue";
-import SystemView from "./views/SystemView.vue";
+import { adminNavItems as navItems } from "./router";
 import { api } from "./services/api";
 import { readerUrl } from "./utils/format";
 
-const navItems = [
-  { key: "dashboard", label: "总览", component: DashboardView },
-  { key: "books", label: "书籍", component: BooksView },
-  { key: "quality", label: "数据质量", component: QualityView },
-  { key: "events", label: "更新记录", component: EventsView },
-  { key: "users", label: "用户", component: UsersView },
-  { key: "transactions", label: "币流水", component: TransactionsView },
-  { key: "feedback", label: "反馈统计", component: FeedbackView },
-  { key: "corrections", label: "纠错审核", component: CorrectionsView },
-  { key: "cdks", label: "CDK", component: CdksView },
-  { key: "platforms", label: "平台映射", component: PlatformsView },
-  { key: "booklist", label: "动态榜单", component: BooklistView },
-  { key: "telegram", label: "TG Bot", component: TelegramView },
-  { key: "po18crawler", label: "PO18 遍历", component: Po18CrawlerView },
-  { key: "jobs", label: "任务中心", component: JobsView },
-  { key: "system", label: "系统", component: SystemView }
-];
+const SAVED_VIEWS_KEY = "po18AdminSavedViews";
+const route = useRoute();
+const router = useRouter();
 
 const checking = ref(true);
 const user = ref(null);
-const activeView = ref("dashboard");
 const toastMessage = ref("");
-const versionInfo = ref({ image: "wenmoux/reader:v1.0", version: "1.0.0" });
+const versionInfo = ref({ image: "wenmoux/reader:v2.0", version: "2.0.0" });
+const savedViews = ref(loadSavedViews());
 let toastTimer = 0;
+let confirmResolver = null;
+const confirmState = reactive({
+  open: false,
+  title: "确认操作",
+  message: "该操作可能影响现有数据。",
+  confirmLabel: "确认执行",
+  requireReason: true,
+  minimumReasonLength: 2,
+  phrase: "",
+  busy: false
+});
 
 const readerLink = readerUrl();
-const activeComponent = computed(() => navItems.find((item) => item.key === activeView.value)?.component || DashboardView);
-const activeLabel = computed(() => navItems.find((item) => item.key === activeView.value)?.label || "总览");
+const roleNav = {
+  owner: navItems.map((item) => item.key),
+  operator: ["dashboard", "books", "quality", "events", "booklist", "po18crawler", "jobs", "system"],
+  moderator: ["dashboard", "events", "feedback", "corrections"],
+  viewer: ["dashboard", "quality", "events", "feedback", "booklist", "jobs", "system"]
+};
+const visibleNavItems = computed(() => {
+  const role = user.value?.role || "owner";
+  const allowed = new Set(roleNav[role] || roleNav.viewer);
+  return navItems.filter((item) => allowed.has(item.key));
+});
+const activeView = computed(() => String(route.meta?.view || "dashboard"));
+const activeLabel = computed(() => visibleNavItems.value.find((item) => item.key === activeView.value)?.label || "总览");
+const roleLabel = computed(() => ({ owner: "所有者", operator: "运维", moderator: "审核", viewer: "只读" }[user.value?.role || "owner"] || "只读"));
 const versionBadge = computed(() => {
-  const image = versionInfo.value.image || "wenmoux/reader:v1.0";
+  const image = versionInfo.value.image || "wenmoux/reader:v2.0";
   const version = versionInfo.value.version || "";
   const revision = String(versionInfo.value.build_revision || versionInfo.value.revision || "").slice(0, 12);
   const buildDate = formatBuildDate(versionInfo.value.build_date);
@@ -122,7 +133,7 @@ const versionBadge = computed(() => {
 const versionTitle = computed(() => {
   const info = versionInfo.value || {};
   return [
-    `image: ${info.image || "wenmoux/reader:v1.0"}`,
+    `image: ${info.image || "wenmoux/reader:v2.0"}`,
     `version: ${info.version || "-"}`,
     `revision: ${info.build_revision || info.revision || "-"}`,
     `build: ${info.build_date || "-"}`,
@@ -144,22 +155,96 @@ function toast(message) {
   if (message) toastTimer = window.setTimeout(() => (toastMessage.value = ""), 3200);
 }
 
-function switchView(name) {
-  activeView.value = name;
+function switchView(name, options = {}) {
+  const item = navItems.find((entry) => entry.key === name);
+  if (!item) return;
+  const query = options && typeof options === "object" && options.query ? options.query : undefined;
+  router.push({ path: item.path, ...(query ? { query } : {}) });
+}
+
+function loadSavedViews() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SAVED_VIEWS_KEY) || "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => item && item.fullPath && item.label).slice(0, 8)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedViews() {
+  try {
+    localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(savedViews.value.slice(0, 8)));
+  } catch {
+    toast("保存视图失败，浏览器存储不可用");
+  }
+}
+
+function currentViewLabel() {
+  const queryText = Object.values(route.query || {}).flat().filter(Boolean).join(" · ");
+  return queryText ? `${activeLabel.value} · ${String(queryText).slice(0, 36)}` : activeLabel.value;
+}
+
+function saveCurrentView() {
+  const fullPath = route.fullPath;
+  const next = { fullPath, label: currentViewLabel(), savedAt: new Date().toISOString() };
+  savedViews.value = [next, ...savedViews.value.filter((item) => item.fullPath !== fullPath)].slice(0, 8);
+  persistSavedViews();
+  toast("当前视图已保存");
+}
+
+function openSavedView(item) {
+  if (item?.fullPath) router.push(item.fullPath);
+}
+
+function removeSavedView(fullPath) {
+  savedViews.value = savedViews.value.filter((item) => item.fullPath !== fullPath);
+  persistSavedViews();
+}
+
+function ensureAllowedRoute() {
+  if (!user.value || !visibleNavItems.value.length) return;
+  if (visibleNavItems.value.some((item) => item.key === activeView.value)) return;
+  router.replace(visibleNavItems.value[0].path);
+}
+
+function confirmAction(options = {}) {
+  if (confirmResolver) confirmResolver({ confirmed: false, reason: "" });
+  Object.assign(confirmState, {
+    open: true,
+    title: options.title || "确认操作",
+    message: options.message || "该操作可能影响现有数据。",
+    confirmLabel: options.confirmLabel || "确认执行",
+    requireReason: options.requireReason !== false,
+    minimumReasonLength: Number(options.minimumReasonLength || 2),
+    phrase: options.phrase || "",
+    busy: false
+  });
+  return new Promise((resolve) => { confirmResolver = resolve; });
+}
+
+function settleConfirmation(confirmed, payload = {}) {
+  const resolve = confirmResolver;
+  confirmResolver = null;
+  confirmState.open = false;
+  resolve?.({ confirmed, reason: String(payload.reason || "").trim() });
 }
 
 provide("toast", toast);
 provide("navigate", switchView);
+provide("confirmAction", confirmAction);
 
 async function boot() {
   try {
-    const [me, version] = await Promise.allSettled([
+    const [me, version, access] = await Promise.allSettled([
       api("/admin-api/auth/me"),
-      api("/health/version")
+      api("/health/version"),
+      api("/admin-api/auth/access")
     ]);
     const data = me.status === "fulfilled" ? me.value : {};
     if (version.status === "fulfilled") versionInfo.value = version.value || versionInfo.value;
-    user.value = data.user || null;
+    user.value = data.user ? { ...data.user, role: access.status === "fulfilled" ? access.value.role || "owner" : "owner" } : null;
   } catch {
     user.value = null;
   } finally {
@@ -167,8 +252,11 @@ async function boot() {
   }
 }
 
-function handleLogin(nextUser) {
-  user.value = nextUser;
+async function handleLogin(nextUser) {
+  user.value = { role: "owner", ...nextUser };
+  const access = await api("/admin-api/auth/access").catch(() => ({ role: "owner" }));
+  user.value.role = access.role || "owner";
+  ensureAllowedRoute();
   toast("登录成功");
 }
 
@@ -183,6 +271,8 @@ async function backup() {
   toast(data.file ? `数据库备份完成：${data.file}` : "备份完成");
   if (data.file) window.open(`/admin-api/backup/download?file=${encodeURIComponent(data.file)}`, "_blank");
 }
+
+watch([() => route.path, visibleNavItems, user], ensureAllowedRoute, { flush: "post" });
 
 boot();
 </script>

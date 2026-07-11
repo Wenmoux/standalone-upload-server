@@ -109,3 +109,117 @@ test("admin auth route exposes current user and protects logout", async () => {
         assert.equal(response.status, 401);
     });
 });
+
+test("admin auth access exposes role without changing the legacy me payload", async () => {
+    const router = createAdminAuthRoutes({
+        requireAdmin: adminOnly,
+        verifyPassword: () => false,
+        query: async () => ({ rows: [] })
+    });
+
+    await withApp(router, async (base) => {
+        const me = await fetch(`${base}/admin-api/auth/me`);
+        assert.deepEqual(await me.json(), { user: { id: 4, username: "operator" } });
+
+        const access = await fetch(`${base}/admin-api/auth/access`);
+        assert.equal(access.status, 200);
+        assert.deepEqual(await access.json(), { role: "operator" });
+    }, { adminUser: { id: 4, username: "operator", role: "operator" } });
+});
+
+test("admin account routes create, update and delete accounts", async () => {
+    const admins = new Map([
+        [1, { id: 1, username: "root", role: "owner" }],
+        [2, { id: 2, username: "helper", role: "viewer" }]
+    ]);
+    let nextId = 3;
+    const router = createAdminAuthRoutes({
+        requireAdmin: adminOnly,
+        verifyPassword: () => false,
+        hashPassword: (password) => ({ hash: `hash:${password}`, salt: "salt" }),
+        query: async (sql, params = []) => {
+            if (/SELECT id, username, role, created_at, last_login_at FROM admin_users ORDER BY id/.test(sql)) {
+                return { rows: [...admins.values()] };
+            }
+            if (/INSERT INTO admin_users/.test(sql)) {
+                const user = { id: nextId++, username: params[0], role: params[3], created_at: null, last_login_at: null };
+                admins.set(user.id, user);
+                return { rows: [user] };
+            }
+            if (/SELECT id, username, role FROM admin_users WHERE id=\$1/.test(sql)) {
+                return { rows: admins.has(params[0]) ? [admins.get(params[0])] : [] };
+            }
+            if (/UPDATE admin_users SET role=\$2/.test(sql)) {
+                const user = { ...admins.get(params[0]), role: params[1], created_at: null, last_login_at: null };
+                admins.set(user.id, user);
+                return { rows: [user] };
+            }
+            if (/SELECT id, role FROM admin_users WHERE id=\$1/.test(sql)) {
+                const user = admins.get(params[0]);
+                return { rows: user ? [{ id: user.id, role: user.role }] : [] };
+            }
+            if (/DELETE FROM admin_users WHERE id=\$1/.test(sql)) {
+                admins.delete(params[0]);
+                return { rows: [], rowCount: 1 };
+            }
+            throw new Error(`unexpected SQL: ${sql}`);
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const created = await fetch(`${base}/admin-api/auth/admins`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: "ops", password: "very-secret", role: "operator" })
+        });
+        assert.equal(created.status, 200);
+        assert.equal((await created.json()).user.role, "operator");
+
+        const updated = await fetch(`${base}/admin-api/auth/admins/2`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role: "moderator" })
+        });
+        assert.equal(updated.status, 200);
+        assert.equal((await updated.json()).user.role, "moderator");
+
+        const removed = await fetch(`${base}/admin-api/auth/admins/2`, { method: "DELETE" });
+        assert.equal(removed.status, 200);
+        assert.equal(admins.has(2), false);
+
+        const selfDelete = await fetch(`${base}/admin-api/auth/admins/1`, { method: "DELETE" });
+        assert.equal(selfDelete.status, 409);
+    }, { adminUser: { id: 1, username: "root", role: "owner" } });
+});
+
+test("admin account routes protect the last owner", async () => {
+    const router = createAdminAuthRoutes({
+        requireAdmin: adminOnly,
+        verifyPassword: () => false,
+        hashPassword: () => ({ hash: "hash", salt: "salt" }),
+        query: async (sql) => {
+            if (/SELECT id, username, role FROM admin_users/.test(sql)) {
+                return { rows: [{ id: 1, username: "root", role: "owner" }] };
+            }
+            if (/SELECT id, role FROM admin_users/.test(sql)) {
+                return { rows: [{ id: 1, role: "owner" }] };
+            }
+            if (/COUNT\(\*\)/.test(sql)) return { rows: [{ count: 1 }] };
+            throw new Error(`unexpected SQL: ${sql}`);
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const demote = await fetch(`${base}/admin-api/auth/admins/1`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role: "operator" })
+        });
+        assert.equal(demote.status, 409);
+        assert.match((await demote.json()).error, /最后一个 owner/);
+
+        const remove = await fetch(`${base}/admin-api/auth/admins/1`, { method: "DELETE" });
+        assert.equal(remove.status, 409);
+        assert.match((await remove.json()).error, /最后一个 owner/);
+    }, { adminUser: { id: 99, username: "another", role: "owner" } });
+});

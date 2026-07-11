@@ -14,7 +14,7 @@ services:
       retries: 10
 
   server-pg:
-    image: wenmoux/reader:v1.0
+    image: wenmoux/reader:v2.0
     command: ["node", "server-pg.js"]
     environment:
       NODE_ENV: production
@@ -43,7 +43,7 @@ services:
       start_period: 20s
 
   reader:
-    image: wenmoux/reader:v1.0
+    image: wenmoux/reader:v2.0
     command: ["node", "cirno-src/reader-server.js"]
     environment:
       NODE_ENV: production
@@ -66,7 +66,7 @@ services:
       start_period: 20s
 
   bot:
-    image: wenmoux/reader:v1.0
+    image: wenmoux/reader:v2.0
     command: ["node", "bot/telegram-bot.js"]
     environment:
       NODE_ENV: production

@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 const { handlePanelRequest, importedValuesFromText, loadConfigIntoEnv, setupToken, versionPayload } = require("../docker/control-panel");
+const { createRateWindow } = require("../services/rate-limit");
 
 function withTempEnv(contents, fn) {
     const file = path.join(os.tmpdir(), `po18-control-panel-${Date.now()}-${Math.random().toString(16).slice(2)}.env`);
@@ -176,6 +177,77 @@ test("setup import endpoint writes config and sets next setup token cookie", asy
             const saved = fs.readFileSync(file, "utf8");
             assert.match(saved, /PO18_SETUP_TOKEN="new-token-123456"/);
             assert.match(saved, /PO18_PG_URL="postgres:\/\/user:pass@db:5432\/po18"/);
+        });
+    } finally {
+        if (previous === undefined) delete process.env.PO18_SETUP_TOKEN;
+        else process.env.PO18_SETUP_TOKEN = previous;
+    }
+});
+
+test("setup query token is exchanged for a cookie and removed from the URL", async () => {
+    const previous = process.env.PO18_SETUP_TOKEN;
+    try {
+        delete process.env.PO18_SETUP_TOKEN;
+        await withTempEnv('PO18_SETUP_TOKEN="clean-url-token-123456"\n', async (file) => {
+            const req = {
+                method: "GET",
+                url: "/setup?token=clean-url-token-123456&tab=status",
+                headers: {}
+            };
+            let status = 0;
+            let headers = {};
+            const res = {
+                writeHead(code, nextHeaders) {
+                    status = code;
+                    headers = nextHeaders;
+                },
+                end() {}
+            };
+
+            await handlePanelRequest(req, res, { configFile: file, restartOnSave: false });
+            assert.equal(status, 302);
+            assert.equal(headers.Location, "/setup?tab=status");
+            assert.match(headers["Set-Cookie"], /po18_setup_token=clean-url-token-123456/);
+            assert.doesNotMatch(headers.Location, /token=/);
+        });
+    } finally {
+        if (previous === undefined) delete process.env.PO18_SETUP_TOKEN;
+        else process.env.PO18_SETUP_TOKEN = previous;
+    }
+});
+
+test("setup panel rate limits repeated invalid tokens", async () => {
+    const previous = process.env.PO18_SETUP_TOKEN;
+    try {
+        delete process.env.PO18_SETUP_TOKEN;
+        await withTempEnv('PO18_SETUP_TOKEN="rate-token-123456"\n', async (file) => {
+            const limiter = createRateWindow({ max: 1, windowMs: 60_000 });
+            async function attempt() {
+                const req = {
+                    method: "GET",
+                    url: "/setup?token=wrong-token",
+                    headers: {},
+                    socket: { remoteAddress: "127.0.0.5" }
+                };
+                let status = 0;
+                let headers = {};
+                const res = {
+                    writeHead(code, nextHeaders) { status = code; headers = nextHeaders; },
+                    end() {}
+                };
+                await handlePanelRequest(req, res, {
+                    configFile: file,
+                    restartOnSave: false,
+                    setupAuthRateWindow: limiter
+                });
+                return { status, headers };
+            }
+
+            assert.equal((await attempt()).status, 401);
+            const blocked = await attempt();
+            assert.equal(blocked.status, 429);
+            assert.equal(blocked.headers["RateLimit-Limit"], "1");
+            assert.equal(blocked.headers["Retry-After"], "60");
         });
     } finally {
         if (previous === undefined) delete process.env.PO18_SETUP_TOKEN;

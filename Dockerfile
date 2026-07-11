@@ -1,5 +1,5 @@
-ARG PO18_IMAGE_TAG=wenmoux/reader:v1.0
-ARG PO18_APP_VERSION=1.0.0
+ARG PO18_IMAGE_TAG=wenmoux/reader:v2.0
+ARG PO18_APP_VERSION=2.0.0
 ARG PO18_BUILD_DATE=
 ARG PO18_BUILD_REVISION=
 
@@ -41,7 +41,7 @@ LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
       org.opencontainers.image.created="${PO18_BUILD_DATE}" \
       org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
-RUN apk add --no-cache postgresql-client
+RUN apk add --no-cache postgresql16-client
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
@@ -123,7 +123,8 @@ LABEL org.opencontainers.image.version="${PO18_APP_VERSION}" \
       org.opencontainers.image.created="${PO18_BUILD_DATE}" \
       org.opencontainers.image.revision="${PO18_BUILD_REVISION}"
 WORKDIR /app
-RUN apk add --no-cache postgresql-client font-wqy-zenhei
+RUN apk add --no-cache postgresql16-client font-wqy-zenhei
+RUN mkdir -p /config /tmp/po18 && chown -R node:node /config /tmp/po18
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json

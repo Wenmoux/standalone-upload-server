@@ -4,8 +4,13 @@ const fs = require("fs/promises");
 const http = require("http");
 const os = require("os");
 const path = require("path");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 const test = require("node:test");
 const express = require("express");
+const { Client } = require("pg");
+
+const execFileAsync = promisify(execFile);
 
 if (process.env.PO18_TEST_PG_URL) {
     process.env.PO18_PG_URL = process.env.PO18_TEST_PG_URL;
@@ -68,7 +73,7 @@ async function withApp(router, fn, sessionFactory = () => ({})) {
         next();
     });
     app.use(router);
-    app.use((err, req, res, next) => {
+    app.use((err, req, res, _next) => {
         res.status(err.status || 500).json({ error: err.message || "Internal Server Error" });
     });
     const server = http.createServer(app);
@@ -100,12 +105,203 @@ async function seedBotUser(query, { username, telegramId, copper = 0, silver = 0
 }
 
 test("postgres integration covers CDK, red packets and backup jobs", { skip: pgUrl ? false : "set PO18_TEST_PG_URL to run" }, async (t) => {
-    const { initPg, query, pool, runMigrationRollback, runMigrations } = require("../pg-store");
+    const { initPg, query, pool, runMigrationRollback, runMigrations, listMigrationFiles } = require("../pg-store");
     const { createReaderApiRoutes } = require("../routes/reader-api");
     const { createBotApiRoutes } = require("../routes/bot-api");
     const { createAdminBackupRoutes } = require("../routes/admin-backups");
+    const {
+        cancelSystemJob,
+        claimSystemJob,
+        claimSystemJobs,
+        createSystemJob,
+        heartbeatSystemJob,
+        updateSystemJob
+    } = require("../services/system-jobs");
+    const { createApiTokenService } = require("../services/api-tokens");
+    const { createCredentialCrypto, encryptStoredPo18Credentials } = require("../services/credential-crypto");
 
     await resetDatabase(query, initPg);
+
+    await t.test("chapter stats stay exact across insert update move and delete", async () => {
+        await query("INSERT INTO book_metadata(book_id, platform, title) VALUES ('stats-a', 'qidian', 'A')");
+        await query(
+            `INSERT INTO chapter_cache(book_id, chapter_id, title, platform, chapter_order)
+             VALUES ('stats-a','1','one','qidian',1),
+                    ('stats-a','2','two','qidian',2),
+                    ('stats-a','3','three','qidian',3)`
+        );
+        let stats = await query("SELECT book_id, cache_count FROM book_stats WHERE book_id='stats-a'");
+        assert.deepEqual(stats.rows[0], { book_id: "stats-a", cache_count: 3 });
+
+        await query(
+            `INSERT INTO chapter_cache(book_id, chapter_id, title, platform, chapter_order)
+             VALUES ('stats-a','1','one-reuploaded','qidian',1)
+             ON CONFLICT (book_id, chapter_id) DO UPDATE SET
+                title = EXCLUDED.title,
+                updated_at = CURRENT_TIMESTAMP`
+        );
+        stats = await query("SELECT book_id, cache_count FROM book_stats WHERE book_id='stats-a'");
+        assert.deepEqual(stats.rows[0], { book_id: "stats-a", cache_count: 3 });
+
+        await query("UPDATE chapter_cache SET title = title || '-updated' WHERE book_id='stats-a'");
+        stats = await query("SELECT book_id, cache_count FROM book_stats WHERE book_id='stats-a'");
+        assert.deepEqual(stats.rows[0], { book_id: "stats-a", cache_count: 3 });
+
+        await query("UPDATE chapter_cache SET book_id='stats-b' WHERE book_id='stats-a' AND chapter_id='3'");
+        stats = await query("SELECT book_id, cache_count FROM book_stats WHERE book_id IN ('stats-a','stats-b') ORDER BY book_id");
+        assert.deepEqual(stats.rows, [
+            { book_id: "stats-a", cache_count: 2 },
+            { book_id: "stats-b", cache_count: 1 }
+        ]);
+
+        await query("DELETE FROM chapter_cache WHERE book_id IN ('stats-a','stats-b')");
+        stats = await query("SELECT book_id, cache_count FROM book_stats WHERE book_id IN ('stats-a','stats-b') ORDER BY book_id");
+        assert.deepEqual(stats.rows, [{ book_id: "stats-a", cache_count: 0 }]);
+    });
+
+    await t.test("chapter batch write benchmark keeps 1000 chapter statistics bounded", async () => {
+        const durations = [];
+        const walBefore = await query("SELECT pg_current_wal_lsn() start_lsn");
+        for (let run = 1; run <= 5; run += 1) {
+            const bookId = `benchmark-${run}`;
+            await query("INSERT INTO book_metadata(book_id, platform, title) VALUES ($1, 'benchmark', $2)", [bookId, `Benchmark ${run}`]);
+            const values = [];
+            const params = [];
+            for (let chapter = 1; chapter <= 1000; chapter += 1) {
+                const base = params.length;
+                values.push(`($${base + 1},$${base + 2},$${base + 3},'benchmark',$${base + 4})`);
+                params.push(bookId, String(chapter), `Chapter ${chapter}`, chapter);
+            }
+            const startedAt = performance.now();
+            await query(
+                `INSERT INTO chapter_cache(book_id, chapter_id, title, platform, chapter_order) VALUES ${values.join(",")}`,
+                params
+            );
+            durations.push(performance.now() - startedAt);
+            const stats = await query("SELECT cache_count FROM book_stats WHERE book_id=$1", [bookId]);
+            assert.equal(stats.rows[0]?.cache_count, 1000);
+        }
+        const walAfter = await query(
+            "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), $1::pg_lsn)::bigint::text wal_bytes",
+            [walBefore.rows[0].start_lsn]
+        );
+        const sorted = durations.slice().sort((a, b) => a - b);
+        const percentile = (ratio) => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
+        const p50 = percentile(0.5);
+        const p95 = percentile(0.95);
+        console.log(`# chapter-write-benchmark batches=5 chapters_per_batch=1000 p50_ms=${p50.toFixed(1)} p95_ms=${p95.toFixed(1)} wal_bytes=${walAfter.rows[0].wal_bytes}`);
+        assert.ok(p95 < 10000, `1000 chapter batch p95 too slow: ${p95.toFixed(1)}ms`);
+        await query("DELETE FROM chapter_cache WHERE platform='benchmark'");
+        await query("DELETE FROM book_metadata WHERE platform='benchmark'");
+    });
+
+    await t.test("admin audit records are append-only", async () => {
+        const inserted = await query(
+            `INSERT INTO admin_audit_logs(actor_username, method, path, action, status_code, details_json)
+             VALUES ('integration-admin','DELETE','/admin-api/books/1','delete.books.:id',200,'{}'::jsonb)
+             RETURNING id`
+        );
+        await assert.rejects(
+            () => query("UPDATE admin_audit_logs SET reason='changed' WHERE id=$1", [inserted.rows[0].id]),
+            /append-only/
+        );
+        await assert.rejects(
+            () => query("DELETE FROM admin_audit_logs WHERE id=$1", [inserted.rows[0].id]),
+            /append-only/
+        );
+        const remaining = await query("SELECT COUNT(*)::int count FROM admin_audit_logs WHERE id=$1", [inserted.rows[0].id]);
+        assert.equal(remaining.rows[0].count, 1);
+    });
+
+    await t.test("persistent system jobs support idempotency leases heartbeat recovery and running cancel", async () => {
+        const first = await createSystemJob({
+            type: "bot_export_txt",
+            input: { book_id: "lease-book" },
+            createdBy: "integration",
+            idempotencyKey: "integration:lease:one",
+            maxAttempts: 4
+        });
+        const duplicate = await createSystemJob({
+            type: "bot_export_txt",
+            input: { book_id: "lease-book" },
+            createdBy: "integration",
+            idempotencyKey: "integration:lease:one",
+            maxAttempts: 4
+        });
+        assert.equal(duplicate.id, first.id);
+        assert.equal(duplicate.duplicate, true);
+
+        const claimed = await claimSystemJob(first.id, { workerId: "worker-a", leaseSeconds: 30 });
+        assert.equal(claimed.status, "running");
+        assert.equal(claimed.locked_by, "worker-a");
+        assert.equal(claimed.attempt, 1);
+        const heartbeat = await heartbeatSystemJob(first.id, { workerId: "worker-a", progress: 35, leaseSeconds: 45 });
+        assert.equal(heartbeat.progress, 35);
+        const cancelRequested = await cancelSystemJob(first.id, { actor: "integration-admin" });
+        assert.equal(cancelRequested.status, "running");
+        assert.ok(cancelRequested.cancel_requested_at);
+        await updateSystemJob(first.id, { status: "canceled", error: "canceled", finished: true });
+
+        const recoverable = await createSystemJob({
+            type: "bot_share_upload",
+            input: { book_id: "recover-book" },
+            createdBy: "integration",
+            idempotencyKey: "integration:lease:recover",
+            maxAttempts: 4
+        });
+        const initialClaim = await claimSystemJob(recoverable.id, { workerId: "worker-a", leaseSeconds: 30 });
+        assert.equal(initialClaim.attempt, 1);
+        await query("UPDATE system_jobs SET lease_expires_at=CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE id=$1", [recoverable.id]);
+        const recovered = await claimSystemJobs({ workerId: "worker-b", types: ["bot_share_upload"], limit: 2, leaseSeconds: 30 });
+        assert.equal(recovered.length, 1);
+        assert.equal(recovered[0].id, recoverable.id);
+        assert.equal(recovered[0].attempt, 2);
+        assert.equal(recovered[0].locked_by, "worker-b");
+        await updateSystemJob(recoverable.id, { status: "succeeded", progress: 100, result: { ok: true }, finished: true });
+    });
+
+    await t.test("API tokens are hashed scoped auditable and revocable", async () => {
+        const service = createApiTokenService({ query, cacheTtlMs: 1000 });
+        const rawToken = "integration-bot-token-secret";
+        const synced = await service.syncToken({
+            name: "integration-bot",
+            kind: "bot",
+            token: rawToken,
+            scopes: ["bot:read"],
+            allowedIps: ["127.0.0.1"]
+        });
+        const stored = await query("SELECT token_hash, token_prefix FROM api_tokens WHERE id=$1", [synced.id]);
+        assert.notEqual(stored.rows[0].token_hash, rawToken);
+        assert.equal(stored.rows[0].token_hash.length, 64);
+        const allowed = await service.authenticate({ token: rawToken, kind: "bot", scope: "bot:read", req: { ip: "127.0.0.1" } });
+        assert.equal(allowed.ok, true);
+        const denied = await service.authenticate({ token: rawToken, kind: "bot", scope: "bot:admin", req: { ip: "127.0.0.1" } });
+        assert.equal(denied.status, 403);
+        await service.revokeToken(synced.id);
+        const revoked = await service.authenticate({ token: rawToken, kind: "bot", scope: "bot:read", req: { ip: "127.0.0.1" } });
+        assert.equal(revoked.status, 401);
+    });
+
+    await t.test("existing PO18 account credentials migrate from plaintext to AES-GCM", async () => {
+        const user = await query(
+            `INSERT INTO reader_users(username, password_hash, salt, nickname, telegram_id)
+             VALUES ('credential-user','hash','salt','Credential User','credential-tg') RETURNING id`
+        );
+        await query(
+            `INSERT INTO reader_po18_accounts(user_id, telegram_id, account, password, cookies_json)
+             VALUES ($1,'credential-tg','po18-account','plain-password',$2::jsonb)`,
+            [user.rows[0].id, JSON.stringify([{ name: "authtoken1", value: "plain-cookie" }])]
+        );
+        const credentialCrypto = createCredentialCrypto({ fallbackSecret: "integration-credential-secret" });
+        const result = await encryptStoredPo18Credentials(query, credentialCrypto);
+        assert.equal(result.updated >= 1, true);
+        const stored = await query("SELECT password, cookies_json FROM reader_po18_accounts WHERE user_id=$1", [user.rows[0].id]);
+        assert.equal(credentialCrypto.isEncrypted(stored.rows[0].password), true);
+        assert.equal(credentialCrypto.decryptString(stored.rows[0].password), "plain-password");
+        assert.deepEqual(credentialCrypto.decryptJson(stored.rows[0].cookies_json), [{ name: "authtoken1", value: "plain-cookie" }]);
+        await query("DELETE FROM reader_po18_accounts WHERE user_id=$1", [user.rows[0].id]);
+        await query("DELETE FROM reader_users WHERE id=$1", [user.rows[0].id]);
+    });
 
     await t.test("reader registration consumes a CDK", async () => {
         await query(
@@ -264,6 +460,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             restartDelayMsProvider: () => 1
         });
 
+        let dumpFile = "";
         await withApp(router, async (base) => {
             const response = await fetch(`${base}/admin-api/backup`, {
                 method: "POST",
@@ -275,27 +472,57 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             assert.equal(body.success, true);
             assert.equal(body.backup.type, "postgres");
             assert.ok(body.backup.bytes > 0);
-            await fs.access(path.join(backupRoot, body.backup.file));
+            assert.match(body.backup.sha256, /^[0-9a-f]{64}$/);
+            assert.ok(body.backup.archive_entries > 0);
+            dumpFile = path.join(backupRoot, body.backup.file);
+            await fs.access(dumpFile);
         }, () => ({ adminUser: { id: 1, username: "integration-admin" } }));
 
         const job = await query("SELECT type, status, progress FROM system_jobs WHERE type=$1 ORDER BY id DESC LIMIT 1", ["backup:postgres"]);
         assert.deepEqual(job.rows[0], { type: "backup:postgres", status: "succeeded", progress: 100 });
+
+        const databaseName = `po18_restore_drill_${process.pid}`;
+        const adminUrl = new URL(pgUrl);
+        adminUrl.pathname = "/postgres";
+        const targetUrl = new URL(pgUrl);
+        targetUrl.pathname = `/${databaseName}`;
+        const admin = new Client({ connectionString: adminUrl.toString() });
+        await admin.connect();
+        try {
+            await admin.query(`DROP DATABASE IF EXISTS ${databaseName}`);
+            await admin.query(`CREATE DATABASE ${databaseName}`);
+            await execFileAsync("pg_restore", ["--exit-on-error", "--no-owner", "--no-acl", "--dbname", targetUrl.toString(), dumpFile], { timeout: 120000 });
+            const restored = new Client({ connectionString: targetUrl.toString() });
+            await restored.connect();
+            try {
+                const schema = await restored.query("SELECT COUNT(*)::int count FROM schema_migrations");
+                assert.ok(schema.rows[0].count >= 12);
+                const chapterTable = await restored.query("SELECT to_regclass('public.chapter_cache')::text name");
+                assert.equal(chapterTable.rows[0].name, "chapter_cache");
+            } finally {
+                await restored.end();
+            }
+        } finally {
+            await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid <> pg_backend_pid()", [databaseName]).catch(() => {});
+            await admin.query(`DROP DATABASE IF EXISTS ${databaseName}`).catch(() => {});
+            await admin.end();
+        }
     });
 
     await t.test("migration rollback can revert and reapply the latest migration", async () => {
         const previous = process.env.PO18_ALLOW_SCHEMA_ROLLBACK;
         process.env.PO18_ALLOW_SCHEMA_ROLLBACK = "1";
         try {
+            const files = await listMigrationFiles();
+            const latest = files.at(-1);
             const rolledBack = await runMigrationRollback({ steps: 1, confirm: "ROLLBACK" });
-            assert.equal(rolledBack[0].version, "008_reader_search_requests");
-            const missing = await query("SELECT to_regclass('public.reader_search_requests')::text regclass");
-            assert.equal(missing.rows[0].regclass, null);
-            const record = await query("SELECT version FROM schema_migrations WHERE version=$1", ["008_reader_search_requests"]);
+            assert.equal(rolledBack[0].version, latest.version);
+            const record = await query("SELECT version FROM schema_migrations WHERE version=$1", [latest.version]);
             assert.equal(record.rows.length, 0);
 
             await runMigrations();
-            const restored = await query("SELECT to_regclass('public.reader_search_requests')::text regclass");
-            assert.equal(restored.rows[0].regclass, "reader_search_requests");
+            const restored = await query("SELECT version FROM schema_migrations WHERE version=$1", [latest.version]);
+            assert.equal(restored.rows[0].version, latest.version);
         } finally {
             if (previous === undefined) delete process.env.PO18_ALLOW_SCHEMA_ROLLBACK;
             else process.env.PO18_ALLOW_SCHEMA_ROLLBACK = previous;

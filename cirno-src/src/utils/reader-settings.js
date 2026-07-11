@@ -9,6 +9,7 @@ export const DEFAULT_READER_SETTINGS = {
   convertMode: 'none',
   titleStyle: 'classic',
   customHeaderEnabled: false,
+  chapterHeaderPreset: 'crane',
   customHeaderImage: '',
   customHeaderChapterLabel: '',
   customHeaderTitle: '',
@@ -33,7 +34,8 @@ export const DEFAULT_READER_SETTINGS = {
   ttsApiMethod: 'POST',
   ttsApiProxy: false,
   ttsApiHeaders: '{\n  "Content-Type": "application/json"\n}',
-  ttsApiBody: '{\n  "text": "{{text}}",\n  "voice": "{{voice}}",\n  "speed": {{rate}},\n  "pitch": {{pitch}},\n  "volume": {{volume}}\n}',
+  ttsApiBody:
+    '{\n  "text": "{{text}}",\n  "voice": "{{voice}}",\n  "speed": {{rate}},\n  "pitch": {{pitch}},\n  "volume": {{volume}}\n}',
   ttsApiResponse: 'audio',
   ttsApiAudioPath: 'audio',
   ttsApiAudioMime: 'audio/mpeg',
@@ -88,6 +90,22 @@ export const READER_THEME_OPTIONS = [
       control: '#fff9ed',
       accent: '#9b5d2e',
       shadow: '0 10px 30px rgba(88, 60, 30, 0.14)'
+    }
+  },
+  {
+    value: 'jianghu',
+    label: '江湖纸卷',
+    colors: {
+      page: '#e5d4bc',
+      paper: '#f3e6d4',
+      topbar: 'rgba(243, 230, 212, 0.96)',
+      text: '#17120e',
+      muted: '#756b60',
+      border: 'rgba(124, 82, 54, 0.2)',
+      soft: '#ead8bf',
+      control: '#f8eddd',
+      accent: '#a80000',
+      shadow: '0 12px 34px rgba(83, 49, 26, 0.16)'
     }
   },
   {
@@ -206,16 +224,19 @@ export function normalizeReaderSettings(settings, themeOptions = READER_THEME_OP
   next.contentWidth = Math.round(clampNumber(next.contentWidth, 620, 980, DEFAULT_READER_SETTINGS.contentWidth))
   next.pagePadding = Math.round(clampNumber(next.pagePadding, 28, 96, DEFAULT_READER_SETTINGS.pagePadding))
   next.paragraphIndent = Number(next.paragraphIndent) === 0 ? 0 : 2
-  next.letterSpacing = Number(
-    clampNumber(next.letterSpacing, 0, 2, DEFAULT_READER_SETTINGS.letterSpacing).toFixed(1)
-  )
+  next.letterSpacing = Number(clampNumber(next.letterSpacing, 0, 2, DEFAULT_READER_SETTINGS.letterSpacing).toFixed(1))
   next.fontWeight = Number(next.fontWeight) === 500 ? 500 : 400
   next.textAlign = next.textAlign === 'justify' ? 'justify' : 'left'
   next.customHeaderEnabled = !!next.customHeaderEnabled
+  next.chapterHeaderPreset = next.chapterHeaderPreset === 'style1' ? 'style1' : 'crane'
   next.customHeaderImage = String(next.customHeaderImage || '')
   next.customHeaderChapterLabel = String(next.customHeaderChapterLabel || '').slice(0, 40)
   next.customHeaderTitle = String(next.customHeaderTitle || '').slice(0, 80)
-  next.ttsEngine = ['browser', 'edge', 'volcengine', 'aliyun', 'azure', 'elevenlabs', 'cartesia', 'custom'].includes(next.ttsEngine) ? next.ttsEngine : 'browser'
+  next.ttsEngine = ['browser', 'edge', 'volcengine', 'aliyun', 'azure', 'elevenlabs', 'cartesia', 'custom'].includes(
+    next.ttsEngine
+  )
+    ? next.ttsEngine
+    : 'browser'
   next.ttsVoice = String(next.ttsVoice || '')
   next.ttsEdgeVoice = String(next.ttsEdgeVoice || DEFAULT_READER_SETTINGS.ttsEdgeVoice)
   next.ttsRate = Number(clampNumber(next.ttsRate, 0.5, 3, DEFAULT_READER_SETTINGS.ttsRate).toFixed(2))
@@ -228,7 +249,9 @@ export function normalizeReaderSettings(settings, themeOptions = READER_THEME_OP
   next.ttsApiProxy = !!next.ttsApiProxy
   next.ttsApiHeaders = String(next.ttsApiHeaders || DEFAULT_READER_SETTINGS.ttsApiHeaders)
   next.ttsApiBody = String(next.ttsApiBody || DEFAULT_READER_SETTINGS.ttsApiBody)
-  next.ttsApiResponse = ['audio', 'json-url', 'json-base64'].includes(next.ttsApiResponse) ? next.ttsApiResponse : 'audio'
+  next.ttsApiResponse = ['audio', 'json-url', 'json-base64'].includes(next.ttsApiResponse)
+    ? next.ttsApiResponse
+    : 'audio'
   next.ttsApiAudioPath = String(next.ttsApiAudioPath || DEFAULT_READER_SETTINGS.ttsApiAudioPath)
   next.ttsApiAudioMime = String(next.ttsApiAudioMime || DEFAULT_READER_SETTINGS.ttsApiAudioMime)
   next.ttsVolcAppId = String(next.ttsVolcAppId || '')

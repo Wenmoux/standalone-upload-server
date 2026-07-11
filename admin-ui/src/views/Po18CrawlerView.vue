@@ -280,6 +280,7 @@ import { api } from "../services/api";
 import { number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const busy = ref(false);
 const saving = ref(false);
 const testing = ref(false);
@@ -564,8 +565,13 @@ async function resume() {
 }
 
 async function stop() {
-  if (!window.confirm("确认停止当前 PO18 遍历任务？")) return;
-  const data = await api("/admin-api/po18-crawler/stop", { method: "POST", body: JSON.stringify({}) });
+  const confirmation = await confirmAction({
+    title: "停止 PO18 遍历",
+    message: "当前遍历任务会停止，未完成书籍需要下次重新排队。",
+    confirmLabel: "停止任务"
+  });
+  if (!confirmation.confirmed) return;
+  const data = await api("/admin-api/po18-crawler/stop", { method: "POST", body: JSON.stringify({ reason: confirmation.reason }) });
   status.value = data.status || status.value;
 }
 

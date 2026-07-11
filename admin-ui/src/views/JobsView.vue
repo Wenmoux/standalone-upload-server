@@ -143,6 +143,7 @@ import { api } from "../services/api";
 import { number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const rows = ref([]);
 const total = ref(0);
 const page = ref(1);
@@ -203,7 +204,7 @@ function canRetry(row) {
 }
 
 function canCancel(row) {
-  return String(row?.status || "") === "queued";
+  return ["queued", "running"].includes(String(row?.status || ""));
 }
 
 function jsonBlock(value) {
@@ -254,11 +255,23 @@ async function retryJob(row) {
   const body = {};
   if (confirmRetryTypes.has(row.type)) {
     const expected = `RETRY ${row.id}`;
-    const value = window.prompt(`该任务重试需要确认短语：${expected}`, expected);
-    if (value !== expected) return toast("已取消任务重试");
-    body.confirm = value;
-  } else if (!window.confirm(`确认重试任务 #${row.id}？`)) {
-    return;
+    const confirmation = await confirmAction({
+      title: "重试高风险任务",
+      message: `将重新执行任务 #${row.id}（${row.type}）。`,
+      confirmLabel: "重试任务",
+      phrase: expected
+    });
+    if (!confirmation.confirmed) return;
+    body.confirm = expected;
+    body.reason = confirmation.reason;
+  } else {
+    const confirmation = await confirmAction({
+      title: "重试任务",
+      message: `将重新执行任务 #${row.id}（${row.type}）。`,
+      confirmLabel: "重试任务"
+    });
+    if (!confirmation.confirmed) return;
+    body.reason = confirmation.reason;
   }
   retryingId.value = row.id;
   try {
@@ -278,12 +291,17 @@ async function retryJob(row) {
 
 async function cancelJob(row) {
   if (!canCancel(row)) return;
-  if (!window.confirm(`确认取消排队任务 #${row.id}？`)) return;
+  const confirmation = await confirmAction({
+    title: "取消排队任务",
+    message: `将取消排队任务 #${row.id}（${row.type}）。`,
+    confirmLabel: "取消任务"
+  });
+  if (!confirmation.confirmed) return;
   cancelingId.value = row.id;
   try {
     const data = await api(`/admin-api/jobs/${encodeURIComponent(row.id)}/cancel`, {
       method: "POST",
-      body: JSON.stringify({})
+      body: JSON.stringify({ reason: confirmation.reason })
     });
     toast(data.job?.id ? `已取消任务 #${data.job.id}` : "任务已取消");
     await loadAll();

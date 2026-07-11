@@ -44,7 +44,7 @@ To run the published Docker Hub images instead of building locally:
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-`docker-compose.hub.yml` uses one application image, `wenmoux/reader:v1.0`, for `server-pg`, `reader`, and `bot`; each service only overrides `command`.
+`docker-compose.hub.yml` uses one application image, `wenmoux/reader:v2.0`, for `server-pg`, `reader`, and `bot`; each service only overrides `command`.
 
 ## Setup Wizard
 
@@ -64,6 +64,8 @@ Backups and restore:
 - The admin System page can upload a PostgreSQL custom dump and restore it after typing `RESTORE <file>`.
 - Before restore, the app automatically creates one more current database backup. After restore, the container exits so Docker can restart it with a clean connection pool.
 - Long-running backup, restore, rank refresh, Bot export/sync/share, stale cleanup, and chapter-order repair tasks are visible in the admin Task Center.
+- Set `PO18_BACKUP_ENCRYPTION_KEY` to encrypt WebDAV/S3 uploads with AES-256-GCM before they leave the container. Keep this key outside PostgreSQL and store it in a password manager; losing it makes encrypted remote backups unrecoverable.
+- Remote WebDAV/S3 uploads maintain `.po18-backups.json` and keep the newest 8 files by default. Override with `PO18_REMOTE_BACKUP_KEEP`.
 
 Schema rollback is manual and disabled by default. After taking a backup, rollback the latest migration with:
 
@@ -86,7 +88,7 @@ docker logs po18-app
 Mount `/config` so the generated config survives restarts:
 
 ```bash
-docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v1.0
+docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v2.0
 ```
 
 Open `http://SERVER_IP:3100/setup?token=TOKEN`, save the PostgreSQL and bot settings, then wait for the container to restart. After config is present, the same container starts the backend on `3100`, reader on `3200`, and bot when `TELEGRAM_BOT_TOKEN` is configured.
@@ -103,7 +105,30 @@ The admin backend at `http://SERVER_IP:3100` is rebuilt with the same UI structu
 If you are using an older command that explicitly appends `node docker/run-all.js`, it still works:
 
 ```bash
-docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v1.0 node docker/run-all.js
+docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v2.0 node docker/run-all.js
+```
+
+### Optional hardened runtime
+
+The image can run as the bundled unprivileged Node user and with a read-only root filesystem. Prepare the bind mount first so UID/GID `1000` can write configuration, logs and backups:
+
+```bash
+sudo install -d -o 1000 -g 1000 /opt/po18/config
+docker run -d --name po18-app --restart unless-stopped --user 1000:1000 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=256m -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v2.0
+```
+
+The default command still runs with the historical container user for compatibility. Use the hardened form for new public deployments after confirming the host directory ownership.
+
+The image pins PostgreSQL client tools to major version 16, matching the default Compose database. This avoids newer `pg_dump` versions producing archive settings that PostgreSQL 16 cannot restore.
+
+The single-image supervisor restarts `server-pg`, Reader and Bot independently with exponential backoff. These optional settings can be placed in `/config/app.env`:
+
+```env
+PO18_CHILD_RESTART_BASE_MS=1000
+PO18_CHILD_RESTART_MAX_MS=30000
+PO18_CHILD_RESTART_STABLE_MS=120000
+PO18_CHILD_RESTART_LIMIT=10
+PO18_CHILD_STOP_TIMEOUT_MS=10000
 ```
 
 For a local PostgreSQL container, start it before filling the wizard and use this DB URL:
@@ -119,7 +144,7 @@ Open:
 
 Published image tags:
 
-- `wenmoux/reader:v1.0` single image containing server, reader, and bot
+- `wenmoux/reader:v2.0` single image containing server, reader, and bot
 
 ## Status
 

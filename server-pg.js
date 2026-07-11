@@ -2,6 +2,7 @@
 const cors = require("cors");
 const compression = require("compression");
 const session = require("express-session");
+const PgSessionStore = require("connect-pg-simple")(session);
 const crypto = require("crypto");
 const path = require("path");
 const { initPg, query, pool, bookColumns, chapterColumns, pick } = require("./pg-store");
@@ -25,9 +26,13 @@ const {
 const {
     collectSystemJobInfo,
     cancelSystemJob,
+    claimSystemJob,
+    claimSystemJobs,
     createSystemJob,
     getSystemJob,
+    heartbeatSystemJob,
     listSystemJobs,
+    collectSystemJobMetrics,
     runTrackedJob,
     updateSystemJob
 } = require("./services/system-jobs");
@@ -41,10 +46,12 @@ const { createHealthService } = require("./services/health");
 const { createRankService } = require("./services/rank");
 const { createDataQualityService } = require("./services/data-quality");
 const { createAdminOverviewService } = require("./services/admin-overview");
+const { createReaderRumService } = require("./services/reader-rum");
 const { createUserCurrencyService } = require("./services/user-currency");
 const { createBookChapterService } = require("./services/book-chapters");
 const { createConfigService } = require("./services/config");
 const { createBotSettingsService } = require("./services/bot-settings");
+const { createErrorResponseNormalizer } = require("./services/error-response");
 const { sendCsv } = require("./services/admin-exports");
 const { remoteBackupStatus, uploadBackupToRemote } = require("./services/remote-backups");
 const { createAuthService } = require("./services/auth");
@@ -57,6 +64,16 @@ const { createBookMaintenanceService } = require("./services/book-maintenance");
 const { createSystemJobRetryService } = require("./services/job-retry");
 const { createBotAuditService } = require("./services/bot-audit");
 const { createPo18CrawlerService } = require("./services/po18-crawler");
+const { createCredentialCrypto, encryptStoredPo18Credentials } = require("./services/credential-crypto");
+const { botScopeForRequest, createApiTokenService } = require("./services/api-tokens");
+const { createRateLimiter } = require("./services/rate-limit");
+const { createCsrfProtection } = require("./services/csrf");
+const { createAdminAuditMiddleware, listAdminAuditLogs } = require("./services/admin-audit");
+const {
+    assertProductionSecurity,
+    corsOriginCallback,
+    trustProxySetting
+} = require("./services/http-security");
 const { createHealthRoutes } = require("./routes/health");
 const { createRankRoutes } = require("./routes/rank");
 const { createAdminSystemRoutes } = require("./routes/admin-system");
@@ -68,6 +85,7 @@ const { createAdminAuthRoutes } = require("./routes/admin-auth");
 const { createBotApiRoutes } = require("./routes/bot-api");
 const { createReaderApiRoutes } = require("./routes/reader-api");
 const { createUploadApiRoutes } = require("./routes/upload-api");
+const { createOpenApiRoutes } = require("./routes/openapi");
 const {
     createTelegramPushService,
     parseDailyReportTime,
@@ -95,6 +113,8 @@ const DEFAULT_ADMIN = process.env.PO18_UPLOAD_ADMIN_USER || "admin";
 const DEFAULT_PASSWORD = process.env.PO18_UPLOAD_ADMIN_PASSWORD || "admin123";
 const UPLOAD_API_TOKEN = process.env.PO18_UPLOAD_API_TOKEN || "";
 const STARTED_AT = Date.now();
+const credentialCrypto = createCredentialCrypto({ fallbackSecret: SESSION_SECRET });
+const apiTokenService = createApiTokenService({ query });
 const RUNTIME_LOG_FILE = process.env.PO18_RUNTIME_LOG_FILE || "/config/runtime.log";
 const ADMIN_STATS_CACHE_MS = Number(process.env.PO18_ADMIN_STATS_CACHE_MS || 30000);
 const ADMIN_SYSTEM_CACHE_MS = Number(process.env.PO18_ADMIN_SYSTEM_CACHE_MS || 3000);
@@ -108,6 +128,29 @@ const STARTUP_DB_RETRY_MS = Number.isFinite(Number(process.env.PO18_STARTUP_DB_R
     ? Math.max(1000, Number(process.env.PO18_STARTUP_DB_RETRY_MS))
     : 5000;
 const app = express();
+app.set("trust proxy", trustProxySetting());
+const sessionStore = new PgSessionStore({
+    pool,
+    tableName: "web_sessions",
+    createTableIfMissing: true,
+    errorLog: (err) => console.warn(`[session-store] ${err.message || err}`)
+});
+const authRateLimiter = createRateLimiter({
+    windowMs: Number(process.env.PO18_AUTH_RATE_WINDOW_MS || 15 * 60 * 1000),
+    max: Number(process.env.PO18_AUTH_RATE_MAX || 20)
+});
+const publicLookupRateLimiter = createRateLimiter({
+    windowMs: Number(process.env.PO18_PUBLIC_LOOKUP_RATE_WINDOW_MS || 60 * 1000),
+    max: Number(process.env.PO18_PUBLIC_LOOKUP_RATE_MAX || 120)
+});
+const ttsRateLimiter = createRateLimiter({
+    windowMs: Number(process.env.PO18_TTS_RATE_WINDOW_MS || 60 * 1000),
+    max: Number(process.env.PO18_TTS_RATE_MAX || 30)
+});
+const uploadRateLimiter = createRateLimiter({
+    windowMs: Number(process.env.PO18_UPLOAD_RATE_WINDOW_MS || 60 * 1000),
+    max: Number(process.env.PO18_UPLOAD_RATE_MAX || 600)
+});
 const adminStatsCache = { at: 0, payload: null };
 const adminSystemStatusCache = { at: 0, payload: null };
 const numericBookFields = new Set([
@@ -152,7 +195,9 @@ const authService = createAuthService({
     configGet,
     scholarProfile,
     uploadApiTokenProvider: () => UPLOAD_API_TOKEN,
-    botApiTokenProvider: () => process.env.PO18_BOT_API_TOKEN || ""
+    botApiTokenProvider: () => process.env.PO18_BOT_API_TOKEN || "",
+    uploadTokenAuthenticator: ({ token, req }) => apiTokenService.authenticate({ token, kind: "upload", scope: "crawler:write", req }),
+    botTokenAuthenticator: ({ token, req }) => apiTokenService.authenticate({ token, kind: "bot", scope: botScopeForRequest(req), req })
 });
 const {
     addMembershipPatch,
@@ -234,6 +279,7 @@ const healthService = createHealthService({
     pool,
     uploadApiToken: () => UPLOAD_API_TOKEN,
     botApiToken: () => process.env.PO18_BOT_API_TOKEN || "",
+    credentialEncryption: () => ({ configured: credentialCrypto.configured, activeKeyId: credentialCrypto.activeKeyId }),
     telegramTokenProvider: async () => {
         try {
             return await telegramLoginBotToken();
@@ -276,9 +322,12 @@ const telegramPushService = createTelegramPushService({
     configGet,
     configSet,
     latestBookMetadata,
+    labelsProvider: platformLabelConfig,
+    readerPublicUrlProvider: () => process.env.PO18_READER_PUBLIC_URL || process.env.READER_PUBLIC_URL || "",
     tokenProvider: telegramLoginBotToken,
     logger: console
 });
+const readerRumService = createReaderRumService({ query });
 const userCurrencyService = createUserCurrencyService({
     query,
     pool,
@@ -296,6 +345,7 @@ const {
     dailyReportRecipients,
     notifyTelegram,
     postJson,
+    sendDirectMessage,
     sendDailyReport,
     startDailyReportScheduler,
     telegramPushConfig
@@ -338,6 +388,7 @@ const po18CrawlerService = createPo18CrawlerService({
     createSystemJob,
     updateSystemJob,
     recordEvent,
+    credentialCrypto,
     logger: console
 });
 const systemJobRetryService = createSystemJobRetryService({
@@ -366,6 +417,8 @@ const healthRoutes = createHealthRoutes({
     requestLogFile: REQUEST_LOG_FILE,
     slowLogFile: SLOW_LOG_FILE,
     eventLogFile: EVENT_LOG_FILE,
+    crawlerSnapshotProvider: po18CrawlerService.snapshot,
+    systemJobMetricsProvider: collectSystemJobMetrics,
     metricsTokenProvider: () => process.env.PO18_METRICS_TOKEN || ""
 });
 const rankRoutes = createRankRoutes({
@@ -385,9 +438,13 @@ const adminSystemRoutes = createAdminSystemRoutes({
     collectAdminSystemOverview: adminOverviewService.collectAdminSystemOverview,
     collectDataQuality: dataQualityService.collectDataQuality,
     collectBotAdminOverview: adminOverviewService.collectBotAdminOverview,
+    readerRumSummary: readerRumService.summary,
     botCommandSettings: botSettingsService.botCommandSettings,
     saveBotCommandSettings: botSettingsService.saveBotCommandSettings,
     listBotAuditLogs: botAuditService.listBotAuditLogs,
+    listAdminAuditLogs: (filters) => listAdminAuditLogs(query, filters),
+    listApiTokens: apiTokenService.listTokens,
+    revokeApiToken: apiTokenService.revokeToken,
     listSystemJobs,
     getSystemJob,
     cancelSystemJob,
@@ -459,6 +516,8 @@ const adminContentRoutes = createAdminContentRoutes({
     cdkDuration,
     csvCell,
     generateCdkCode,
+    sendDirectMessage,
+    readerPublicUrl: process.env.PO18_READER_PUBLIC_URL || process.env.READER_PUBLIC_URL || "",
     isCacheCountSort: bookChapterService.isCacheCountSort,
     bookOrder: bookChapterService.bookOrder,
     logSlowSearch,
@@ -484,6 +543,7 @@ const adminContentRoutes = createAdminContentRoutes({
 });
 const adminAuthRoutes = createAdminAuthRoutes({
     query,
+    hashPassword,
     verifyPassword,
     requireAdmin
 });
@@ -529,9 +589,15 @@ const botApiRoutes = createBotApiRoutes({
     addHotKeyword,
     wordCloudPayload: wordCloudService.wordCloudPayload,
     recordEvent,
+    credentialCrypto,
     createSystemJob,
+    claimSystemJob,
+    claimSystemJobs,
     getSystemJob,
+    heartbeatSystemJob,
     updateSystemJob,
+    listSystemJobs,
+    cancelSystemJob,
     botCommandSettings: botSettingsService.botCommandSettings,
     recordBotAuditLog: botAuditService.recordBotAuditLog
 });
@@ -564,6 +630,7 @@ const readerApiRoutes = createReaderApiRoutes({
     slowSearchContext,
     chapterListOrderSql: bookChapterService.chapterListOrderSql,
     chapterText: bookChapterService.chapterText,
+    textFromHtml: bookChapterService.textFromHtml,
     edgeTtsFallbackVoices: EDGE_TTS_FALLBACK_VOICES,
     edgeTtsVoices,
     edgeTtsSynthesize,
@@ -575,7 +642,8 @@ const readerApiRoutes = createReaderApiRoutes({
     synthesizeCartesiaTts,
     normalizeCorrectionText,
     correctionCharLength,
-    listBookReviews
+    listBookReviews,
+    readerRumService
 });
 const uploadApiRoutes = createUploadApiRoutes({
     query,
@@ -589,14 +657,29 @@ const uploadApiRoutes = createUploadApiRoutes({
     chapterListOrderSql: bookChapterService.chapterListOrderSql,
     recordEvent
 });
+const openApiRoutes = createOpenApiRoutes({
+    app,
+    versionProvider: () => versionPayload("server-pg").version
+});
 pool.on("error", (err) => {
     console.warn(`[pg-pool] ${err.message}`);
     logEvent("warn", "server-pg", "pg-pool-error", { error: err.message || String(err) });
 });
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: corsOriginCallback(), credentials: true }));
 attachExpressPanel(app, { configFile: CONFIG_FILE });
 app.use(compression());
+app.use([
+    "/admin-api/auth/login",
+    "/reader-auth/login",
+    "/reader-auth/register",
+    "/reader-auth/telegram",
+    "/signup/login",
+    "/signup/register"
+], authRateLimiter);
+app.use("/api/parse/check-cache", publicLookupRateLimiter);
+app.use("/reader-api/tts", ttsRateLimiter);
+app.use(["/api/parse/chapter-content", "/api/metadata/batch"], uploadRateLimiter);
 app.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ extended: true, limit: "30mb" }));
 app.use(["/reader-api", "/reader-auth"], (req, res, next) => {
@@ -611,12 +694,21 @@ app.use(
     session({
         name: "po18_upload_admin_pg",
         secret: SESSION_SECRET,
+        store: sessionStore,
         resave: false,
         saveUninitialized: false,
-        cookie: { httpOnly: true, sameSite: "lax", maxAge: 1000 * 60 * 60 * 24 * 30 }
+        cookie: {
+            httpOnly: true,
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production" ? "auto" : false,
+            maxAge: 1000 * 60 * 60 * 24 * 30
+        }
     })
 );
 app.use(createRequestLogger({ service: "server-pg", slowMs: REQUEST_SLOW_MS, skip: (req) => req.path === "/favicon.ico" }));
+app.use(createErrorResponseNormalizer());
+app.use(createCsrfProtection({ cookieName: "po18_upload_admin_pg" }));
+app.use(createAdminAuditMiddleware({ query, logEvent }));
 app.use(healthRoutes);
 app.use(rankRoutes);
 app.use(adminSystemRoutes);
@@ -628,6 +720,7 @@ app.use(adminAuthRoutes);
 app.use(botApiRoutes);
 app.use(readerApiRoutes);
 app.use(uploadApiRoutes);
+app.use(openApiRoutes);
 
 function getFreshCache(cache, ttlMs) {
     if (!ttlMs || ttlMs <= 0 || !cache.payload) return null;
@@ -860,7 +953,7 @@ function serverCurrencyLabel(currency) {
 async function latestBookMetadata(bookId) {
     if (!bookId) return null;
     const result = await query(
-        `SELECT title, detail_url, platform
+        `SELECT book_id, title, author, cover, category, tags, status, description, description_html, detail_url, platform
          FROM book_metadata
          WHERE book_id = $1
          ORDER BY COALESCE(subscribed_chapters, 0) DESC, COALESCE(updated_at, created_at) DESC, id DESC
@@ -950,7 +1043,7 @@ async function initAdmin() {
     const found = await query("SELECT id FROM admin_users WHERE username = $1", [DEFAULT_ADMIN]);
     if (found.rows.length) return;
     const { salt, hash } = hashPassword(DEFAULT_PASSWORD);
-    await query("INSERT INTO admin_users(username, password_hash, salt) VALUES ($1,$2,$3)", [DEFAULT_ADMIN, hash, salt]);
+    await query("INSERT INTO admin_users(username, password_hash, salt, role) VALUES ($1,$2,$3,'owner')", [DEFAULT_ADMIN, hash, salt]);
 }
 
 function requestHostWithoutPort(req) {
@@ -985,6 +1078,11 @@ app.get("/rank", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "rank.html"));
 });
 
+app.get(["/admin", "/admin/*"], (req, res) => {
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 app.use(
     "/",
     express.static(path.join(__dirname, "public"), {
@@ -998,7 +1096,7 @@ app.use(
         }
     })
 );
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
     const isDbConnectionError = isPgConnectionError(err);
     if (isDbConnectionError) {
         console.warn(`[request-db] ${req.method} ${req.originalUrl}: ${err.message}`);
@@ -1012,6 +1110,15 @@ app.use((err, req, res, next) => {
 
 async function bootApplication() {
     await initPg();
+    await apiTokenService.syncConfiguredTokens({
+        botToken: process.env.PO18_BOT_API_TOKEN || "",
+        botScopes: process.env.PO18_BOT_API_SCOPES || "",
+        botAllowedIps: process.env.PO18_BOT_API_ALLOWED_IPS || "",
+        uploadToken: UPLOAD_API_TOKEN,
+        uploadAllowedIps: process.env.PO18_UPLOAD_API_ALLOWED_IPS || ""
+    });
+    const encryptedCredentials = await encryptStoredPo18Credentials(query, credentialCrypto);
+    if (encryptedCredentials.updated) console.log(`[startup] encrypted ${encryptedCredentials.updated}/${encryptedCredentials.scanned} PO18 credential rows`);
     await initAdmin();
     startDailyReportScheduler();
     rankService.startRefreshScheduler();
@@ -1033,6 +1140,8 @@ function bootApplicationWithRetry(attempt = 1) {
             console.error(`[startup] ${message}`);
         });
 }
+
+assertProductionSecurity();
 
 app.listen(PORT, HOST, () => {
     console.log(`[sidecar-pg] upload/admin server: http://${HOST}:${PORT}`);

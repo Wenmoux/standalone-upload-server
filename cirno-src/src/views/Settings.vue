@@ -42,6 +42,7 @@
 
 <script>
 import defaultAvatarImage from '@/assets/d_avatar.jpg'
+import { clearReaderSession } from '@/utils/reader-session'
 export default {
   data() {
     return {
@@ -108,7 +109,7 @@ export default {
       if (!confirm) {
         if (!window.confirm('确定退出登录？')) return
         await fetch('/reader-auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null)
-        localStorage.removeItem('login_token')
+        clearReaderSession()
         localStorage.removeItem('account')
         this.$store.commit('setReaderInfo', {})
         this.$router.replace({ name: 'Login' })
@@ -121,7 +122,7 @@ export default {
         cancelText: '取消',
         onOk: async () => {
           await fetch('/reader-auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null)
-          localStorage.removeItem('login_token')
+          clearReaderSession()
           localStorage.removeItem('account')
           this.$store.commit('setReaderInfo', {})
           this.$router.replace({ name: 'Login' })

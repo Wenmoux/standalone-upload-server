@@ -108,16 +108,22 @@ function createUploadApiRoutes(options = {}) {
                     ORDER BY COALESCE(subscribed_chapters, 0) DESC, COALESCE(updated_at, created_at) DESC, id DESC
                     LIMIT 1
                  )
-                 SELECT chapter_id
+                 SELECT chapter_id, chapter_order
                  FROM chapter_cache
                  WHERE book_id = $1
                  ORDER BY ${chapterListOrderSql("(SELECT platform FROM book_platform)")}`,
                 [String(bookId)]
             );
+            const chapters = cached.rows.map((row) => ({
+                chapterId: String(row.chapter_id),
+                chapterOrder: row.chapter_order === null || row.chapter_order === undefined ? null : Number(row.chapter_order)
+            }));
+            const chapterIds = chapters.map((chapter) => chapter.chapterId);
             return res.json({
                 cached: cached.rows.length > 0,
-                chapterIds: cached.rows.map((row) => String(row.chapter_id)),
-                cachedChapters: cached.rows.map((row) => String(row.chapter_id))
+                chapterIds,
+                cachedChapters: chapterIds,
+                chapters
             });
         } catch (err) {
             next(err);

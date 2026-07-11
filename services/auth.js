@@ -23,6 +23,31 @@ function valueOf(value) {
     return typeof value === "function" ? value() : value;
 }
 
+function normalizeAdminRole(value) {
+    const role = String(value || "owner").trim().toLowerCase();
+    return ["owner", "operator", "moderator", "viewer"].includes(role) ? role : "viewer";
+}
+
+function adminRoleAllows(roleValue, req) {
+    const role = normalizeAdminRole(roleValue);
+    if (role === "owner") return true;
+    const method = String(req.method || "GET").toUpperCase();
+    const path = String(req.path || req.url || "").split("?")[0];
+    if (["GET", "HEAD", "OPTIONS"].includes(method)) {
+        if (/\/admin-api\/auth\/admins(?:\/|$)/.test(path)) return false;
+        if (role === "viewer" && /\/admin-api\/(config|backup\/download|backup\/config|backup\/diagnostics|system\/api-tokens)/.test(path)) return false;
+        return true;
+    }
+    if (path === "/admin-api/auth/logout") return true;
+    if (role === "operator") {
+        if (/\/admin-api\/(books|chapters|po18-crawler|jobs)(?:\/|$)/.test(path)) return true;
+        if (/\/admin-api\/backup(?:\/|$)/.test(path) && path !== "/admin-api/backup/restore") return true;
+        return false;
+    }
+    if (role === "moderator") return /\/admin-api\/corrections(?:\/|$)/.test(path);
+    return false;
+}
+
 function createAuthService(options = {}) {
     const crypto = options.crypto || defaultCrypto;
     const query = options.query;
@@ -38,6 +63,8 @@ function createAuthService(options = {}) {
     const botUsernameForTelegram = options.botUsernameForTelegram || ((telegramId) => `tg_${normalizeTelegramId(telegramId).replace(/[^0-9A-Za-z_-]/g, "_")}`);
     const uploadApiTokenProvider = options.uploadApiTokenProvider || (() => process.env.PO18_UPLOAD_API_TOKEN || "");
     const botApiTokenProvider = options.botApiTokenProvider || (() => process.env.PO18_BOT_API_TOKEN || "");
+    const uploadTokenAuthenticator = options.uploadTokenAuthenticator;
+    const botTokenAuthenticator = options.botTokenAuthenticator;
 
     function timingSafeEqualText(left, right) {
         const a = crypto.createHash("sha256").update(String(left || "")).digest();
@@ -106,6 +133,7 @@ function createAuthService(options = {}) {
 
     function requireAdmin(req, res, next) {
         if (!req.session?.adminUser) return res.status(401).json({ error: "\u672a\u767b\u5f55" });
+        if (!adminRoleAllows(req.session.adminUser.role, req)) return res.status(403).json({ error: "管理员权限不足" });
         next();
     }
 
@@ -168,19 +196,40 @@ function createAuthService(options = {}) {
         return { permanent: !!user.membership_permanent, expiresAt: base.toISOString() };
     }
 
-    function requireUploadApi(req, res, next) {
+    async function requireUploadApi(req, res, next) {
         if (req.session?.adminUser) return next();
+        const provided = req.get("X-Upload-Token") || req.get("X-PO18-Upload-Token") || "";
+        if (typeof uploadTokenAuthenticator === "function") {
+            try {
+                const result = await uploadTokenAuthenticator({ token: provided, req });
+                if (!result?.ok) return res.status(result?.status || 401).json({ error: result?.error || "Upload API token invalid" });
+                req.apiToken = result.token;
+                return next();
+            } catch (err) {
+                return res.status(503).json({ error: err.message || "Upload API token validation unavailable" });
+            }
+        }
         const expected = valueOf(uploadApiTokenProvider);
         if (!expected) return res.status(503).json({ error: "Upload API token is not configured" });
-        const provided = req.get("X-Upload-Token") || req.get("X-PO18-Upload-Token") || "";
         if (!timingSafeEqualText(provided, expected)) return res.status(401).json({ error: "Upload API token invalid" });
         next();
     }
 
-    function requireBotApi(req, res, next) {
+    async function requireBotApi(req, res, next) {
+        const provided = req.get("X-Bot-Token") || "";
+        if (typeof botTokenAuthenticator === "function") {
+            try {
+                const result = await botTokenAuthenticator({ token: provided, req });
+                if (!result?.ok) return res.status(result?.status || 401).json({ error: result?.error || "Bot API token invalid" });
+                req.apiToken = result.token;
+                return next();
+            } catch (err) {
+                return res.status(503).json({ error: err.message || "Bot API token validation unavailable" });
+            }
+        }
         const expected = valueOf(botApiTokenProvider);
         if (!expected) return res.status(503).json({ error: "Bot API token is not configured" });
-        if (!timingSafeEqualText(req.get("X-Bot-Token") || "", expected)) return res.status(401).json({ error: "Bot API token invalid" });
+        if (!timingSafeEqualText(provided, expected)) return res.status(401).json({ error: "Bot API token invalid" });
         next();
     }
 
@@ -266,8 +315,10 @@ function createAuthService(options = {}) {
 }
 
 module.exports = {
+    adminRoleAllows,
     cdkDuration,
     createAuthService,
     csvCell,
+    normalizeAdminRole,
     todayDateKey
 };

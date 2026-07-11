@@ -57,6 +57,7 @@ function baseDeps(overrides = {}) {
         synthesizeCartesiaTts: async () => Buffer.from("cartesia"),
         normalizeCorrectionText: (value = "") => String(value),
         correctionCharLength: (value = "") => Array.from(String(value)).length,
+        readerRumService: { recordEvents: async () => ({ accepted: 0 }) },
         ...overrides
     };
 }
@@ -73,6 +74,30 @@ test("reader routes expose public auth and catalog helpers", async () => {
 
         const platforms = await fetch(`${base}/reader-api/platforms`);
         assert.deepEqual(await platforms.json(), { labels: { po18: "PO18" }, platforms: [] });
+    });
+});
+
+test("reader performance endpoint accepts a bounded event batch behind reader auth", async () => {
+    const calls = [];
+    const router = createReaderApiRoutes(baseDeps({
+        readerRumService: {
+            recordEvents: async (userId, events) => {
+                calls.push({ userId, events });
+                return { accepted: events.length };
+            }
+        }
+    }));
+
+    await withApp(router, async (base) => {
+        const blocked = await fetch(`${base}/reader-api/performance`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        assert.equal(blocked.status, 401);
+        const response = await fetch(`${base}/reader-api/performance`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Reader": "1" },
+            body: JSON.stringify({ events: [{ metric: "lcp", value: 1234 }] })
+        });
+        assert.deepEqual(await response.json(), { success: true, accepted: 1 });
+        assert.equal(calls[0].userId, 1);
     });
 });
 
@@ -161,6 +186,38 @@ test("reader routes keep tts endpoints protected and return edge voice fallback"
         assert.equal(body.fallback, true);
         assert.equal(body.rows[0].name, "zh-CN-XiaoxiaoNeural");
     });
+});
+
+test("reader TTS proxy validates the target and disables redirects", async () => {
+    const calls = [];
+    const router = createReaderApiRoutes(baseDeps({
+        validateTtsProxyTarget: async (value) => {
+            calls.push({ type: "validate", value });
+            return new URL(value);
+        },
+        fetchTtsProxy: async (target, options) => {
+            calls.push({ type: "fetch", target: target.href, options });
+            return new Response(Buffer.from("audio"), {
+                status: 200,
+                headers: { "content-type": "audio/mpeg" }
+            });
+        }
+    }));
+
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/reader-api/tts/proxy`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Reader": "1" },
+            body: JSON.stringify({ url: "https://tts.example.com/speech", body: "payload" })
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("content-type"), "audio/mpeg");
+        assert.equal(Buffer.from(await response.arrayBuffer()).toString(), "audio");
+    });
+
+    assert.deepEqual(calls[0], { type: "validate", value: "https://tts.example.com/speech" });
+    assert.equal(calls[1].target, "https://tts.example.com/speech");
+    assert.equal(calls[1].options.redirect, "error");
 });
 
 test("reader search suggestions combine metadata and hot keywords", async () => {

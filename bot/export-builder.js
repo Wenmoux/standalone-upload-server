@@ -53,7 +53,7 @@ async function writeTxtExport(filePath, book, rows) {
     }
 }
 
-async function buildExport(bookOrId, format, from = null) {
+async function buildExport(bookOrId, format, from = null, exportOptions = {}) {
     const book = typeof bookOrId === "object" && bookOrId ? bookOrId : (await client.getBook(bookOrId)).book;
     const bookId = String(book.book_id || book.bookId || bookOrId).trim();
     const chapters = await client.getChapters(bookId, true);
@@ -74,7 +74,7 @@ async function buildExport(bookOrId, format, from = null) {
         return { filePath, book, chapters: readableCount, paidChapters: paidExportChapterCount(book, rows) };
     }
     const filePath = path.join(dir, `${base}.epub`);
-    const files = await makeEpubFiles(book, rows);
+    const files = await makeEpubFiles(book, rows, exportOptions);
     await fs.writeFile(filePath, await buildZip(files));
     return { filePath, book, chapters: readableCount, paidChapters: paidExportChapterCount(book, rows) };
 }

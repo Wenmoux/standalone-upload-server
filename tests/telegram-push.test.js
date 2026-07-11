@@ -57,6 +57,99 @@ test("telegram service sends chapter push and marks event sent", async () => {
     assert.match(updates[0].sql, /telegram_status = 'sent'/);
 });
 
+test("telegram service sends metadata push as cover card with jump buttons", async () => {
+    const config = {
+        telegram_enabled: "1",
+        telegram_push_types: JSON.stringify(["metadata"]),
+        telegram_bot_token: "token-1",
+        telegram_chat_id: "chat-1"
+    };
+    const posts = [];
+    const updates = [];
+    const service = createTelegramPushService({
+        configGet: async (key) => config[key] || "",
+        labelsProvider: async () => ({ qidian: "起点" }),
+        readerPublicUrlProvider: () => "https://reader.example",
+        latestBookMetadata: async () => ({
+            book_id: "9",
+            title: "Book <A>",
+            author: "Author & B",
+            cover: "/cover.jpg",
+            category: "玄幻",
+            status: "连载",
+            description: "这是一段 & 符号的简介。",
+            tags: "热血,升级,玄幻",
+            detail_url: "https://www.example.com/books/9",
+            platform: "qidian"
+        }),
+        postJson: async (url, body) => {
+            posts.push({ url, body });
+            return "{}";
+        },
+        query: async (sql, params) => {
+            updates.push({ sql, params });
+            if (/INSERT INTO telegram_metadata_pushes/.test(sql)) return { rows: [{ book_id: params[0] }] };
+            return { rows: [] };
+        },
+        sendDelayMs: 0
+    });
+
+    await service.notifyTelegram({ id: 8, event_type: "metadata", book_id: "9", title: "Old", platform: "qidian" });
+
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0].url, "https://api.telegram.org/bottoken-1/sendPhoto");
+    assert.equal(posts[0].body.chat_id, "chat-1");
+    assert.equal(posts[0].body.photo, "https://www.example.com/cover.jpg");
+    assert.match(posts[0].body.caption, /书名：Book &lt;A&gt;/);
+    assert.match(posts[0].body.caption, /作者：Author &amp; B/);
+    assert.match(posts[0].body.caption, /平台：起点/);
+    assert.match(posts[0].body.caption, /分类：玄幻/);
+    assert.match(posts[0].body.caption, /状态：连载/);
+    assert.match(posts[0].body.caption, /标签：热血 \/ 升级 \/ 玄幻/);
+    assert.match(posts[0].body.caption, /简介：\n<blockquote expandable>这是一段 &amp; 符号的简介。<\/blockquote>/);
+    assert.deepEqual(posts[0].body.reply_markup.inline_keyboard[0], [
+        { text: "阅读器详情", url: "https://reader.example/#/detail?bid=9" },
+        { text: "原站链接", url: "https://www.example.com/books/9" }
+    ]);
+    assert.ok(updates.some((item) => /INSERT INTO telegram_metadata_pushes/.test(item.sql)));
+    assert.ok(updates.some((item) => /UPDATE telegram_metadata_pushes/.test(item.sql) && item.params[1] === "sendPhoto"));
+    const eventUpdate = updates.find((item) => /UPDATE upload_events/.test(item.sql));
+    assert.deepEqual(eventUpdate.params, [8]);
+    assert.match(eventUpdate.sql, /telegram_status = 'sent'/);
+});
+
+test("telegram service skips metadata push after a book id was already pushed", async () => {
+    const config = {
+        telegram_enabled: "1",
+        telegram_push_types: JSON.stringify(["metadata"]),
+        telegram_bot_token: "token-1",
+        telegram_chat_id: "chat-1"
+    };
+    const posts = [];
+    const updates = [];
+    const service = createTelegramPushService({
+        configGet: async (key) => config[key] || "",
+        latestBookMetadata: async () => ({ book_id: "9", title: "Book", detail_url: "https://www.example.com/books/9", platform: "po18" }),
+        postJson: async (url, body) => {
+            posts.push({ url, body });
+            return "{}";
+        },
+        query: async (sql, params) => {
+            updates.push({ sql, params });
+            if (/INSERT INTO telegram_metadata_pushes/.test(sql)) return { rows: [] };
+            return { rows: [] };
+        },
+        sendDelayMs: 0
+    });
+
+    await service.notifyTelegram({ id: 9, event_type: "metadata", book_id: "9", title: "Book", platform: "po18" });
+
+    assert.equal(posts.length, 0);
+    const eventUpdate = updates.find((item) => /UPDATE upload_events/.test(item.sql));
+    assert.deepEqual(eventUpdate.params, [9]);
+    assert.match(eventUpdate.sql, /telegram_status = 'skipped'/);
+});
+
 test("daily report merges recipients, sends messages and records last date", async () => {
     const config = {
         telegram_daily_report_enabled: "1",

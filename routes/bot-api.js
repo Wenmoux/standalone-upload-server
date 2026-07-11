@@ -25,20 +25,20 @@ function createBotApiRoutes(deps = {}) {
         reviewMinLength,
         reviewMinLevel,
         reviewPublishCost,
-        updateBookReviewChannelMessage,
         voteBookReview,
         pushBookReviewToChannel,
         getHotKeywords,
         addHotKeyword,
         wordCloudPayload,
-        recordEvent
+        recordEvent,
+        credentialCrypto
     } = deps;
 
     router.use(createBotApiSystemRoutes(deps));
 
     router.use(createBotApiUserRoutes(deps));
 
-    router.post("/bot-api/red-packets", requireBotApi, async (req, res, next) => {
+    router.post("/bot-api/red-packets", requireBotApi, async (req, res) => {
         const client = await pool.connect();
         try {
             const senderTelegramId = normalizeTelegramId(req.body?.sender_telegram_id || req.body?.senderTelegramId);
@@ -179,9 +179,30 @@ function createBotApiRoutes(deps = {}) {
             if (!user) return res.status(404).json({ error: "user not found" });
             const found = await query("SELECT account, cookies_json, updated_at, last_login_at, last_status FROM reader_po18_accounts WHERE user_id=$1", [user.id]);
             const row = found.rows[0];
+            const cookies = credentialCrypto?.decryptJson(row?.cookies_json, []) ?? row?.cookies_json;
             res.json({
                 account: row?.account || "",
-                cookies: Array.isArray(row?.cookies_json) ? row.cookies_json : [],
+                cookies: Array.isArray(cookies) ? cookies : [],
+                updated_at: row?.updated_at || null,
+                last_login_at: row?.last_login_at || null,
+                last_status: row?.last_status || ""
+            });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/bot-api/users/:telegramId/po18/credentials", requireBotApi, async (req, res, next) => {
+        try {
+            const user = await findBotUserByTelegramId(req.params.telegramId);
+            if (!user) return res.status(404).json({ error: "user not found" });
+            const found = await query("SELECT account, password, cookies_json, updated_at, last_login_at, last_status FROM reader_po18_accounts WHERE user_id=$1", [user.id]);
+            const row = found.rows[0];
+            const cookies = credentialCrypto?.decryptJson(row?.cookies_json, []) ?? row?.cookies_json;
+            res.json({
+                account: row?.account || "",
+                password: (credentialCrypto?.decryptString(row?.password || "") ?? row?.password) || "",
+                cookies: Array.isArray(cookies) ? cookies : [],
                 updated_at: row?.updated_at || null,
                 last_login_at: row?.last_login_at || null,
                 last_status: row?.last_status || ""
@@ -201,8 +222,12 @@ function createBotApiRoutes(deps = {}) {
             const lastStatus = String(req.body?.last_status || req.body?.lastStatus || "").slice(0, 120);
             const current = await query("SELECT account, password, cookies_json FROM reader_po18_accounts WHERE user_id=$1", [user.id]);
             const nextAccount = account || current.rows[0]?.account || "";
-            const nextPassword = password || current.rows[0]?.password || "";
-            const nextCookies = cookies === undefined ? current.rows[0]?.cookies_json || [] : cookies;
+            const currentPassword = (credentialCrypto?.decryptString(current.rows[0]?.password || "") ?? current.rows[0]?.password) || "";
+            const currentCookies = (credentialCrypto?.decryptJson(current.rows[0]?.cookies_json, []) ?? current.rows[0]?.cookies_json) || [];
+            const nextPassword = password || currentPassword;
+            const nextCookies = cookies === undefined ? currentCookies : cookies;
+            const storedPassword = credentialCrypto?.encryptString(nextPassword) ?? nextPassword;
+            const storedCookies = credentialCrypto?.encryptJson(nextCookies) ?? nextCookies;
             const saved = await query(
                 `INSERT INTO reader_po18_accounts(user_id, telegram_id, account, password, cookies_json, last_login_at, last_status, updated_at)
                  VALUES ($1,$2,$3,$4,$5::jsonb,CASE WHEN $6 THEN CURRENT_TIMESTAMP ELSE NULL END,$7,CURRENT_TIMESTAMP)
@@ -215,9 +240,9 @@ function createBotApiRoutes(deps = {}) {
                     last_status=EXCLUDED.last_status,
                     updated_at=CURRENT_TIMESTAMP
                  RETURNING account, cookies_json, updated_at, last_login_at, last_status`,
-                [user.id, user.telegram_id, nextAccount, nextPassword, JSON.stringify(nextCookies), cookies !== undefined, lastStatus]
+                [user.id, user.telegram_id, nextAccount, storedPassword, JSON.stringify(storedCookies), cookies !== undefined, lastStatus]
             );
-            res.json({ success: true, account: saved.rows[0].account, has_cookies: (saved.rows[0].cookies_json || []).length > 0, updated_at: saved.rows[0].updated_at });
+            res.json({ success: true, account: saved.rows[0].account, has_cookies: nextCookies.length > 0, updated_at: saved.rows[0].updated_at });
         } catch (err) {
             next(err);
         }
@@ -388,7 +413,7 @@ function createBotApiRoutes(deps = {}) {
         }
     });
 
-    router.post("/bot-api/books/:bookId/crowd", requireBotApi, async (req, res, next) => {
+    router.post("/bot-api/books/:bookId/crowd", requireBotApi, async (req, res) => {
         const client = await pool.connect();
         try {
             const telegramId = normalizeTelegramId(req.body?.telegram_id || req.body?.telegramId);

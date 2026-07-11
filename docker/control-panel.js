@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs/promises");
 const fsSync = require("fs");
 const path = require("path");
+const { createRateWindow } = require("../services/rate-limit");
 const { URL, URLSearchParams } = require("url");
 
 const DEFAULT_CONFIG_FILE = process.env.PO18_CONFIG_FILE || "/config/app.env";
@@ -17,6 +18,23 @@ const defaultSecrets = {
 let generatedSetupToken = "";
 let adminIndexCache = { file: "", mtimeMs: 0, html: "" };
 const REQUIRED_TABLES = ["book_metadata", "chapter_cache", "admin_users", "admin_config", "reader_users", "upload_events"];
+const setupAuthRateWindow = createRateWindow({
+    windowMs: Number(process.env.PO18_SETUP_AUTH_RATE_WINDOW_MS || 15 * 60 * 1000),
+    max: Number(process.env.PO18_SETUP_AUTH_RATE_MAX || 20)
+});
+
+function setupClientKey(req) {
+    return String(req.socket?.remoteAddress || req.connection?.remoteAddress || "unknown").trim() || "unknown";
+}
+
+function rateLimitHeaders(result) {
+    return {
+        "RateLimit-Limit": String(result.limit),
+        "RateLimit-Remaining": String(result.remaining),
+        "RateLimit-Reset": String(Math.ceil(result.resetAt / 1000)),
+        ...(result.allowed ? {} : { "Retry-After": String(result.retryAfter) })
+    };
+}
 const CONFIG_KEYS = [
     "PO18_SETUP_TOKEN",
     "PO18_PG_URL",
@@ -65,7 +83,7 @@ function versionPayload(service = "po18-reader") {
         service,
         version: build.version || runtimeVersion || packageVersion(),
         runtime_version: runtimeVersion,
-        image: build.image || process.env.PO18_IMAGE_TAG || "wenmoux/reader:v1.0",
+        image: build.image || process.env.PO18_IMAGE_TAG || "wenmoux/reader:v2.0",
         build_date: build.build_date || process.env.PO18_BUILD_DATE || "",
         build_revision: revision,
         revision,
@@ -169,25 +187,35 @@ function logSetupToken({ host = "0.0.0.0", port = 3100, configFile = DEFAULT_CON
 function authTokenFromRequest(req, url) {
     const authHeader = String(req.headers.authorization || "");
     const bearer = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
-    return normalizeEnvSecret(
-        url.searchParams.get("token") ||
-        req.headers["x-po18-setup-token"] ||
-        parseCookies(req.headers.cookie).po18_setup_token ||
-        bearer ||
-        ""
-    );
+    const candidates = [
+        ["query", url.searchParams.get("token")],
+        ["header", req.headers["x-po18-setup-token"]],
+        ["cookie", parseCookies(req.headers.cookie).po18_setup_token],
+        ["bearer", bearer]
+    ];
+    const found = candidates.find(([, value]) => normalizeEnvSecret(value));
+    return {
+        source: found?.[0] || "",
+        token: normalizeEnvSecret(found?.[1] || "")
+    };
 }
 
 function authorize(req, url, configFile = DEFAULT_CONFIG_FILE) {
     if (process.env.PO18_SETUP_AUTH_DISABLED === "1") return { ok: true, token: "", setCookie: false };
     const token = setupToken(configFile);
-    const supplied = authTokenFromRequest(req, url);
+    const credential = authTokenFromRequest(req, url);
+    const supplied = credential.token;
     const ok = supplied && timingSafeEqualText(supplied, token);
-    return { ok, token: ok ? token : "", setCookie: ok && url.searchParams.get("token") === supplied };
+    return {
+        ok,
+        token: ok && credential.source !== "cookie" ? token : "",
+        setCookie: ok && credential.source !== "cookie"
+    };
 }
 
 function authCookie(token) {
-    return `po18_setup_token=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200`;
+    const secure = process.env.PO18_SETUP_COOKIE_SECURE === "1" ? "; Secure" : "";
+    return `po18_setup_token=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${secure}`;
 }
 
 function authPath(pathname, token, params = {}) {
@@ -305,7 +333,7 @@ function sharedStyles() {
 }
 
 function pageShell({ title = "PO18 Reader Setup", chip = "受保护面板", body = "", auth = {} }) {
-    const headers = auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {};
+    const headers = auth.setCookie ? { "Set-Cookie": authCookie(auth.cookieToken || auth.token) } : {};
     const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${htmlEscape(title)}</title>${sharedStyles()}</head><body>
     <header class="topbar"><div class="brand"><div class="mark">P</div><div><strong>PO18 Reader Setup</strong><span>初始化与运行配置面板</span></div></div><div class="chip"><span class="dot"></span><span>${htmlEscape(chip)}</span></div></header>
     ${body}</body></html>`;
@@ -854,7 +882,7 @@ async function handleSetupPost(req, res, { configFile, auth, onSave }) {
         }
         await saveConfig(values, configFile);
         Object.assign(process.env, values);
-        const nextAuth = { ...auth, token: values.PO18_SETUP_TOKEN, setCookie: true };
+        const nextAuth = { ...auth, token: "", cookieToken: values.PO18_SETUP_TOKEN, setCookie: true };
         const page = successPage({ values, auth: nextAuth, configFile, restarting: typeof onSave === "function" });
         write(res, 200, page.html, "text/html; charset=utf-8", page.headers);
         if (typeof onSave === "function") onSave();
@@ -880,13 +908,13 @@ async function handleImportPost(req, res, { configFile, auth, onSave }) {
         }
         await saveConfig(values, configFile);
         Object.assign(process.env, values);
-        const nextAuth = { ...auth, token: values.PO18_SETUP_TOKEN, setCookie: true };
+        const nextAuth = { ...auth, token: "", cookieToken: values.PO18_SETUP_TOKEN, setCookie: true };
         writeJson(res, 200, {
             ok: true,
             imported: importedCount,
             restarting: typeof onSave === "function",
-            next: authPath("/setup/status", values.PO18_SETUP_TOKEN)
-        }, { "Set-Cookie": authCookie(nextAuth.token) });
+            next: "/setup/status"
+        }, { "Set-Cookie": authCookie(nextAuth.cookieToken) });
         if (typeof onSave === "function") onSave();
     } catch (err) {
         writeJson(res, 500, { ok: false, error: err.message || String(err) }, auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {});
@@ -946,9 +974,25 @@ async function handlePanelRequest(req, res, options = {}) {
         return;
     }
     const auth = authorize(req, url, configFile);
+    const clientKey = setupClientKey(req);
+    const authRateWindow = options.setupAuthRateWindow || setupAuthRateWindow;
     if (!auth.ok) {
-        const page = gatePage({ auth });
-        write(res, 401, page.html, "text/html; charset=utf-8", page.headers);
+        const limit = authRateWindow.consume(clientKey);
+        const page = gatePage({ auth, error: limit.allowed ? "" : "尝试次数过多，请稍后再试。" });
+        write(res, limit.allowed ? 401 : 429, page.html, "text/html; charset=utf-8", {
+            ...page.headers,
+            ...rateLimitHeaders(limit)
+        });
+        return;
+    }
+    authRateWindow.reset(clientKey);
+    if (req.method === "GET" && auth.setCookie) {
+        url.searchParams.delete("token");
+        const location = `${url.pathname}${url.search}` || "/setup";
+        write(res, 302, "", "text/plain; charset=utf-8", {
+            "Location": location,
+            "Set-Cookie": authCookie(auth.token)
+        });
         return;
     }
     if (req.method === "GET" && (pathname === "/" || pathname === "/setup")) {

@@ -8,7 +8,8 @@ const {
     resolveBackupDownload,
     restoreBackupJob,
     uploadBackupJob,
-    validateRestoreRequest
+    validateRestoreRequest,
+    verifyBackupPayload
 } = require("../services/backups");
 
 function createAdminBackupRoutes(options = {}) {
@@ -29,7 +30,8 @@ function createAdminBackupRoutes(options = {}) {
         resolveBackupDownload: options.resolveBackupDownload || resolveBackupDownload,
         restoreBackupJob: options.restoreBackupJob || restoreBackupJob,
         uploadBackupJob: options.uploadBackupJob || uploadBackupJob,
-        validateRestoreRequest: options.validateRestoreRequest || validateRestoreRequest
+        validateRestoreRequest: options.validateRestoreRequest || validateRestoreRequest,
+        verifyBackupPayload: options.verifyBackupPayload || verifyBackupPayload
     };
 
     router.get("/admin-api/backup/list", requireAdmin, async (req, res, next) => {
@@ -116,6 +118,23 @@ function createAdminBackupRoutes(options = {}) {
             }
         } catch (err) {
             logEvent("error", "server-pg", "backup-restore-failed", { error: err.message || String(err) });
+            next(err);
+        }
+    });
+
+    router.post("/admin-api/backup/verify", requireAdmin, async (req, res, next) => {
+        try {
+            const fileName = String(req.body?.file || "").trim();
+            if (!fileName) return res.status(400).json({ error: "backup file is required" });
+            const payload = await services.verifyBackupPayload({ fileName, backupDir });
+            logEvent("info", "server-pg", "backup-verified", {
+                file: payload.verification.file,
+                bytes: payload.verification.bytes,
+                archive_entries: payload.verification.archive_entries
+            });
+            res.json(payload);
+        } catch (err) {
+            logEvent("error", "server-pg", "backup-verify-failed", { error: err.message || String(err) });
             next(err);
         }
     });

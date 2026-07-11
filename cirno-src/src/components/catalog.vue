@@ -25,12 +25,19 @@
             <i class="ri-sort-asc catalog-button"></i>
           </div>
         </div>
-        <div class="scroll-wrapper" ref="bsWrapper">
-          <div class="catalog-content">
+        <div class="scroll-wrapper">
+          <virtual-list
+            ref="virtualList"
+            class="catalog-content"
+            :items="visibleChapters"
+            :item-height="58"
+            height="100%"
+            :overscan="10"
+            key-field="chapter_id"
+          >
+            <template #default="{ item: chapter }">
             <div
               class="catalog"
-              v-for="chapter in visibleChapters"
-              :key="chapter.chapter_id || chapter.__catalogIndex"
               :class="{ 'catalog-volume-row': isVolumeChapter(chapter) }"
               @click="getContent(chapter)"
             >
@@ -45,7 +52,8 @@
                 <span class="chapter-name">{{ chapter.chapter_title }}</span>
               </div>
             </div>
-          </div>
+            </template>
+          </virtual-list>
         </div>
       </div>
     </a-modal>
@@ -53,10 +61,10 @@
 </template>
 
 <script>
-import PerfectScrollbar from 'perfect-scrollbar'
-import 'perfect-scrollbar/css/perfect-scrollbar.css'
+import VirtualList from './virtual-list.vue'
 export default {
   name: 'Catalog',
+  components: { VirtualList },
   props: {
     chapters: {
       type: Array,
@@ -86,7 +94,6 @@ export default {
   data() {
     return {
       visible: false,
-      cataScroll: null,
       collapsedVolumes: {}
     }
   },
@@ -122,12 +129,7 @@ export default {
     showCatalog() {
       this.visible = true
       this.$nextTick(() => {
-        this.cataScroll = new PerfectScrollbar(this.$refs.bsWrapper, {
-          wheelSpeed: 2,
-          wheelPropagation: true,
-          minScrollbarLength: 20
-        })
-        this.$refs.bsWrapper.scrollTop = 52 * (this.currentChapter - 1)
+        this.$refs.virtualList?.scrollToIndex(this.currentChapter, 'center')
       })
     },
     hideCatalog() {
@@ -150,9 +152,6 @@ export default {
       const key = this.volumeKey(chapter)
       if (!key) return
       this.collapsedVolumes[key] = !this.collapsedVolumes[key]
-      this.$nextTick(() => {
-        if (this.cataScroll && this.cataScroll.update) this.cataScroll.update()
-      })
     },
     getContent(chapter) {
       if (this.isVolumeChapter(chapter)) {
@@ -261,11 +260,13 @@ export default {
     position: relative;
     background: rgba(248, 250, 252, 0.32);
     .catalog-content {
-      height: fit-content;
-      padding: 14px 18px 18px;
+      padding: 8px 18px;
       .catalog {
-        margin-bottom: 10px;
+        box-sizing: border-box;
+        height: 58px;
+        padding: 5px 0;
         .chaper-title {
+          box-sizing: border-box;
           min-height: 48px;
           padding: 12px 14px;
           cursor: pointer;
@@ -301,7 +302,7 @@ export default {
           box-shadow: 0 10px 26px rgba(27, 136, 238, 0.14), inset 3px 0 0 rgba(27, 136, 238, 0.84);
         }
         &.catalog-volume-row {
-          margin: 18px 0 10px;
+          margin: 0;
           .volume-title {
             min-height: 34px;
             padding: 6px 4px 7px;
@@ -368,7 +369,7 @@ export default {
     .scroll-wrapper {
       height: 62vh;
       .catalog-content {
-        padding: 12px;
+        padding: 6px 12px;
         .catalog .chaper-title {
           min-height: 46px;
           padding: 10px 12px;

@@ -140,8 +140,46 @@ class PgBotClient {
         return data.job || null;
     }
 
+    async claimSystemJobs(payload = {}) {
+        const data = await this.request("/bot-api/jobs/claim", {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+        return data.jobs || [];
+    }
+
+    async claimSystemJob(id, payload = {}) {
+        const data = await this.request(`/bot-api/jobs/${encodeURIComponent(id)}/claim`, {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+        return data.job || null;
+    }
+
+    async heartbeatSystemJob(id, payload = {}) {
+        const data = await this.request(`/bot-api/jobs/${encodeURIComponent(id)}/heartbeat`, {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+        return data.job || null;
+    }
+
     async getSystemJob(id) {
         const data = await this.request(`/bot-api/jobs/${encodeURIComponent(id)}`);
+        return data.job || null;
+    }
+
+    async listSystemJobs(telegramId, { limit = 8, status = "" } = {}) {
+        const query = new URLSearchParams({ telegram_id: String(telegramId || ""), limit: String(limit) });
+        if (status) query.set("status", status);
+        return this.request(`/bot-api/jobs?${query.toString()}`);
+    }
+
+    async cancelSystemJob(id, telegramId) {
+        const data = await this.request(`/bot-api/jobs/${encodeURIComponent(id)}/cancel`, {
+            method: "POST",
+            body: JSON.stringify({ telegram_id: String(telegramId || "") })
+        });
         return data.job || null;
     }
 
@@ -391,7 +429,7 @@ class PgBotClient {
     }
 
     async po18Account(telegramId) {
-        return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/po18`);
+        return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/po18/credentials`);
     }
 
     async clearPo18Account(telegramId) {

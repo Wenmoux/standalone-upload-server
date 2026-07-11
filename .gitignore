@@ -1,6 +1,8 @@
 .alma
 .alma-snapshots
 backups/
+backup/
+config/
 tmp/
 test-results/
 .docker-build.json
@@ -16,6 +18,11 @@ cirno-src/docs/conversion-scans/
 .env.*
 !.env.example
 !.env.docker.example
+app.env
+*.local.env
+
+*.dump
+*.backup
 
 *.log
 *.pid

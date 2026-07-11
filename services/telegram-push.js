@@ -1,4 +1,7 @@
 const https = require("https");
+const { DEFAULT_PLATFORM_LABELS, normalizePlatformKey } = require("./config");
+
+const TELEGRAM_CAPTION_LIMIT = 1024;
 
 const TELEGRAM_PUSH_TYPE_ALIASES = {
     meta: "metadata",
@@ -20,6 +23,119 @@ const TELEGRAM_PUSH_TYPE_ALIASES = {
 
 function telegramHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+
+function shortenText(value = "", max = 160) {
+    const text = String(value || "").trim();
+    if (!Number.isFinite(Number(max)) || max <= 3) return text;
+    return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+}
+
+function plainText(value = "") {
+    return String(value || "")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p\s*>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function formatMetadataTags(value = "", max = 12) {
+    const source = Array.isArray(value) ? value : String(value || "").split(/[\s,，、;；|/]+/);
+    const tags = [];
+    for (const item of source) {
+        const tag = String(item || "").trim().replace(/^#+/, "");
+        if (tag && !tags.includes(tag)) tags.push(tag);
+        if (tags.length >= max) break;
+    }
+    return tags.join(" / ");
+}
+
+function fitEscapedText(value = "", max = 160) {
+    const limit = Math.max(0, Math.floor(Number(max) || 0));
+    const text = String(value || "").trim();
+    if (telegramHtml(text).length <= limit) return text;
+    if (limit <= 3) return "";
+    let result = "";
+    for (const char of Array.from(text)) {
+        const next = `${result}${char}`;
+        if (telegramHtml(`${next}...`).length > limit) break;
+        result = next;
+    }
+    return result ? `${result}...` : "";
+}
+
+function httpUrl(value = "", base = "") {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (/^\/\//.test(raw)) return `https:${raw}`;
+    const baseUrl = String(base || "").trim();
+    if (raw.startsWith("/") && /^https?:\/\//i.test(baseUrl)) {
+        try {
+            return new URL(raw, baseUrl).toString();
+        } catch {}
+    }
+    return "";
+}
+
+function readerBookDetailUrl(bookId, publicUrl = "") {
+    const id = String(bookId || "").trim();
+    const base = String(publicUrl || process.env.PO18_READER_PUBLIC_URL || process.env.READER_PUBLIC_URL || "").trim().replace(/\/+$/, "");
+    if (!id || !/^https?:\/\//i.test(base)) return "";
+    return `${base}/#/detail?bid=${encodeURIComponent(id)}`;
+}
+
+function platformDisplayName(platform = "", labels = {}) {
+    const raw = String(platform || "").trim();
+    if (!raw) return "-";
+    const merged = { ...DEFAULT_PLATFORM_LABELS, ...(labels || {}) };
+    if (merged[raw]) return merged[raw];
+    const key = normalizePlatformKey(raw);
+    const found = Object.entries(merged).find(([value]) => normalizePlatformKey(value) === key);
+    return found?.[1] || raw;
+}
+
+function metadataCardCaption(event = {}, book = {}, labels = {}) {
+    const title = shortenText(book?.title || event.title || event.book_id || "-", 80);
+    const author = shortenText(book?.author || event.author || "-", 50);
+    const platform = shortenText(platformDisplayName(book?.platform || event.platform || "", labels), 40);
+    const category = shortenText(book?.category || event.category || "-", 50);
+    const status = shortenText(book?.status || event.status || "-", 24);
+    const tags = shortenText(formatMetadataTags(book?.tags || event.tags || ""), 90);
+    const headerLines = [
+        `<b>${telegramHtml("\u4e66\u540d")}：${telegramHtml(title)}</b>`,
+        `${telegramHtml("\u4f5c\u8005")}：${telegramHtml(author)}`,
+        `${telegramHtml("\u5e73\u53f0")}：${telegramHtml(platform)}`,
+        `${telegramHtml("\u5206\u7c7b")}：${telegramHtml(category)}`,
+        `${telegramHtml("\u72b6\u6001")}：${telegramHtml(status)}`,
+        `${telegramHtml("\u6807\u7b7e")}：${telegramHtml(tags || "-")}`,
+        "",
+        `${telegramHtml("\u7b80\u4ecb")}：`
+    ];
+    const header = headerLines.join("\n");
+    const quoteOpen = "<blockquote expandable>";
+    const quoteClose = "</blockquote>";
+    const rawDescription = plainText(book?.description || book?.description_html || event.description || "");
+    const descriptionBudget = Math.max(80, TELEGRAM_CAPTION_LIMIT - header.length - quoteOpen.length - quoteClose.length - 1);
+    const description = fitEscapedText(rawDescription || "-", descriptionBudget);
+    return `${header}\n${quoteOpen}${telegramHtml(description || "-")}${quoteClose}`;
+}
+
+function metadataCardMarkup(event = {}, book = {}, readerPublicUrl = "") {
+    const bookId = String(event.book_id || book?.book_id || "").trim();
+    const detailUrl = httpUrl(book?.detail_url || event.source || "", event.source || "");
+    const readerUrl = readerBookDetailUrl(bookId, readerPublicUrl);
+    const row = [];
+    if (readerUrl) row.push({ text: "\u9605\u8bfb\u5668\u8be6\u60c5", url: readerUrl });
+    if (detailUrl) row.push({ text: "\u539f\u7ad9\u94fe\u63a5", url: detailUrl });
+    return row.length ? { inline_keyboard: [row] } : undefined;
 }
 
 function normalizeTelegramPushType(value) {
@@ -138,6 +254,8 @@ function createTelegramPushService(options = {}) {
     const configSet = options.configSet || (async () => {});
     const latestBookMetadata = options.latestBookMetadata || (async () => null);
     const tokenProvider = options.tokenProvider || (async () => configGet("telegram_bot_token"));
+    const labelsProvider = options.labelsProvider || (async () => ({}));
+    const readerPublicUrlProvider = options.readerPublicUrlProvider || (() => process.env.PO18_READER_PUBLIC_URL || process.env.READER_PUBLIC_URL || "");
     const sendJson = options.postJson || postJson;
     const sendDelayMs = Number.isFinite(Number(options.sendDelayMs)) ? Math.max(0, Number(options.sendDelayMs)) : 300;
     const logger = options.logger || console;
@@ -153,6 +271,43 @@ function createTelegramPushService(options = {}) {
             // which meant "push chapter updates".
             pushTypes: pushTypes ? parseTelegramPushTypes(pushTypes) : (enabled === "1" ? ["chapter"] : [])
         };
+    }
+
+    async function reserveMetadataPush(event = {}, book = {}) {
+        const bookId = String(event.book_id || book?.book_id || "").trim();
+        if (!bookId) return { reserved: true, bookId: "", eventId: null };
+        const eventId = event.id ? Number(event.id) : null;
+        const platform = String(book?.platform || event.platform || "").trim();
+        const result = await query(
+            `INSERT INTO telegram_metadata_pushes(book_id, platform, event_id, created_at, updated_at)
+             VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT (platform, book_id) DO NOTHING
+             RETURNING book_id`,
+            [bookId, platform, eventId]
+        );
+        return { reserved: result.rows.length > 0, bookId, eventId, platform };
+    }
+
+    async function markMetadataPushSent(reservation = {}, method = "") {
+        if (!reservation.bookId) return;
+        await query(
+            `UPDATE telegram_metadata_pushes
+             SET message_method = $2,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE book_id = $1 AND platform = $3`,
+            [reservation.bookId, String(method || "").trim(), reservation.platform || ""]
+        );
+    }
+
+    async function releaseMetadataPushReservation(reservation = {}) {
+        if (!reservation.bookId) return;
+        await query(
+            `DELETE FROM telegram_metadata_pushes
+             WHERE book_id = $1
+               AND platform = $3
+               AND (event_id = $2 OR ($2::bigint IS NULL AND event_id IS NULL))`,
+            [reservation.bookId, reservation.eventId, reservation.platform || ""]
+        );
     }
 
     async function notifyTelegram(event) {
@@ -175,16 +330,51 @@ function createTelegramPushService(options = {}) {
                 `章节名: ${telegramHtml(chapterTitle)}`,
                 `章节链接: <a href="${telegramHtml(chapterUrl)}">${telegramHtml(chapterUrl)}</a>`
             ].join("\n");
+            await sendJson(telegramApiUrl(token, "sendMessage"), { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true });
         } else {
-            const detailUrl = String(book?.detail_url || event.source || "").trim();
-            text = [
-                `元信息更新: ${telegramHtml(bookTitle)}`,
-                `书籍ID: ${telegramHtml(event.book_id || "-")}`,
-                `站点: ${telegramHtml(book?.platform || event.platform || "-")}`,
-                /^https?:\/\//i.test(detailUrl) ? `书籍链接: <a href="${telegramHtml(detailUrl)}">${telegramHtml(detailUrl)}</a>` : ""
-            ].filter(Boolean).join("\n");
+            const reservation = await reserveMetadataPush(event, book);
+            if (!reservation.reserved) {
+                await query("UPDATE upload_events SET telegram_status = 'skipped' WHERE id = $1", [event.id]);
+                return;
+            }
+            const [labels, readerPublicUrl] = await Promise.all([
+                labelsProvider().catch(() => ({})),
+                Promise.resolve(readerPublicUrlProvider()).catch(() => "")
+            ]);
+            const caption = metadataCardCaption(event, book, labels);
+            const replyMarkup = metadataCardMarkup(event, book, readerPublicUrl);
+            const coverUrl = httpUrl(book?.cover || event.cover || "", book?.detail_url || event.source || "");
+            const basePayload = {
+                chat_id: chatId,
+                parse_mode: "HTML",
+                ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+            };
+            let method = "sendMessage";
+            try {
+                if (coverUrl) {
+                    try {
+                        method = "sendPhoto";
+                        await sendJson(telegramApiUrl(token, "sendPhoto"), { ...basePayload, photo: coverUrl, caption });
+                    } catch (err) {
+                        logger.warn(`[telegram] metadata photo push failed, fallback to text: ${err.message}`);
+                        method = "sendMessage";
+                        await sendJson(telegramApiUrl(token, "sendMessage"), { ...basePayload, text: caption, disable_web_page_preview: true });
+                    }
+                } else {
+                    await sendJson(telegramApiUrl(token, "sendMessage"), { ...basePayload, text: caption, disable_web_page_preview: true });
+                }
+            } catch (err) {
+                await releaseMetadataPushReservation(reservation).catch((releaseErr) => {
+                    logger.warn(`[telegram] metadata push reservation release failed: ${releaseErr.message}`);
+                });
+                throw err;
+            }
+            try {
+                await markMetadataPushSent(reservation, method);
+            } catch (err) {
+                logger.warn(`[telegram] metadata push record update failed: ${err.message}`);
+            }
         }
-        await sendJson(telegramApiUrl(token, "sendMessage"), { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true });
         await query("UPDATE upload_events SET telegram_status = 'sent' WHERE id = $1", [event.id]);
     }
 
@@ -332,6 +522,20 @@ function createTelegramPushService(options = {}) {
         return { date, recipients: recipients.length, sent: results.filter((item) => item.ok).length, results };
     }
 
+    async function sendDirectMessage(chatId, text, options = {}) {
+        const token = await tokenProvider();
+        if (!token) throw new Error("telegram bot token is not configured");
+        const payload = {
+            chat_id: String(chatId || "").trim(),
+            text: String(text || ""),
+            parse_mode: options.parseMode || "HTML",
+            disable_web_page_preview: options.disableWebPagePreview !== false
+        };
+        if (!payload.chat_id) throw new Error("telegram chat id is required");
+        if (options.replyMarkup) payload.reply_markup = options.replyMarkup;
+        return sendJson(telegramApiUrl(token, "sendMessage"), payload);
+    }
+
     async function maybeSendDailyReport() {
         try {
             const reportConfig = await dailyReportConfig();
@@ -361,6 +565,7 @@ function createTelegramPushService(options = {}) {
         maybeSendDailyReport,
         notifyTelegram,
         postJson: sendJson,
+        sendDirectMessage,
         sendDailyReport,
         startDailyReportScheduler,
         telegramPushConfig

@@ -66,6 +66,7 @@ import { api } from "../services/api";
 import { bytes, number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const QualityPanel = defineComponent({
   name: "QualityPanel",
   props: {
@@ -157,18 +158,22 @@ async function repairChapterOrder() {
       .slice(0, 6)
       .map((row) => `- ${row.title || row.book_id} / ${row.book_id} / ${row.platform || "-"} / ${number(row.affected_chapters)} 章`)
       .join("\n");
-    const ok = window.confirm([
+    const confirmation = await confirmAction({
+      title: "修复章节顺序",
+      message: [
       `将修复 ${number(rows.length)} 本书的重复章节顺序。`,
       "",
       "样例：",
       sample || "-",
       "",
-      "确认执行？执行后可在任务中心查看记录。"
-    ].join("\n"));
-    if (!ok) return;
+      "执行后可在任务中心查看记录。"
+      ].join("\n"),
+      confirmLabel: "执行修复"
+    });
+    if (!confirmation.confirmed) return;
     const result = await api("/admin-api/chapters/repair-order", {
       method: "POST",
-      body: JSON.stringify({ confirm: true, limit: 50 })
+      body: JSON.stringify({ confirm: true, limit: 50, reason: confirmation.reason })
     });
     toast(`章节顺序已修复：${number(result.updatedChapters || 0)} 章`);
     await load();

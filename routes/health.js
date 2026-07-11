@@ -211,6 +211,8 @@ function createPrometheusMetricsText(options = {}) {
     const botTokenProvider = options.botTokenProvider || (() => process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "");
     const botHealthUrlProvider = options.botHealthUrlProvider || (() => process.env.BOT_HEALTH_URL || "http://127.0.0.1:3300/health/ready");
     const readerPerformanceBudgets = normalizeBudgetOptions(options);
+    const crawlerSnapshotProvider = options.crawlerSnapshotProvider || (() => null);
+    const systemJobMetricsProvider = options.systemJobMetricsProvider || (async () => ({ available: false }));
 
     return async function prometheusMetricsText() {
         const requests = readJsonLinesTail(requestLogFile, { limit: 5000, maxBytes: 2 * 1024 * 1024 });
@@ -297,6 +299,31 @@ function createPrometheusMetricsText(options = {}) {
         lines.push(metricLine("po18_bot_queue_jobs", { state: "locks" }, tasks.locks || 0));
         lines.push(metricLine("po18_bot_queue_jobs", { state: "concurrency" }, tasks.concurrency || 0));
 
+        const crawler = await Promise.resolve(crawlerSnapshotProvider()).catch(() => null);
+        const sourceHealth = crawler?.sourceHealth || {};
+        if (sourceHealth.source) {
+            lines.push("# HELP po18_crawler_source_requests_total PO18 crawler source request outcomes.");
+            lines.push("# TYPE po18_crawler_source_requests_total counter");
+            lines.push(metricLine("po18_crawler_source_requests_total", { source: sourceHealth.source, result: "success" }, sourceHealth.successes));
+            lines.push(metricLine("po18_crawler_source_requests_total", { source: sourceHealth.source, result: "failure" }, sourceHealth.failures));
+            lines.push(metricLine("po18_crawler_source_consecutive_failures", { source: sourceHealth.source }, sourceHealth.consecutiveFailures));
+            lines.push(metricLine("po18_crawler_source_circuit_open", { source: sourceHealth.source }, sourceHealth.state === "open" ? 1 : 0));
+            lines.push(metricLine("po18_crawler_request_retries_total", { source: sourceHealth.source }, crawler?.stats?.requestRetries || 0));
+        }
+
+        const jobs = await systemJobMetricsProvider().catch(() => ({ available: false }));
+        if (jobs?.available) {
+            lines.push("# HELP po18_system_jobs Current persistent system job states.");
+            lines.push("# TYPE po18_system_jobs gauge");
+            for (const status of ["queued", "running", "succeeded", "failed", "canceled"]) {
+                lines.push(metricLine("po18_system_jobs", { state: status }, jobs[status] || 0));
+            }
+            lines.push(metricLine("po18_system_job_retries_total", {}, jobs.retries || 0));
+            lines.push(metricLine("po18_system_job_expired_leases", {}, jobs.expired_leases || 0));
+            lines.push(metricLine("po18_system_job_retries_exhausted", {}, jobs.exhausted || 0));
+            lines.push(metricLine("po18_system_job_cancel_requests", {}, jobs.cancel_requested || 0));
+        }
+
         return `${lines.join("\n")}\n`;
     };
 }
@@ -312,6 +339,8 @@ function createMetricsSummary(options = {}) {
     const botHealthUrlProvider = options.botHealthUrlProvider || (() => process.env.BOT_HEALTH_URL || "http://127.0.0.1:3300/health/ready");
     const readerPerformanceBudgets = normalizeBudgetOptions(options);
     const readerDistDir = options.readerDistDir || process.env.PO18_READER_DIST_DIR || path.resolve(process.cwd(), "cirno-src", "dist-reader");
+    const crawlerSnapshotProvider = options.crawlerSnapshotProvider || (() => null);
+    const systemJobMetricsProvider = options.systemJobMetricsProvider || (async () => ({ available: false }));
 
     return async function metricsSummary() {
         const requests = readJsonLinesTail(requestLogFile, { limit: 5000, maxBytes: 2 * 1024 * 1024 });
@@ -352,6 +381,8 @@ function createMetricsSummary(options = {}) {
         const readerApi = requests.filter((row) => String(row.path || "").startsWith("/reader-api"));
         const readerPerformance = readerPerformanceSummary(requests, readerPerformanceBudgets);
         const readerAssets = collectReaderAssetBudget(readerDistDir, readerPerformanceBudgets);
+        const crawler = await Promise.resolve(crawlerSnapshotProvider()).catch(() => null);
+        const systemJobs = await systemJobMetricsProvider().catch(() => ({ available: false }));
         return {
             generated_at: now,
             window: {
@@ -392,6 +423,13 @@ function createMetricsSummary(options = {}) {
                 events: backupEvents.length,
                 failures: backupEvents.filter((row) => row.level === "error" || /failed/i.test(String(row.event || ""))).length
             },
+            crawler: crawler ? {
+                running: !!crawler.running,
+                paused: !!crawler.paused,
+                source_health: crawler.sourceHealth || null,
+                stats: crawler.stats || {}
+            } : null,
+            system_jobs: systemJobs,
             database: {
                 total: pool.totalCount,
                 idle: pool.idleCount,

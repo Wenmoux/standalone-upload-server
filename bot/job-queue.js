@@ -7,6 +7,7 @@ function createJobQueue(options = {}) {
     const concurrency = positiveInt(options.concurrency, 2);
     const queue = [];
     const locks = new Map();
+    const active = new Map();
     let running = 0;
 
     function stats() {
@@ -23,12 +24,18 @@ function createJobQueue(options = {}) {
             ? match
             : (job) => String(job.name || "") === String(match || "") || String(job.systemJobId || "") === String(match || "");
         const index = queue.findIndex(matcher);
-        if (index < 0) return null;
-        const [job] = queue.splice(index, 1);
-        if (job.lockKey) locks.delete(job.lockKey);
-        options.onCancel?.(job);
-        drain();
-        return job;
+        if (index >= 0) {
+            const [job] = queue.splice(index, 1);
+            if (job.lockKey) locks.delete(job.lockKey);
+            options.onCancel?.(job);
+            drain();
+            return job;
+        }
+        const runningJob = [...active.values()].find(matcher);
+        if (!runningJob) return null;
+        runningJob.abortController?.abort(new Error("job canceled"));
+        options.onCancelRequested?.(runningJob);
+        return runningJob;
     }
 
     function enqueue(job) {
@@ -52,20 +59,25 @@ function createJobQueue(options = {}) {
             running += 1;
             setImmediate(async () => {
                 const startedAt = Date.now();
+                const activeKey = job.name || `${startedAt}:${running}`;
+                job.abortController = new AbortController();
+                job.signal = job.abortController.signal;
+                active.set(activeKey, job);
                 try {
                     if (typeof options.beforeStart === "function") {
                         const shouldStart = await options.beforeStart(job);
                         if (shouldStart === false) return;
                     }
-                    options.onStart?.(job);
-                    const result = await job.task();
-                    options.onSuccess?.(job, Date.now() - startedAt, result);
+                    await options.onStart?.(job);
+                    const result = await job.task(job.signal);
+                    await options.onSuccess?.(job, Date.now() - startedAt, result);
                 } catch (err) {
-                    options.onError?.(job, err, Date.now() - startedAt);
+                    await options.onError?.(job, err, Date.now() - startedAt);
                 } finally {
+                    active.delete(activeKey);
                     if (job.lockKey) locks.delete(job.lockKey);
                     running -= 1;
-                    options.onDone?.(job, Date.now() - startedAt);
+                    await options.onDone?.(job, Date.now() - startedAt);
                     drain();
                 }
             });

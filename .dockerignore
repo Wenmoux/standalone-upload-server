@@ -2,8 +2,11 @@
 .alma
 .alma-snapshots
 backups
+backup
+config
 tmp
 tests
+test-results
 playwright.config.js
 .docker-build.json
 public/assets
@@ -25,6 +28,11 @@ cirno-src/node_modules
 .env.*
 !.env.example
 !.env.docker.example
+app.env
+*.local.env
+
+*.dump
+*.backup
 
 *.log
 *.pid

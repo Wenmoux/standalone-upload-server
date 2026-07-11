@@ -290,6 +290,8 @@ code {
   padding: 18px;
   border-color: #cfd9e5;
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.095);
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
 }
 
 .summary h1,
@@ -392,6 +394,86 @@ code {
 .admin-nav button.active .nav-index {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
+}
+
+.saved-views {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.saved-views-head,
+.saved-view-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.saved-views-head {
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: #526579;
+  font-size: 12px;
+}
+
+.saved-views-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.saved-view-row + .saved-view-row {
+  margin-top: 5px;
+}
+
+.saved-view-link {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #334960;
+  font-size: 12px;
+  font-weight: 720;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-view-link:hover {
+  background: #f2f7f6;
+  color: var(--primary);
+}
+
+.icon-button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #d4dee8;
+  border-radius: 7px;
+  background: #fff;
+  color: #526579;
+  box-shadow: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.icon-button:hover {
+  border-color: #9dc8c2;
+  background: #f1fbf8;
+  color: var(--primary);
+}
+
+.danger-icon:hover {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: var(--danger);
 }
 
 .content {
@@ -871,6 +953,31 @@ tr:hover td {
   border-color: #d4e0eb;
   background: #f8fafc;
   color: var(--muted);
+}
+
+.status-pill.status-accepted,
+.status-pill.status-cached {
+  border-color: #bbebce;
+  background: #f2fbf5;
+  color: var(--success);
+}
+
+.status-pill.status-crawling {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.status-pill.status-rejected {
+  border-color: #fecdd3;
+  background: #fff5f6;
+  color: var(--danger);
+}
+
+.status-pill.status-pending {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: var(--warn);
 }
 
 .reader-budget-grid {
@@ -1833,5 +1940,78 @@ td small {
 
   .top-actions {
     justify-content: flex-start;
+  }
+}
+
+.confirm-modal {
+  z-index: 1200;
+}
+
+.confirm-card {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.confirm-eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--danger, #b42318);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.confirm-message {
+  margin: 0;
+  color: var(--text, #1f2937);
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.confirm-body {
+  display: grid;
+  gap: 18px;
+}
+
+.confirm-phrase {
+  display: block;
+  width: fit-content;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--surface-soft, #f3f4f6);
+  user-select: all;
+}
+
+.audit-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.audit-json {
+  max-width: 520px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.audit-pager {
+  margin-top: 16px;
+}
+
+.danger-tag {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.ok-tag {
+  color: #067647;
+  background: #d1fadf;
+}
+
+@media (max-width: 900px) {
+  .audit-filters {
+    grid-template-columns: 1fr 1fr;
   }
 }

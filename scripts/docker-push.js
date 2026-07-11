@@ -21,7 +21,7 @@ function push(tag) {
 }
 
 const metadata = readBuildMetadata();
-const defaultImage = "wenmoux/reader:v1.0";
+const defaultImage = "wenmoux/reader:v2.0";
 const envImage = process.env.PO18_IMAGE_TAG;
 const tags = envImage
     ? [envImage]

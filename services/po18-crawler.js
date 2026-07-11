@@ -1,9 +1,37 @@
-const { parse } = require("node-html-parser");
-
 const CONFIG_KEY = "po18_crawler_config";
 const JOB_TYPE = "po18_crawler_run";
-const PO18_BASE = "https://www.po18.tw";
-const FIND_BOOKS_PATH = "/findbooks/index";
+const { createSourceHealthCircuit } = require("./source-health");
+const { createPo18HttpClient } = require("./po18-crawler-http");
+const {
+    PO18_BASE,
+    CookieInvalidError,
+    normalizeText,
+    normalizeList,
+    bookDetailUrl,
+    findBooksBaseUrl,
+    findBooksFormBody,
+    findBooksFilterLog,
+    bookArticlesUrl,
+    chapterContentUrl,
+    chapterRefererUrl,
+    parseBookDetailHtml,
+    parseFindBooksHtml,
+    parseCrefToken,
+    parseBookshelfHtml,
+    parseChapterListHtml,
+    parseChapterContentHtml,
+    looksLikeAuthPage
+} = require("./po18-crawler-parsers");
+const {
+    cookieHeader,
+    cookieProfileToHeader,
+    maskCookieProfiles,
+    mergeCookies,
+    normalizeCookieProfile,
+    normalizeCookieProfiles,
+    parseCookieString,
+    profileKey
+} = require("./po18-crawler-cookies");
 const MAX_LOGS = 120;
 
 const DEFAULT_CONFIG = Object.freeze({
@@ -45,14 +73,6 @@ const DEFAULT_CONFIG = Object.freeze({
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
 });
 
-class CookieInvalidError extends Error {
-    constructor(message) {
-        super(message || "PO18 Cookie invalid or login required");
-        this.name = "CookieInvalidError";
-        this.code = "PO18_COOKIE_INVALID";
-    }
-}
-
 class CrawlerStoppedError extends Error {
     constructor(message = "crawler stopped") {
         super(message);
@@ -78,20 +98,6 @@ function boolValue(value, fallback = false) {
     return ["1", "true", "yes", "on", "enabled"].includes(String(value).trim().toLowerCase());
 }
 
-function normalizeDigits(value = "") {
-    return String(value || "").replace(/[\uFF10-\uFF19]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
-}
-
-function normalizeText(value = "") {
-    return normalizeDigits(value).replace(/\s+/g, " ").trim();
-}
-
-function parseCount(value = "") {
-    const text = normalizeDigits(value).replace(/,/g, "");
-    const match = text.match(/\d+/);
-    return match ? Number.parseInt(match[0], 10) || 0 : 0;
-}
-
 function safeJsonParse(value, fallback = {}) {
     try {
         const parsed = JSON.parse(String(value || ""));
@@ -106,132 +112,10 @@ function normalizeBookIds(value = []) {
     return [...new Set(list.map((item) => String(item || "").trim()).filter((item) => /^\d+$/.test(item)))];
 }
 
-function normalizeList(value = [], { maxItems = 80, maxLength = 40 } = {}) {
-    const list = Array.isArray(value) ? value : String(value || "").split(/[\n\r,;|/、，；]+/);
-    return [...new Set(list
-        .map((item) => normalizeText(item).slice(0, maxLength))
-        .filter(Boolean))]
-        .slice(0, maxItems);
-}
-
 function normalizeSmallToken(value = "", fallback = "") {
     const textValue = normalizeText(value).replace(/[<>"'`&]/g, "").slice(0, 40);
     if (!textValue) return fallback;
     return textValue;
-}
-
-function parseCookieString(cookieString = "") {
-    const cookies = String(cookieString || "")
-        .split(";")
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .map((part) => {
-            const index = part.indexOf("=");
-            if (index <= 0) return null;
-            const name = part.slice(0, index).trim();
-            const value = part.slice(index + 1).trim();
-            return name ? { name, value, domain: ".po18.tw", path: "/" } : null;
-        })
-        .filter(Boolean);
-    return mergeCookies([], cookies);
-}
-
-function cookieHeader(cookies = []) {
-    const byName = new Map();
-    for (const cookie of mergeCookies([], cookies)) {
-        if (!cookie?.name || !cookie.value || cookie.value === "deleted") continue;
-        byName.delete(cookie.name);
-        byName.set(cookie.name, cookie);
-    }
-    return [...byName.values()]
-        .map((cookie) => `${cookie.name}=${cookie.value}`)
-        .join("; ");
-}
-
-function cookieProfileToHeader(profile = {}) {
-    if (Array.isArray(profile.cookies) && profile.cookies.length) return cookieHeader(profile.cookies);
-    const cookie = String(profile.cookie || "").trim();
-    if (cookie) return cookie;
-    return cookieHeader(Array.isArray(profile.cookies) ? profile.cookies : []);
-}
-
-function parseSetCookieHeaders(headers) {
-    if (!headers) return [];
-    const raw = typeof headers.getSetCookie === "function"
-        ? headers.getSetCookie()
-        : String(headers.get?.("set-cookie") || "").split(/,(?=\s*[^;,\s]+=)/);
-    return raw.map((line) => {
-        const parts = String(line || "").split(";").map((part) => part.trim()).filter(Boolean);
-        const first = parts.shift() || "";
-        const index = first.indexOf("=");
-        if (index <= 0) return null;
-        const cookie = { name: first.slice(0, index).trim(), value: first.slice(index + 1), domain: ".po18.tw", path: "/" };
-        for (const part of parts) {
-            const [rawKey, ...rest] = part.split("=");
-            const key = String(rawKey || "").toLowerCase();
-            if (key === "domain") cookie.domain = rest.join("=") || cookie.domain;
-            if (key === "path") cookie.path = rest.join("=") || cookie.path;
-        }
-        return cookie.name ? cookie : null;
-    }).filter(Boolean);
-}
-
-function mergeCookies(current = [], incoming = []) {
-    const map = new Map();
-    for (const cookie of current || []) {
-        if (!cookie?.name) continue;
-        map.set(`${cookie.name}|${cookie.domain || ""}|${cookie.path || "/"}`, cookie);
-    }
-    for (const cookie of incoming || []) {
-        if (!cookie?.name) continue;
-        map.set(`${cookie.name}|${cookie.domain || ""}|${cookie.path || "/"}`, cookie);
-    }
-    return [...map.values()].filter((cookie) => cookie.value && cookie.value !== "deleted");
-}
-
-function normalizeCookieProfile(profile = {}, index = 0) {
-    const name = String(profile.name || profile.label || profile.id || `cookie-${index + 1}`).trim().slice(0, 80) || `cookie-${index + 1}`;
-    const rawCookie = String(profile.cookie || "").trim();
-    const cookies = mergeCookies([], Array.isArray(profile.cookies) ? profile.cookies : parseCookieString(rawCookie));
-    const cookie = cookieHeader(cookies) || rawCookie;
-    return {
-        id: String(profile.id || name).trim().slice(0, 100) || name,
-        name,
-        cookie,
-        cookies,
-        enabled: boolValue(profile.enabled, true),
-        lastStatus: String(profile.lastStatus || "").slice(0, 160),
-        lastUsedAt: profile.lastUsedAt || null,
-        updatedAt: profile.updatedAt || new Date().toISOString()
-    };
-}
-
-function normalizeCookieProfiles(value = [], legacyCookie = "") {
-    const input = Array.isArray(value) ? value : [];
-    const profiles = input.map(normalizeCookieProfile).filter((profile) => cookieProfileToHeader(profile));
-    const legacy = String(legacyCookie || "").trim();
-    if (legacy && !profiles.some((profile) => cookieProfileToHeader(profile) === legacy)) {
-        profiles.unshift(normalizeCookieProfile({ id: "default", name: "default", cookie: legacy, enabled: true }, 0));
-    }
-    return profiles.slice(0, 20);
-}
-
-function maskCookieProfiles(profiles = []) {
-    return profiles.map((profile) => ({
-        id: profile.id,
-        name: profile.name,
-        enabled: profile.enabled !== false,
-        cookieConfigured: !!cookieProfileToHeader(profile),
-        cookieLength: cookieProfileToHeader(profile).length,
-        cookieCount: parseCookieString(cookieProfileToHeader(profile)).length,
-        lastStatus: profile.lastStatus || "",
-        lastUsedAt: profile.lastUsedAt || null,
-        updatedAt: profile.updatedAt || null
-    }));
-}
-
-function profileKey(profile = {}) {
-    return String(profile.id || profile.name || "").trim();
 }
 
 function sanitizeConfig(input = {}, current = {}) {
@@ -303,332 +187,6 @@ function maskedConfig(config = {}) {
     const out = publicConfig(config);
     delete out.cookie;
     return out;
-}
-
-function attr(el, name) {
-    return el?.getAttribute?.(name) || "";
-}
-
-function text(el) {
-    return normalizeText(el?.textContent || "");
-}
-
-function first(root, selector) {
-    if (!root || !selector) return null;
-    if (Array.isArray(selector)) {
-        for (const item of selector) {
-            const found = root.querySelector(item);
-            if (found) return found;
-        }
-        return null;
-    }
-    return root.querySelector(selector);
-}
-
-function all(root, selector) {
-    if (!root || !selector) return [];
-    if (Array.isArray(selector)) {
-        for (const item of selector) {
-            const rows = root.querySelectorAll(item);
-            if (rows.length) return rows;
-        }
-        return [];
-    }
-    return root.querySelectorAll(selector);
-}
-
-function absoluteUrl(value = "", base = PO18_BASE) {
-    try {
-        return new URL(value, base).toString();
-    } catch {
-        return "";
-    }
-}
-
-function bookDetailUrl(bookId) {
-    return `${PO18_BASE}/books/${encodeURIComponent(String(bookId))}`;
-}
-
-function findBooksBaseUrl() {
-    return `${PO18_BASE}${FIND_BOOKS_PATH}`;
-}
-
-function normalizePo18FindBooksStatus(value = "") {
-    const textValue = String(value || "").trim().toLowerCase();
-    if (!textValue || textValue === "-1" || textValue === "all") return "all";
-    if (["writing", "ongoing", "serializing", "1", "连载", "連載"].includes(textValue)) return "1";
-    if (["finish", "finished", "complete", "completed", "2", "完结", "完結"].includes(textValue)) return "2";
-    return "all";
-}
-
-function normalizePo18FindBooksSort(value = "") {
-    const textValue = String(value || "").trim().toLowerCase();
-    const map = {
-        time: "time",
-        newest: "time",
-        update: "time",
-        popularity: "22",
-        hot: "22",
-        readers: "22",
-        subscribe: "32",
-        subscription: "32",
-        collect: "42",
-        favorite: "42",
-        favorites: "42",
-        comment: "52",
-        comments: "52",
-        gift: "62",
-        reward: "62",
-        pearl: "12"
-    };
-    if (["time", "12", "22", "32", "42", "52", "62"].includes(textValue)) return textValue;
-    if (textValue === "words") return "time";
-    return map[textValue] || "time";
-}
-
-function normalizePo18FindBooksWords(value = "") {
-    const textValue = String(value || "").trim().toLowerCase();
-    return ["1", "2", "3", "4", "5", "6"].includes(textValue) ? textValue : "all";
-}
-
-function normalizePo18FindBooksNew(value = "") {
-    const textValue = String(value || "").trim().toLowerCase();
-    return textValue === "new" ? "new" : "all";
-}
-
-function findBooksFormParams(page = 1, config = {}, token = "") {
-    return {
-        ...(token ? { "_po18rf-tk001": token } : {}),
-        tag: config.categoryTag || "all",
-        words: normalizePo18FindBooksWords(config.words),
-        status: normalizePo18FindBooksStatus(config.status),
-        sort: normalizePo18FindBooksSort(config.sort),
-        new: normalizePo18FindBooksNew(config.newBook),
-        tid: config.categoryTid || "",
-        page: String(page)
-    };
-}
-
-function findBooksFormBody(page = 1, config = {}, token = "") {
-    const form = new URLSearchParams();
-    Object.entries(findBooksFormParams(page, config, token)).forEach(([key, value]) => form.set(key, value));
-    return form.toString();
-}
-
-function findBooksFilterLog(page = 1, config = {}) {
-    const params = findBooksFormParams(page, config, "");
-    return `tag=${params.tag || "all"} words=${params.words} status=${params.status} sort=${params.sort} new=${params.new} tid=${params.tid || "-"} page=${params.page}`;
-}
-
-function bookArticlesUrl(bookId, page = 1) {
-    return `${PO18_BASE}/books/${encodeURIComponent(String(bookId))}/articles?page=${encodeURIComponent(String(page))}`;
-}
-
-function chapterContentUrl(bookId, chapterId) {
-    return `${PO18_BASE}/books/${encodeURIComponent(String(bookId))}/articlescontent/${encodeURIComponent(String(chapterId))}`;
-}
-
-function chapterRefererUrl(bookId, chapterId) {
-    return `${PO18_BASE}/books/${encodeURIComponent(String(bookId))}/articles/${encodeURIComponent(String(chapterId))}`;
-}
-
-function extractBookIdFromHref(href = "") {
-    return String(href || "").match(/\/books\/(\d+)/)?.[1] || "";
-}
-
-function extractChapterIdFromHref(href = "") {
-    const match = String(href || "").match(/\/books\/\d+\/articles\/(\d+)/);
-    return match?.[1] || "";
-}
-
-function parseStatus(value = "") {
-    const textValue = normalizeText(value);
-    if (/完結|完结|完本|已完成/.test(textValue)) return "完结";
-    if (!textValue) return "连载";
-    return textValue.slice(0, 30);
-}
-
-function parseStatRows(root) {
-    const out = {};
-    const rows = all(root, "table.book_data tr");
-    const mappings = [
-        ["wordCount", ["總字數", "总字数"]],
-        ["freeChapters", ["免費章回", "免费章回"]],
-        ["paidChapters", ["付費章回", "付费章回"]],
-        ["statusText", ["狀態", "状态"]],
-        ["totalPopularity", ["累積人氣", "累积人气", "總人氣", "总人气"]],
-        ["monthlyPopularity", ["本月人氣", "月人氣", "本月人气", "月人气"]],
-        ["weeklyPopularity", ["週人氣", "周人氣", "周人气"]],
-        ["dailyPopularity", ["本日人氣", "日人氣", "本日人气", "日人气"]],
-        ["favoritesCount", ["收藏"]],
-        ["purchaseCount", ["訂購數", "订购数", "訂閱數", "订阅数"]],
-        ["commentsCount", ["留言", "評論", "评论"]],
-        ["readersCount", ["閱讀人數", "阅读人数"]]
-    ];
-    for (const row of rows) {
-        const label = text(first(row, "th") || row);
-        const value = text(first(row, "td") || row);
-        for (const [field, labels] of mappings) {
-            if (out[field] !== undefined) continue;
-            if (labels.some((item) => label.includes(item))) {
-                out[field] = field === "statusText" ? value : parseCount(value);
-            }
-        }
-    }
-    return out;
-}
-
-function parseBookInfoList(root) {
-    const out = {};
-    for (const labelEl of all(root, ".book_info_list dt")) {
-        const label = text(labelEl);
-        const valueEl = labelEl.nextElementSibling;
-        if (!valueEl || String(valueEl.rawTagName || "").toLowerCase() !== "dd") continue;
-        const value = text(valueEl);
-        if (!out.statusText && (label.includes("\u72c0\u614b") || label.includes("\u72b6\u6001"))) {
-            out.statusText = value;
-        }
-    }
-    return out;
-}
-
-function positiveNumbers(value = "") {
-    return [...normalizeDigits(value).matchAll(/\d{1,8}/g)]
-        .map((match) => Number.parseInt(match[0], 10))
-        .filter((num) => Number.isFinite(num) && num > 0);
-}
-
-function parsePageCount(root, totalChapters = 0) {
-    const pageSize = 100;
-    const pages = [];
-    const addPage = (value) => {
-        const page = Number.parseInt(value, 10);
-        if (Number.isFinite(page) && page > 0 && page < 100000) pages.push(page);
-    };
-    const addChapterCount = (value) => {
-        const count = Number.parseInt(value, 10);
-        if (Number.isFinite(count) && count > 0) addPage(Math.ceil(count / pageSize));
-    };
-
-    addChapterCount(totalChapters);
-
-    for (const source of [text(first(root, "dd.statu")), text(first(root, "dd.b_statu"))].filter(Boolean)) {
-        const value = normalizeDigits(source);
-        const pageMatches = [...value.matchAll(/(?:\/\s*)?(\d{1,5})\s*(?:頁|页|pages?\b)/gi)];
-        if (pageMatches.length) {
-            pageMatches.forEach((match) => addPage(match[1]));
-            continue;
-        }
-        const firstNumber = positiveNumbers(value)[0];
-        if (firstNumber) addChapterCount(firstNumber);
-    }
-
-    for (const source of [text(first(root, ".pagination"))].filter(Boolean)) {
-        const value = normalizeDigits(source);
-        [...value.matchAll(/(?:\/\s*)?(\d{1,5})\s*(?:頁|页|pages?\b)/gi)].forEach((match) => addPage(match[1]));
-    }
-
-    for (const link of all(root, "a")) {
-        const href = attr(link, "href");
-        const onclick = attr(link, "onclick");
-        const target = `${href} ${onclick}`;
-        if (!/\/books\/\d+\/articles(?:[?#]|$)/i.test(target)) continue;
-        const raw = normalizeDigits([href, onclick, text(link)].join(" "));
-        const match = raw.match(/(?:[?&]page=|page\s*[,=]\s*['"]?)(\d{1,5})/i);
-        if (match) addPage(match[1]);
-    }
-
-    return Math.max(1, ...pages);
-}
-
-function cleanDescriptionText(value = "") {
-    return String(value || "")
-        .replace(/\r\n?/g, "\n")
-        .replace(/[ \t\f\v]+\n/g, "\n")
-        .replace(/\n[ \t\f\v]+/g, "\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-}
-
-function parseBookDetailHtml(html, bookId) {
-    const root = parse(html || "");
-    const titleEl = first(root, "h1.book_name");
-    const title = text(titleEl).split(/[（(]/)[0].trim();
-    const pageText = text(root);
-    if (!title && looksLikeAuthPage(html)) {
-        throw new CookieInvalidError("PO18 page requires login or cookie refresh");
-    }
-    if (!title) throw new Error(`book ${bookId} title not found`);
-    const authorEl = first(root, "a.book_author");
-    const coverEl = first(root, ".book_cover img");
-    const descEl = first(root, ".B_I_content");
-    const tags = all(root, ".book_intro_tags a").map(text).filter(Boolean).join("·");
-    const tagList = normalizeList(tags.replace(/·/g, "\n"));
-    const info = parseBookInfoList(root);
-    const stats = parseStatRows(root);
-    const latest = first(root, ".new_chapter");
-    const latestChapterName = latest ? text(first(latest, "h4")) : "";
-    const latestChapterDate = latest ? (text(first(latest, ".date")).match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2})?/)?.[0] || "") : "";
-    const freeChapters = Number(stats.freeChapters || 0);
-    const paidChapters = Number(stats.paidChapters || 0);
-    const totalChapters = freeChapters + paidChapters;
-
-    return {
-        bookId: String(bookId),
-        title,
-        author: text(authorEl),
-        cover: absoluteUrl(attr(coverEl, "src")),
-        description: cleanDescriptionText(descEl?.textContent || ""),
-        descriptionHTML: descEl?.innerHTML?.trim?.() || "",
-        tags,
-        category: tagList[0] || "",
-        wordCount: Number(stats.wordCount || 0),
-        freeChapters,
-        paidChapters,
-        totalChapters,
-        status: parseStatus(stats.statusText || info.statusText || text(first(root, ".statu-b"))),
-        latestChapterName,
-        latestChapterDate,
-        totalPopularity: Number(stats.totalPopularity || 0),
-        monthlyPopularity: Number(stats.monthlyPopularity || 0),
-        weeklyPopularity: Number(stats.weeklyPopularity || 0),
-        dailyPopularity: Number(stats.dailyPopularity || 0),
-        favoritesCount: Number(stats.favoritesCount || 0),
-        commentsCount: Number(stats.commentsCount || 0),
-        purchaseCount: Number(stats.purchaseCount || 0),
-        readersCount: Number(stats.readersCount || 0),
-        platform: "po18",
-        detailUrl: bookDetailUrl(bookId),
-        pageNum: parsePageCount(root, totalChapters)
-    };
-}
-
-function parseFindBooksHtml(html) {
-    const root = parse(html || "");
-    const rows = all(root, ".row");
-    const books = [];
-    const seen = new Set();
-    for (const row of rows) {
-        const link = first(row, ".l_bookname") || first(row, "a[href*='/books/']");
-        const bookId = extractBookIdFromHref(attr(link, "href"));
-        const title = text(link);
-        if (!bookId || !title || seen.has(bookId)) continue;
-        seen.add(bookId);
-        const author = text(first(row, ".l_author"));
-        const tags = all(row, ".tag").map(text).filter(Boolean).join("·");
-        const status = parseStatus(text(first(row, ".statu-b")));
-        books.push({
-            bookId,
-            title,
-            author,
-            tags,
-            status,
-            platform: "po18",
-            detailUrl: bookDetailUrl(bookId)
-        });
-    }
-    if (!books.length && looksLikeAuthPage(html)) throw new CookieInvalidError("PO18 findbooks requires login or cookie refresh");
-    return books;
 }
 
 function normalizedHaystack(...parts) {
@@ -714,138 +272,6 @@ function bookFilterDecision(book = {}, config = {}) {
     return { skip: false, reason: "" };
 }
 
-function parseCrefToken(html) {
-    const root = parse(html || "");
-    return attr(first(root, "input[name='_po18rf-tk001']"), "value");
-}
-
-function parseDisplayedChapterOrder(row) {
-    const value = text(first(row, ".l_counter"));
-    const match = value.match(/^0*(\d{1,6})$/);
-    const parsed = match ? Number.parseInt(match[1], 10) : 0;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function parseBookshelfHtml(html) {
-    const root = parse(html || "");
-    const books = [];
-    const seen = new Set();
-    for (const link of all(root, "a[href*='/books/']")) {
-        const bookId = extractBookIdFromHref(attr(link, "href"));
-        const title = text(link);
-        if (!bookId || !title || seen.has(bookId)) continue;
-        seen.add(bookId);
-        const row = link.closest?.("tr") || link.parentNode || root;
-        const author = text(first(row, ".T_author") || first(row, ".l_author"));
-        books.push({
-            bookId,
-            book_id: bookId,
-            title,
-            author,
-            platform: "po18",
-            detailUrl: bookDetailUrl(bookId)
-        });
-    }
-    if (!books.length && looksLikeAuthPage(html)) throw new CookieInvalidError("PO18 bookshelf requires login or cookie refresh");
-    return books;
-}
-
-function parseChapterAccess(value = "") {
-    const textValue = normalizeText(value);
-    const isFree = /免費|免费/.test(textValue);
-    const hasPaidMark = /訂購|订购|購買|购买|訂閱|订阅/.test(textValue);
-    return {
-        isFree,
-        isPurchased: isFree || !hasPaidMark
-    };
-}
-
-function parseChapterListHtml(html, bookId, startIndex = 0) {
-    const root = parse(html || "");
-    const rows = all(root, [
-        "#w0 > div[data-key] > div.c_l",
-        "div[data-key] > div.c_l",
-        "#w0 > div.c_l",
-        "#w0 div.c_l",
-        "#w0>div",
-        "div.c_l"
-    ]);
-    const chapters = [];
-    let index = startIndex;
-    for (const row of rows) {
-        const titleEl = first(row, ".l_chaptname");
-        const link = first(row, [".l_chaptname a", ".l_btn>a", "a[href*='/articles/']"]);
-        const chapterId = extractChapterIdFromHref(attr(link, "href"));
-        const title = text(titleEl || link);
-        if (!chapterId || !title) {
-            index += 1;
-            continue;
-        }
-        const displayed = parseDisplayedChapterOrder(row);
-        const access = parseChapterAccess(text(row));
-        const currentIndex = displayed ? displayed - 1 : index;
-        index += 1;
-        chapters.push({
-            bookId: String(bookId),
-            chapterId,
-            title,
-            index: currentIndex,
-            order: displayed || currentIndex + 1,
-            isFree: access.isFree,
-            isPurchased: access.isPurchased
-        });
-    }
-    if (!rows.length && looksLikeAuthPage(html)) throw new CookieInvalidError("PO18 chapter list requires login or cookie refresh");
-    return { chapters, scanned: rows.length || chapters.length };
-}
-
-function htmlToText(html = "") {
-    return parse(String(html || "")
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/(?:p|div|section|article|li|tr|h[1-6])>/gi, "\n")).textContent
-        .replace(/\u00a0/g, " ")
-        .replace(/[ \t\f\v]+\n/g, "\n")
-        .replace(/\n[ \t\f\v]+/g, "\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-}
-
-function parseChapterContentHtml(html, fallbackTitle = "") {
-    const root = parse(String(html || "").replace(/&nbsp;/g, " "));
-    const title = text(first(root, "h1")) || fallbackTitle;
-    for (const selector of ["blockquote", "h1", "script", "style"]) {
-        for (const node of root.querySelectorAll(selector)) node.remove();
-    }
-    const body = root.querySelector("body") || root;
-    const contentHtml = body.innerHTML.trim();
-    const contentText = htmlToText(contentHtml);
-    if (/本章為付費章節|本章为付费章节|請先登入|请先登录|會員登入|会员登录/.test(contentText)) {
-        throw new CookieInvalidError("PO18 chapter content requires a refreshed or authorized cookie");
-    }
-    if (!contentText || contentText.length < 10) throw new Error("chapter content is empty or too short");
-    return { html: contentHtml, text: contentText, title };
-}
-
-function looksLikeAuthPage(value = "") {
-    const raw = String(value || "");
-    const textValue = normalizeText(raw).toLowerCase();
-    if (!textValue) return false;
-    if (/請先登入|请先登录|本章為付費章節|本章为付费章节/.test(textValue)) return true;
-    if (/captcha|驗證碼|验证码|cf-challenge|turnstile/.test(textValue)) return true;
-    const hasLoginCopy = /會員登入|会员登录|登入會員|登录会员|登錄會員|登录会员|login|signin/.test(textValue);
-    const hasPasswordField = /type\s*=\s*["']password["']|name\s*=\s*["'](?:password|passwd|pwd)["']|id\s*=\s*["'](?:password|passwd|pwd)["']/i.test(raw);
-    const hasLoginForm = /<form\b[^>]*(?:login|signin|member|auth)|(?:login|signin|member|auth)[^<]*<form\b/i.test(raw);
-    return hasLoginCopy && (hasPasswordField || hasLoginForm);
-}
-
-function authErrorFromResponse(response, body = "") {
-    const status = Number(response?.status || 0);
-    const finalUrl = String(response?.url || "");
-    if (status === 401 || status === 403) return new CookieInvalidError(`PO18 returned HTTP ${status}; cookie may be invalid`);
-    if (/\/login|\/signin|member/i.test(finalUrl)) return new CookieInvalidError("PO18 redirected to login; cookie may be invalid");
-    return null;
-}
-
 function createPo18CrawlerService(options = {}) {
     const {
         query,
@@ -856,11 +282,18 @@ function createPo18CrawlerService(options = {}) {
         createSystemJob,
         updateSystemJob,
         recordEvent = async () => {},
+        credentialCrypto = null,
         fetchImpl = globalThis.fetch,
         logger = console
     } = options;
 
     if (typeof fetchImpl !== "function") throw new Error("fetch is not available for po18 crawler");
+
+    const sourceHealth = createSourceHealthCircuit({
+        source: "po18",
+        failureThreshold: process.env.PO18_CRAWLER_CIRCUIT_FAILURES,
+        cooldownMs: process.env.PO18_CRAWLER_CIRCUIT_COOLDOWN_MS
+    });
 
     const state = {
         config: { ...DEFAULT_CONFIG },
@@ -879,9 +312,7 @@ function createPo18CrawlerService(options = {}) {
         findBooksToken: "",
         logs: [],
         stats: freshStats(),
-        timer: null,
-        requestChain: Promise.resolve(),
-        lastRequestAt: 0
+        timer: null
     };
 
     function freshStats() {
@@ -929,8 +360,20 @@ function createPo18CrawlerService(options = {}) {
     async function loadConfig() {
         if (state.loaded) return state.config;
         const raw = await configGet(CONFIG_KEY).catch(() => "");
-        state.config = sanitizeConfig(safeJsonParse(raw, {}));
+        const stored = safeJsonParse(raw, {});
+        const decrypted = { ...stored };
+        if (credentialCrypto?.configured) {
+            decrypted.cookie = credentialCrypto.decryptString(stored.cookie || "");
+            decrypted.cookieProfiles = credentialCrypto.decryptJson(stored.cookieProfiles, []);
+        }
+        state.config = sanitizeConfig(decrypted);
         state.loaded = true;
+        if (credentialCrypto?.configured && (
+            credentialCrypto.needsStringRotation(stored.cookie)
+            || credentialCrypto.needsJsonRotation(stored.cookieProfiles)
+        )) {
+            await configSet(CONFIG_KEY, JSON.stringify(storedConfig(state.config)));
+        }
         return state.config;
     }
 
@@ -967,10 +410,19 @@ function createPo18CrawlerService(options = {}) {
 
     async function persistConfig(next) {
         const config = sanitizeConfig(next || state.config);
-        await configSet(CONFIG_KEY, JSON.stringify(config));
+        await configSet(CONFIG_KEY, JSON.stringify(storedConfig(config)));
         state.config = config;
         state.loaded = true;
         return config;
+    }
+
+    function storedConfig(config) {
+        if (!credentialCrypto?.configured) return config;
+        return {
+            ...config,
+            cookie: credentialCrypto.encryptString(config.cookie || ""),
+            cookieProfiles: credentialCrypto.encryptJson(config.cookieProfiles || [])
+        };
     }
 
     function activeCookieProfile(config = state.config) {
@@ -996,100 +448,20 @@ function createPo18CrawlerService(options = {}) {
         });
     }
 
-    function isRetriableRequestError(err) {
-        if (!err) return false;
-        if (err instanceof CookieInvalidError || err?.code === "PO18_COOKIE_INVALID") return false;
-        if (err instanceof CrawlerStoppedError || err?.code === "PO18_CRAWLER_STOPPED") return false;
-        const status = Number(err.status || err.statusCode || 0);
-        if (status === 408 || status === 429 || status >= 500) return true;
-        const message = String(err.message || err.code || err.name || err || "").toLowerCase();
-        return /abort|timeout|timed out|fetch failed|network|econnreset|etimedout|eai_again|socket|terminated/.test(message);
-    }
-
-    async function requestText(url, options = {}) {
-        const config = state.config;
-        const maxRetries = Math.max(0, Number(config.requestRetries ?? DEFAULT_CONFIG.requestRetries));
-        let lastError = null;
-        for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-            checkStopped();
-            await waitWhilePaused();
-            await waitForRequestSlot();
-            const profile = activeCookieProfile(config);
-            const headers = {
-                "User-Agent": config.userAgent || DEFAULT_CONFIG.userAgent,
-                Accept: options.accept || "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "zh-TW,zh-CN;q=0.9,zh;q=0.8,en;q=0.6",
-                ...(options.headers || {})
-            };
-            const cookie = profile ? cookieProfileToHeader(profile) : String(config.cookie || "").trim();
-            if (cookie) headers.Cookie = cookie;
-            if (options.referer) headers.Referer = options.referer;
-
-            const controller = new AbortController();
-            let timeout = setTimeout(() => controller.abort(), config.timeoutMs || DEFAULT_CONFIG.timeoutMs);
-            try {
-                const response = await fetchImpl(url, {
-                    method: options.method || "GET",
-                    headers,
-                    body: options.body,
-                    redirect: "follow",
-                    signal: controller.signal
-                });
-                const body = await response.text();
-                const incoming = parseSetCookieHeaders(response.headers);
-                if (profile && incoming.length) {
-                    const currentCookies = profile.cookies?.length ? profile.cookies : parseCookieString(cookie);
-                    const mergedCookies = mergeCookies(currentCookies, incoming);
-                    await saveActiveCookieProfile({
-                        cookies: mergedCookies,
-                        cookie: cookieHeader(mergedCookies),
-                        lastStatus: `HTTP ${response.status}`,
-                        lastUsedAt: new Date().toISOString()
-                    }).catch(() => {});
-                }
-                const authError = authErrorFromResponse(response, body);
-                if (authError) {
-                    if (profile) {
-                        await saveActiveCookieProfile({
-                            lastStatus: authError.message || "cookie invalid",
-                            lastUsedAt: new Date().toISOString()
-                        }).catch(() => {});
-                    }
-                    throw authError;
-                }
-                if (!response.ok) {
-                    const err = new Error(`PO18 HTTP ${response.status} for ${url}`);
-                    err.status = response.status;
-                    throw err;
-                }
-                return body;
-            } catch (err) {
-                lastError = err;
-                if (timeout) {
-                    clearTimeout(timeout);
-                    timeout = null;
-                }
-                if (attempt >= maxRetries || !isRetriableRequestError(err)) throw err;
-                const delay = Math.min(60000, Math.max(0, Number(config.requestRetryDelayMs || DEFAULT_CONFIG.requestRetryDelayMs)) * (attempt + 1));
-                state.stats.requestRetries += 1;
-                log("warn", `request retry ${attempt + 1}/${maxRetries} after ${delay}ms: ${err.message || err}`);
-                if (delay > 0) await sleep(delay);
-            } finally {
-                if (timeout) clearTimeout(timeout);
-            }
+    const { requestText } = createPo18HttpClient({
+        fetchImpl,
+        sourceHealth,
+        configProvider: () => state.config,
+        activeCookieProfile,
+        saveActiveCookieProfile,
+        checkStopped,
+        waitWhilePaused,
+        defaults: DEFAULT_CONFIG,
+        onRetry: ({ attempt, maxRetries, delay, error }) => {
+            state.stats.requestRetries += 1;
+            log("warn", `request retry ${attempt}/${maxRetries} after ${delay}ms: ${error.message || error}`);
         }
-        throw lastError || new Error(`PO18 request failed for ${url}`);
-    }
-
-    async function waitForRequestSlot() {
-        state.requestChain = state.requestChain.catch(() => {}).then(async () => {
-            const interval = Number(state.config.requestIntervalMs || 0);
-            const waitMs = Math.max(0, interval - (Date.now() - state.lastRequestAt));
-            if (waitMs > 0) await sleep(waitMs);
-            state.lastRequestAt = Date.now();
-        });
-        return state.requestChain;
-    }
+    });
 
     function isCookieInvalid(err) {
         return err instanceof CookieInvalidError || err?.code === "PO18_COOKIE_INVALID";
@@ -1718,6 +1090,7 @@ function createPo18CrawlerService(options = {}) {
             lastRunAt: state.lastRunAt,
             lastError: state.lastError,
             lastResult: state.lastResult,
+            sourceHealth: sourceHealth.snapshot(),
             stats: state.stats,
             logs: state.logs.slice(-MAX_LOGS)
         };

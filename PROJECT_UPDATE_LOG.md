@@ -1,8 +1,67 @@
 ﻿# PO18 Reader 简化更新记录
 
-更新时间：2026-06-30
+更新时间：2026-07-11
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
+
+## 2026-07-11：v2.0 第二批稳定性、性能与维护性收口
+
+- EPUB 导出改为可注册样式包；新增“样式一 · 江湖纸卷”，覆盖封面、制作说明、作品简介、分卷、章头、标题和正文，原仙鹤样式继续保留。
+- 后台导出配置可选择默认 EPUB 样式、制作说明、简介标题和头图；Reader 仅新增江湖纸卷主题与章头切换，不生成 EPUB 前置页面。
+- 样式一样例通过 EPUBCheck 5.3.0：0 fatal、0 error、0 warning；原参考 EPUB 和修改前相关源码均已单独备份。
+- 当前功能已构建到本地 `wenmoux/reader:v2.0`，内部版本 `2.0.0+20260711T100032.766d1740cf18.dirty.82b1d9b2`，本地 digest `sha256:a3aa64d04b508e292d059281f005e5ddd77c582f112aaf089035ef93f0eaf4e2`；尚未推送 Docker Hub。
+- Reader 新增真实用户性能采集和系统页 p95/Web Vitals 看板；目录继续使用虚拟列表，主入口 gzip 保持约 68.3 KiB。
+- 数据库初始化统一到 `001_baseline.sql`；迁移 checksum 漂移默认拒绝启动，新增 `018_data_quality_guards` 保护新写入。
+- Bot 搜索/词云/详情和书评/众筹继续拆分；Crawler HTTP 重试/限速/Cookie 层、Reader 导航与阅读进度也已独立。
+- 新增运行时 `/openapi.json`、统一错误 `code/request_id`、ESLint/Prettier/c8/Dependabot；当前行/语句覆盖率 68.70%。
+- 远端 WebDAV/S3 备份支持可选 AES-256-GCM 加密，密钥只从环境读取。
+- Admin 接入真正的 Vue Router 和 `/admin/*` 深链接，支持刷新、浏览器前进后退和本地保存常用筛选视图；视图改为异步加载，主入口 gzip 降至约 45.6 KiB。
+- 缺书需求形成处理闭环：后台可标记已接受、抓取中、已缓存或驳回；已缓存可填写书号并自动通知此前提交过需求的 Telegram 用户。
+- Bot 新增 `/tasks`、`/task` 和 `/canceljob`，用户可查看任务进度、失败原因、重试时间并取消自己的排队/运行任务。
+- 迁移链扩展到 `018_data_quality_guards`，空库 Docker 冒烟自动执行 baseline 与 004–018 共 16 个迁移。
+- 后台增加 RBAC：`owner / operator / moderator / viewer`，并保护最后一个 owner；旧登录和 `/admin-api/auth/me` 响应字段保持不变，角色通过新接口单独读取。
+- 后台增加管理员账号管理、API Token 脱敏管理、追加式审计查看页和统一高风险确认框；表单有未保存修改时会拦截关闭。
+- Bot/Upload Token 改为数据库仅存 SHA-256，支持 Scope、来源 IP、最近使用和吊销；默认 Bot Token 不含 `bot:admin`。
+- PO18 密码、用户 Cookie 和爬虫 Cookie profile 改为 AES-256-GCM 信封加密，支持新旧密钥并行轮换和旧明文启动迁移。
+- Bot 导出、PO18 书架同步和共享任务在执行前写入 PostgreSQL，支持优先级、幂等键、租约、心跳、指数重试、取消和重启恢复。
+- Reader Ant Design Vue 组件改为按需异步加载；主入口约 182 KiB、gzip 67 KiB。
+- 详情目录和阅读页目录改为虚拟列表，数千章时只渲染视口附近约 20–30 行。
+- Reader 主题、话本正文解析、Bot PO18 登录、爬虫 Cookie profile 拆成独立模块；继续保留原 UI 和命令行为。
+- Reader 校对/TTS 编排继续拆为独立 mixin；Bot 单书/整书架共享拆为独立 handler 工厂；PO18 DOM、目录、正文和登录页识别拆为独立解析模块。
+- 三个主文件进一步收缩：`Reader.vue` 2827 -> 2234 行，`telegram-bot.js` 1590 -> 1018 行，`po18-crawler.js` 1736 -> 1177 行；共享模块新增免费章节、付费新增和缓存跳过测试。
+- PO18 来源增加连续失败熔断；`/metrics` 和后台指标页增加来源成功/失败、重试、熔断，以及持久任务租约/重试/取消指标。
+- 单镜像 `run-all` 改为独立监管 `server-pg / reader / bot`，单个进程退出只重启自身，并带指数退避、重启上限和优雅关停。
+- 本地备份增加 SHA-256 和 `pg_restore --list` 自动归档验证；上传 dump 先验收，恢复前再次验证，后台可手动“验证归档”。
+- CI 真实 PostgreSQL 测试会把 dump 恢复到临时数据库并检查迁移表和章节表，再销毁临时库。
+- 修复恢复演练发现的 PostgreSQL 客户端版本漂移：镜像固定 `postgresql16-client`，避免新版 dump 产生 PostgreSQL 16 不支持的设置。
+- 镜像支持可选 `--user 1000:1000 --read-only --tmpfs /tmp` 加固运行，默认用户保持兼容。
+- 新增迁移 `013_system_job_leases`、`014_api_tokens`、`015_admin_roles`，均有 rollback。
+- 验证：覆盖率测试 242 通过、1 项缺省 PG 跳过、0 失败；真实 PG 11/11 通过；1,000 章写入 p95 111.6ms；三套生产依赖审计 0 漏洞；Admin/Reader 构建、本地 Docker 构建和 16 迁移容器冒烟通过。
+- 已构建并推送 `wenmoux/reader:v2.0`，内部版本 `2.0.0+20260711T083719.766d1740cf18.dirty.4bb3f875`，远端 digest `sha256:8ccd4b44bd08f56bcbb345c3bd15b98a4f4e4c6cf5c0efefab391e7baca14c1d`。
+- 按本轮边界，仍未迁移书籍唯一键，也未重命名、删除或改变现有 API 字段。
+- VoceChat 已明确排除，Bot 保持 Telegram 单渠道实现。
+
+## 2026-07-11：v2.0 第一批基础加固
+
+- 修改前已将当前源码、未提交修改和 Git 历史归档到仓库外的本地备份目录，并生成 SHA-256 清单。
+- Docker 默认标签、文档和后台版本回退显示切换为 `wenmoux/reader:v2.0`。
+- 构建版本增加源码内容指纹，脏工作区 revision 会显示 `.dirty.<hash8>`。
+- Reader 不再在 `localStorage` 保存密码，并会自动清理旧明文密码。
+- 修复 Reader 的 DOMPurify/axios/form-data 依赖漏洞，三个项目生产依赖审计均为 0。
+- TTS 通用代理增加私网/保留地址拦截、可选域名白名单、重定向禁止和响应大小限制。
+- 登录、注册、check-cache、TTS 和上传接口增加分组限流。
+- CORS 改为生产白名单；Session 改用 PostgreSQL Store；反代信任和安全 Cookie 可配置。
+- Setup Token 验证后交换为 HttpOnly Cookie，并跳转到不含 Token 的 URL。
+- 修复空库首次启动在 `book_stats` 建表前创建索引导致初始化失败的问题。
+- 新增 `011_chapter_stats_incremental`，章节 INSERT/UPDATE/DELETE 改为语句级增量统计，避免每章写入都全书 COUNT；提供对应 rollback。
+- Setup Token 失败尝试增加独立限流，超限返回 429 和 Retry-After，成功验证后清除计数。
+- WebDAV、S3/R2 远端备份改为磁盘流式上传，并通过请求头记录 SHA-256；后台 API 返回字段保持不变。
+- Reader 仅打包实际使用的 33 个 Remixicon：字体子集 2.6 KiB，公共 CSS 从 103.15 KiB 降到 16.33 KiB，移除约 2.3 MiB 多格式全量字体输出。
+- Session 写请求增加同源校验，Reader 3200、后台同源和配置白名单保持兼容；不携带 Session 的 Token 客户端不受影响。
+- 新增 `012_admin_audit_logs`，后台写操作在响应后异步写入脱敏审计记录；审计表禁止更新和删除。
+- 按本轮要求，没有修改书籍唯一键，也没有重命名、删除或调整现有 API 字段。
+- 详细进度与待办见 `V2_OPTIMIZATION_PROGRESS.md`。
+- 验证：`npm test` 192 通过、1 个 PG 集成测试跳过；真实 PG 集成测试 7 项通过；Admin/Reader 构建通过；三套生产依赖审计 0 漏洞。
 
 ## 2026-06-30：章节标题清洗
 

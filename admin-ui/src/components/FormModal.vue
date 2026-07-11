@@ -1,9 +1,9 @@
 <template>
-  <div v-if="open" class="modal" @click.self="handleBackdropClick">
+  <div v-if="open" class="modal" @click.self="handleBackdropClick" @keydown.esc.prevent="requestClose">
     <section class="modal-card">
       <header class="modal-head">
         <h3>{{ title }}</h3>
-        <button class="secondary" type="button" @click="$emit('close')">关闭</button>
+        <button class="secondary" type="button" @click="requestClose">关闭</button>
       </header>
       <div class="modal-body">
         <div class="form-grid">
@@ -27,7 +27,7 @@
         </label>
       </div>
       <footer class="modal-actions">
-        <button class="secondary" type="button" @click="$emit('close')">取消</button>
+        <button class="secondary" type="button" @click="requestClose">取消</button>
         <button type="button" @click="$emit('save', { ...draft })">{{ saveLabel }}</button>
       </footer>
     </section>
@@ -35,7 +35,7 @@
 </template>
 
 <script setup>
-import { reactive, watch } from "vue";
+import { computed, inject, reactive, ref, watch } from "vue";
 
 const props = defineProps({
   open: Boolean,
@@ -51,9 +51,25 @@ const props = defineProps({
 const emit = defineEmits(["close", "save"]);
 
 const draft = reactive({});
+const initialSnapshot = ref("{}");
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false }));
+const dirty = computed(() => JSON.stringify(draft) !== initialSnapshot.value);
 
 function handleBackdropClick() {
-  if (props.closeOnBackdrop) emit("close");
+  if (props.closeOnBackdrop) requestClose();
+}
+
+async function requestClose() {
+  if (dirty.value) {
+    const confirmation = await confirmAction({
+      title: "放弃未保存修改",
+      message: "当前表单还有未保存内容，关闭后这些修改会丢失。",
+      confirmLabel: "放弃修改",
+      requireReason: false
+    });
+    if (!confirmation.confirmed) return;
+  }
+  emit("close");
 }
 
 watch(
@@ -61,6 +77,7 @@ watch(
   () => {
     Object.keys(draft).forEach((key) => delete draft[key]);
     Object.assign(draft, props.model || {});
+    initialSnapshot.value = JSON.stringify(draft);
   },
   { immediate: true, deep: true }
 );

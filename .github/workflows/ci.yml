@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin-ui/package-lock.json
+            cirno-src/package-lock.json
+      - run: npm ci
+      - run: npm --prefix admin-ui ci
+      - run: npm --prefix cirno-src ci
+      - run: npm run check:utf8
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test:coverage
+      - run: npm audit --omit=dev
+      - run: npm --prefix admin-ui audit --omit=dev
+      - run: npm --prefix cirno-src audit --omit=dev
+      - run: npm run admin:build
+      - run: npm --prefix cirno-src run build:standalone
+      - run: npm run check:context
+      - run: npm run docker:build
+      - run: npm run test:pg
+      - run: npm run test:docker-smoke

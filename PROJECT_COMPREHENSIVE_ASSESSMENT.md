@@ -1,5 +1,7 @@
 ﻿# PO18 Reader 综合评估与改善报告
 
+> 已归档：本报告生成于 2026-06-06，现状结论已由 `PROJECT_COMPREHENSIVE_IMPROVEMENT_REPORT_2026-07-11.md` 和 `V2_OPTIMIZATION_PROGRESS.md` 取代。保留本文件仅用于追溯历史决策。
+
 生成日期：2026-06-06
 
 ## 1. 评估范围

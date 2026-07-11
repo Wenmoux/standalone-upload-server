@@ -3,12 +3,13 @@ const http = require("http");
 const test = require("node:test");
 const express = require("express");
 const { createBotApiRoutes } = require("../routes/bot-api");
+const { createCredentialCrypto } = require("../services/credential-crypto");
 
 async function withApp(router, fn) {
     const app = express();
     app.use(express.json());
     app.use(router);
-    app.use((err, req, res, next) => {
+    app.use((err, req, res, _next) => {
         res.status(err.status || 500).json({ error: err.message || String(err) });
     });
     const server = http.createServer(app);
@@ -36,6 +37,74 @@ test("bot api routes expose health behind bot middleware", async () => {
         const ok = await fetch(`${base}/bot-api/health`, { headers: { "X-Test-Bot": "1" } });
         assert.equal(ok.status, 200);
         assert.deepEqual(await ok.json(), { ok: true });
+    });
+});
+
+test("bot job routes list and cancel only the telegram user's own jobs", async () => {
+    const calls = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        listSystemJobs: async (filters) => {
+            calls.push({ list: filters });
+            return { rows: [{ id: 7, created_by: "telegram:42" }], total: 1, page: 1, limit: 8 };
+        },
+        getSystemJob: async () => ({ id: 7, status: "running", created_by: "telegram:42", input_json: { telegram_id: "42" } }),
+        cancelSystemJob: async (id, options) => {
+            calls.push({ cancel: { id, options } });
+            return { id, status: "running", cancel_requested_at: "now" };
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const listed = await fetch(`${base}/bot-api/jobs?telegram_id=42`, { headers: { "X-Test-Bot": "1" } });
+        assert.equal(listed.status, 200);
+        assert.equal((await listed.json()).rows[0].id, 7);
+        assert.equal(calls[0].list.createdBy, "telegram:42");
+
+        const forbidden = await fetch(`${base}/bot-api/jobs/7/cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "99" })
+        });
+        assert.equal(forbidden.status, 403);
+
+        const canceled = await fetch(`${base}/bot-api/jobs/7/cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "42" })
+        });
+        assert.equal(canceled.status, 200);
+        assert.equal((await canceled.json()).job.cancel_requested_at, "now");
+    });
+});
+
+test("bot PO18 credential endpoint decrypts secrets without changing the status endpoint", async () => {
+    const credentialCrypto = createCredentialCrypto({ fallbackSecret: "bot-credential-test" });
+    const stored = {
+        account: "reader-account",
+        password: credentialCrypto.encryptString("reader-password"),
+        cookies_json: credentialCrypto.encryptJson([{ name: "authtoken1", value: "cookie-value" }]),
+        updated_at: "2026-07-11T00:00:00.000Z",
+        last_login_at: null,
+        last_status: "ok"
+    };
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        credentialCrypto,
+        findBotUserByTelegramId: async () => ({ id: 7, telegram_id: "42" }),
+        query: async () => ({ rows: [stored] })
+    });
+    await withApp(router, async (base) => {
+        const status = await fetch(`${base}/bot-api/users/42/po18`, { headers: { "X-Test-Bot": "1" } });
+        const statusPayload = await status.json();
+        assert.equal(Object.prototype.hasOwnProperty.call(statusPayload, "password"), false);
+        assert.equal(statusPayload.cookies[0].value, "cookie-value");
+
+        const credentials = await fetch(`${base}/bot-api/users/42/po18/credentials`, { headers: { "X-Test-Bot": "1" } });
+        const credentialPayload = await credentials.json();
+        assert.equal(credentialPayload.account, "reader-account");
+        assert.equal(credentialPayload.password, "reader-password");
+        assert.equal(credentialPayload.cookies[0].value, "cookie-value");
     });
 });
 

@@ -62,10 +62,19 @@
           <template #cell-query="{ row }"><strong>{{ row.clean_query || row.query }}</strong></template>
           <template #cell-platform="{ row }"><span class="tag">{{ row.platform || "全部" }}</span></template>
           <template #cell-search_type="{ row }">{{ row.search_type || "search" }}</template>
+          <template #cell-status="{ row }"><span class="status-pill" :class="`status-${row.status || 'pending'}`">{{ requestStatusLabel(row.status) }}</span></template>
           <template #cell-submit_count="{ row }"><span class="metric like"><strong>{{ number(row.submit_count) }}</strong></span></template>
           <template #cell-user_count="{ row }">{{ number(row.user_count) }}</template>
           <template #cell-latest_user="{ row }">{{ latestUser(row) }}</template>
           <template #cell-latest_at="{ row }">{{ time(row.latest_at) }}</template>
+          <template #cell-actions="{ row }">
+            <div class="inline-actions compact-actions">
+              <button class="secondary" type="button" @click="setRequestStatus(row, 'accepted')">接受</button>
+              <button class="secondary" type="button" @click="setRequestStatus(row, 'crawling')">抓取中</button>
+              <button type="button" @click="openResolve(row)">已缓存</button>
+              <button class="danger" type="button" @click="setRequestStatus(row, 'rejected')">驳回</button>
+            </div>
+          </template>
         </DataTable>
       </div>
     </section>
@@ -88,12 +97,25 @@
         </DataTable>
       </div>
     </section>
+
+    <FormModal
+      :open="resolveOpen"
+      title="完成缺书需求"
+      :model="resolveForm"
+      :fields="resolveFields"
+      :textarea-fields="resolveTextareaFields"
+      :checks="resolveChecks"
+      save-label="标记已缓存并通知"
+      @close="resolveOpen = false"
+      @save="saveResolution"
+    />
   </section>
 </template>
 
 <script setup>
 import { computed, inject, onMounted, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
+import FormModal from "../components/FormModal.vue";
 import { api } from "../services/api";
 import { number, time } from "../utils/format";
 
@@ -106,6 +128,12 @@ const hotWords = ref([]);
 const searchRequests = ref([]);
 const requestSummary = ref({});
 const sortValue = ref("like_desc");
+const resolveOpen = ref(false);
+const resolveRow = ref(null);
+const resolveForm = ref({ book_id: "", note: "", notify: true });
+const resolveFields = [{ key: "book_id", label: "已缓存书号", placeholder: "必填" }];
+const resolveTextareaFields = [{ key: "note", label: "处理说明", rows: 4, placeholder: "可选，会随通知发送" }];
+const resolveChecks = [{ key: "notify", label: "通知此前提交过该需求的 Telegram 用户" }];
 
 const feedbackColumns = [
   { key: "book_id", label: "书号" },
@@ -128,10 +156,12 @@ const requestColumns = [
   { key: "query", label: "搜索词" },
   { key: "platform", label: "站别" },
   { key: "search_type", label: "类型" },
+  { key: "status", label: "状态" },
   { key: "submit_count", label: "提交次数" },
   { key: "user_count", label: "用户数" },
   { key: "latest_user", label: "最近用户" },
-  { key: "latest_at", label: "最近提交" }
+  { key: "latest_at", label: "最近提交" },
+  { key: "actions", label: "处理" }
 ];
 
 const sortedFeedback = computed(() => {
@@ -169,6 +199,58 @@ function wordStyle(row) {
 function latestUser(row = {}) {
   const username = row.latest_telegram_username ? `@${row.latest_telegram_username}` : "";
   return row.latest_nickname || username || row.latest_telegram_id || "-";
+}
+
+function requestStatusLabel(value) {
+  return ({ pending: "待处理", accepted: "已接受", crawling: "抓取中", cached: "已缓存", rejected: "已驳回" }[value] || "待处理");
+}
+
+function requestPayload(row, status, extra = {}) {
+  return {
+    query: row.query,
+    platform: row.platform || "",
+    search_type: row.search_type || "search",
+    status,
+    ...extra
+  };
+}
+
+async function setRequestStatus(row, status) {
+  try {
+    await api("/admin-api/search-requests/resolve", {
+      method: "POST",
+      body: JSON.stringify(requestPayload(row, status, { notify: false }))
+    });
+    toast(`缺书需求已标记为${requestStatusLabel(status)}`);
+    await load();
+  } catch (err) {
+    toast(err.message || String(err));
+  }
+}
+
+function openResolve(row) {
+  resolveRow.value = row;
+  resolveForm.value = { book_id: "", note: "", notify: true };
+  resolveOpen.value = true;
+}
+
+async function saveResolution(form) {
+  const row = resolveRow.value;
+  if (!row) return;
+  try {
+    const result = await api("/admin-api/search-requests/resolve", {
+      method: "POST",
+      body: JSON.stringify(requestPayload(row, "cached", form))
+    });
+    resolveOpen.value = false;
+    resolveRow.value = null;
+    const sent = number(result.notification?.sent || 0);
+    const failed = number(result.notification?.failed || 0);
+    toast(`已标记缓存，通知成功 ${sent}，失败 ${failed}`);
+    await load();
+  } catch (err) {
+    toast(err.message || String(err));
+  }
 }
 
 async function load() {

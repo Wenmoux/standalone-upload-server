@@ -1,5 +1,16 @@
 ﻿const crypto = require("crypto");
 const express = require("express");
+void crypto;
+
+function html(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    }[char]));
+}
 
 function createAdminUsersRoutes(deps = {}) {
     const router = express.Router();
@@ -18,7 +29,9 @@ function createAdminUsersRoutes(deps = {}) {
         cdkDuration,
         csvCell,
         sendCsv,
-        generateCdkCode
+        generateCdkCode,
+        sendDirectMessage = async () => { throw new Error("telegram notification unavailable"); },
+        readerPublicUrl = ""
     } = deps;
 
     router.get("/admin-api/users", requireAdmin, async (req, res, next) => {
@@ -228,6 +241,76 @@ function createAdminUsersRoutes(deps = {}) {
                  FROM reader_search_requests`
             );
             res.json({ rows: rows.rows, summary: summary.rows[0] || {}, limit });
+        } catch (err) { next(err); }
+    });
+
+    router.post("/admin-api/search-requests/resolve", requireAdmin, async (req, res, next) => {
+        try {
+            const queryText = String(req.body?.query || "").trim();
+            const platform = String(req.body?.platform || "").trim();
+            const searchType = String(req.body?.search_type || req.body?.searchType || "search").trim() || "search";
+            const status = String(req.body?.status || "").trim().toLowerCase();
+            const bookId = String(req.body?.book_id || req.body?.bookId || "").trim();
+            const note = String(req.body?.note || "").trim().slice(0, 500);
+            const notify = req.body?.notify !== false;
+            const allowed = new Set(["pending", "accepted", "crawling", "cached", "rejected"]);
+            if (!queryText) return res.status(400).json({ error: "query is required" });
+            if (!allowed.has(status)) return res.status(400).json({ error: "invalid search request status" });
+            if (status === "cached" && !bookId) return res.status(400).json({ error: "book_id is required when status is cached" });
+
+            const updated = await query(
+                `UPDATE reader_search_requests
+                 SET status=$4,
+                     resolved_book_id=$5,
+                     resolution_note=$6,
+                     resolved_at=CASE WHEN $4 IN ('cached', 'rejected') THEN CURRENT_TIMESTAMP ELSE NULL END,
+                     notified_at=CASE WHEN $4 <> 'cached' THEN NULL ELSE notified_at END,
+                     updated_at=CURRENT_TIMESTAMP
+                 WHERE query=$1 AND COALESCE(platform, '')=$2 AND COALESCE(search_type, 'search')=$3
+                 RETURNING id, telegram_id, telegram_username, nickname, notified_at`,
+                [queryText, platform, searchType, status, bookId, note]
+            );
+
+            const rows = updated.rows || [];
+            const notification = { requested: status === "cached" && notify, sent: 0, failed: 0, errors: [] };
+            if (notification.requested && rows.length) {
+                const recipients = new Map();
+                for (const row of rows) {
+                    const telegramId = String(row.telegram_id || "").trim();
+                    if (!telegramId || row.notified_at || recipients.has(telegramId)) continue;
+                    recipients.set(telegramId, row);
+                }
+                const base = String(readerPublicUrl || "").trim().replace(/\/+$/, "");
+                const detailUrl = base && /^https?:\/\//i.test(base)
+                    ? `${base}/#/detail?bid=${encodeURIComponent(bookId)}`
+                    : "";
+                for (const [telegramId, row] of recipients) {
+                    const user = row.nickname || (row.telegram_username ? `@${row.telegram_username}` : "读者");
+                    const message = [
+                        "<b>你提交的缺书需求已有结果</b>",
+                        `关键词：${html(queryText)}`,
+                        platform ? `平台：${html(platform)}` : "",
+                        `书号：<code>${html(bookId)}</code>`,
+                        note ? `说明：${html(note)}` : ""
+                    ].filter(Boolean).join("\n");
+                    try {
+                        await sendDirectMessage(telegramId, message, {
+                            replyMarkup: detailUrl ? { inline_keyboard: [[{ text: "打开阅读器", url: detailUrl }]] } : undefined
+                        });
+                        notification.sent += 1;
+                        await query(
+                            `UPDATE reader_search_requests SET notified_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                             WHERE query=$1 AND COALESCE(platform, '')=$2 AND COALESCE(search_type, 'search')=$3 AND telegram_id=$4`,
+                            [queryText, platform, searchType, telegramId]
+                        );
+                    } catch (err) {
+                        notification.failed += 1;
+                        notification.errors.push(`${user}: ${err.message || String(err)}`.slice(0, 300));
+                    }
+                }
+            }
+
+            res.json({ success: true, status, updated: rows.length, notification });
         } catch (err) { next(err); }
     });
 

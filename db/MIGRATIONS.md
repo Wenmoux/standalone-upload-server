@@ -3,10 +3,13 @@
 This project uses PostgreSQL migrations from `db/migrations/*.sql` and explicit rollback files from `db/rollbacks/*.down.sql`.
 Applied versions are tracked in `schema_migrations`.
 
+`001_baseline.sql` is the only initial schema source. `initPg()` no longer carries a second embedded schema definition; both empty databases and upgrades execute the same ordered migration chain.
+
 ## Rules
 
 - Keep migrations idempotent where practical: use `IF NOT EXISTS`, `CREATE OR REPLACE`, and safe backfill SQL.
 - Do not edit an already released migration after it may have run on a server.
+- Startup fails when an applied migration checksum differs from the file in the image. `PO18_ALLOW_MIGRATION_CHECKSUM_DRIFT=1` is an emergency inspection override, not a normal deployment setting.
 - Fix a bad released migration with a new higher-numbered migration.
 - Add a matching `db/rollbacks/NNN_name.down.sql` for each released migration when the change can be safely reversed.
 - Take a database backup before any schema change on a production instance.
@@ -25,9 +28,15 @@ Check current migration state:
 docker exec po18-app sh -lc 'psql "$DATABASE_URL" -c "SELECT version, name, applied_at FROM schema_migrations ORDER BY version;"'
 ```
 
+The migration table also records `duration_ms` and `app_version`, so a running database can be matched to the application version that applied each change.
+
+`018_data_quality_guards` adds `NOT VALID` checks for new writes without forcing a full validation scan of legacy rows. After cleaning historical anomalies, constraints can be validated individually with `ALTER TABLE ... VALIDATE CONSTRAINT ...`.
+
 ## Rollback Strategy
 
 Rollback is manual and must be explicitly enabled. It never runs during normal app startup.
+
+The baseline migration intentionally has no automatic down migration because dropping the whole application schema is destructive. Restore a backup when a complete baseline rollback is required.
 
 Rollback the latest migration:
 

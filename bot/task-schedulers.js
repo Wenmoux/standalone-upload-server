@@ -1,3 +1,11 @@
+const PERSISTENT_BOT_JOB_TYPES = [
+    "bot_export_txt",
+    "bot_export_epub",
+    "bot_po18_bookshelf_sync",
+    "bot_share_upload",
+    "bot_po18_bookshelf_share"
+];
+
 function createTaskSchedulers(deps = {}) {
     const {
         botTaskQueue,
@@ -9,12 +17,12 @@ function createTaskSchedulers(deps = {}) {
         handleShareBookshelf
     } = deps;
 
-    function scheduleExport(chat, from, bookId, format) {
+    function exportJob(chat, from, bookId, format) {
         const chatId = typeof chat === "object" ? chat.id : chat;
         const id = String(bookId || "").trim();
-        if (!id) return sendMessage(chatId, `用法：/export${format} 书号`);
+        if (!id) return null;
         const label = `${format.toUpperCase()} 导出`;
-        return botTaskQueue.enqueue({
+        return {
             name: `export:${format}:${from.id}:${id}`,
             label,
             chatId,
@@ -29,13 +37,15 @@ function createTaskSchedulers(deps = {}) {
                 format,
                 group_chat: typeof chat === "object" && isGroup(chat)
             },
+            idempotencyKey: `bot:export:${format}:${from.id}:${id}`,
+            maxAttempts: 3,
             lockKey: `export:${from.id}`,
-            task: () => sendExport(chat, from, id, format)
-        });
+            task: (signal) => sendExport(chat, from, id, format, signal)
+        };
     }
 
-    function scheduleMyBookshelf(message) {
-        return botTaskQueue.enqueue({
+    function bookshelfJob(message) {
+        return {
             name: `mybookshelf:${message.from.id}`,
             label: "PO18 书架同步",
             chatId: message.chat.id,
@@ -45,15 +55,17 @@ function createTaskSchedulers(deps = {}) {
                 telegram_id: String(message.from.id || ""),
                 chat_id: String(message.chat.id || "")
             },
+            idempotencyKey: `bot:bookshelf:${message.from.id}`,
+            maxAttempts: 5,
             lockKey: `mybookshelf:${message.from.id}`,
-            task: () => handleMyBookshelf(message)
-        });
+            task: (signal) => handleMyBookshelf(message, signal)
+        };
     }
 
-    function scheduleShare(message, bookId) {
+    function shareJob(message, bookId) {
         const id = String(bookId || "").trim();
-        if (!id) return sendMessage(message.chat.id, "用法：共享 书号");
-        return botTaskQueue.enqueue({
+        if (!id) return null;
+        return {
             name: `share:${message.from.id}:${id}`,
             label: "共享上传",
             chatId: message.chat.id,
@@ -65,13 +77,15 @@ function createTaskSchedulers(deps = {}) {
                 chat_id: String(message.chat.id || ""),
                 book_id: id
             },
+            idempotencyKey: `bot:share:${message.from.id}:${id}`,
+            maxAttempts: 5,
             lockKey: `share:${message.from.id}`,
-            task: () => handleShare(message, id)
-        });
+            task: (signal) => handleShare(message, id, signal)
+        };
     }
 
-    function scheduleShareBookshelf(message) {
-        return botTaskQueue.enqueue({
+    function shareBookshelfJob(message) {
+        return {
             name: `sharebookshelf:${message.from.id}`,
             label: "PO18 书架上传共享",
             chatId: message.chat.id,
@@ -81,12 +95,63 @@ function createTaskSchedulers(deps = {}) {
                 telegram_id: String(message.from.id || ""),
                 chat_id: String(message.chat.id || "")
             },
+            idempotencyKey: `bot:sharebookshelf:${message.from.id}`,
+            maxAttempts: 5,
             lockKey: `sharebookshelf:${message.from.id}`,
-            task: () => handleShareBookshelf(message)
-        });
+            task: (signal) => handleShareBookshelf(message, signal)
+        };
     }
 
-    return { scheduleExport, scheduleMyBookshelf, scheduleShare, scheduleShareBookshelf };
+    function scheduleExport(chat, from, bookId, format) {
+        const job = exportJob(chat, from, bookId, format);
+        if (!job) return sendMessage(typeof chat === "object" ? chat.id : chat, `用法：/export${format} 书号`);
+        return botTaskQueue.enqueue(job);
+    }
+
+    function scheduleMyBookshelf(message) {
+        return botTaskQueue.enqueue(bookshelfJob(message));
+    }
+
+    function scheduleShare(message, bookId) {
+        const job = shareJob(message, bookId);
+        if (!job) return sendMessage(message.chat.id, "用法：共享 书号");
+        return botTaskQueue.enqueue(job);
+    }
+
+    function scheduleShareBookshelf(message) {
+        return botTaskQueue.enqueue(shareBookshelfJob(message));
+    }
+
+    function recoverSystemJob(row = {}) {
+        const input = row.input_json || {};
+        const from = { id: input.telegram_id };
+        const chat = { id: input.chat_id, type: input.group_chat ? "group" : "private" };
+        const message = { from, chat };
+        let job = null;
+        if (row.type === "bot_export_txt" || row.type === "bot_export_epub") {
+            job = exportJob(chat, from, input.book_id, input.format || row.type.replace("bot_export_", ""));
+        } else if (row.type === "bot_po18_bookshelf_sync") {
+            job = bookshelfJob(message);
+        } else if (row.type === "bot_share_upload") {
+            job = shareJob(message, input.book_id);
+        } else if (row.type === "bot_po18_bookshelf_share") {
+            job = shareBookshelfJob(message);
+        }
+        if (!job) return null;
+        job.systemJobId = row.id;
+        job.systemJobClaimed = true;
+        job.recovered = true;
+        return job;
+    }
+
+    return {
+        persistentJobTypes: PERSISTENT_BOT_JOB_TYPES,
+        recoverSystemJob,
+        scheduleExport,
+        scheduleMyBookshelf,
+        scheduleShare,
+        scheduleShareBookshelf
+    };
 }
 
-module.exports = { createTaskSchedulers };
+module.exports = { PERSISTENT_BOT_JOB_TYPES, createTaskSchedulers };

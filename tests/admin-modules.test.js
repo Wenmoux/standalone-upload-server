@@ -34,7 +34,19 @@ test("data quality service builds summary and samples", async () => {
         query: async () => {
             calls += 1;
             if (calls === 1) {
-                return { rows: [{ books: 10, missing_chapter_books: 2, no_cover: 3, no_description: 4, platform_abnormal: 1, stale_books: 5, coverage_percent: 88.5 }] };
+                return {
+                    rows: [
+                        {
+                            books: 10,
+                            missing_chapter_books: 2,
+                            no_cover: 3,
+                            no_description: 4,
+                            platform_abnormal: 1,
+                            stale_books: 5,
+                            coverage_percent: 88.5
+                        }
+                    ]
+                };
             }
             if (calls === 2) {
                 return { rows: [{ duplicate_books: 1, duplicate_order_groups: 2, large_chapters: 3 }] };
@@ -81,11 +93,25 @@ test("admin overview service builds system and bot overview payloads", async () 
         collectSystemJobInfo: async () => ({ recent: [] }),
         backupListPayload: async () => ({ rows: [] }),
         readLogTail: () => "GET /slow 900ms\n[bot-task] failed: timeout",
-        filterLogText: (text, filter) => filter === "bot" ? "[bot-task] failed: timeout" : text,
+        filterLogText: (text, filter) => (filter === "bot" ? "[bot-task] failed: timeout" : text),
         readJsonLinesTail: () => [{ level: "error", service: "server", path: "/x", status: 500 }],
         topSlowRequests: () => [],
-        listBotAuditLogs: async () => ({ rows: [{ command: "/search", action: "search", status: "succeeded", telegram_id: "42", duration_ms: 8, created_at: "2026-06-05T00:00:00.000Z" }] }),
-        collectBotAuditSummary: async () => ({ failure_reasons: [{ reason: "EXPORT_NO_CONTENT", count: 2 }], commands: [{ command: "/search", action: "search", count: 3, failed: 0 }] }),
+        listBotAuditLogs: async () => ({
+            rows: [
+                {
+                    command: "/search",
+                    action: "search",
+                    status: "succeeded",
+                    telegram_id: "42",
+                    duration_ms: 8,
+                    created_at: "2026-06-05T00:00:00.000Z"
+                }
+            ]
+        }),
+        collectBotAuditSummary: async () => ({
+            failure_reasons: [{ reason: "EXPORT_NO_CONTENT", count: 2 }],
+            commands: [{ command: "/search", action: "search", count: 3, failed: 0 }]
+        }),
         configFile: "missing-test-config.env",
         sessionSecretProvider: () => "secret-secret-secret",
         defaultPasswordProvider: () => "not-default",
@@ -117,9 +143,13 @@ test("admin system routes expose status, jobs and logs behind admin middleware",
         collectAdminSystemOverview: async () => ({ overview: true }),
         collectDataQuality: async () => ({ quality: true }),
         collectBotAdminOverview: async () => ({ bot: true }),
+        readerRumSummary: async ({ days }) => ({ days: Number(days), samples: 12, metrics: [], routes: [] }),
         listBotAuditLogs: async (query) => ({ query, rows: [{ id: 1 }] }),
+        listAdminAuditLogs: async (query) => ({ query, rows: [{ id: 2 }], total: 1, page: 1, limit: 50 }),
+        listApiTokens: async () => ({ rows: [{ id: 3, token_prefix: "abcd...wxyz" }] }),
+        revokeApiToken: async (id) => ({ id, revoked_at: "now" }),
         listSystemJobs: async (query) => ({ query, rows: [] }),
-        getSystemJob: async (id) => id === "42" ? { id } : null,
+        getSystemJob: async (id) => (id === "42" ? { id } : null),
         retrySystemJob: async (req, id) => ({ success: true, job: { id: 77, retried_from: id } }),
         cancelSystemJob: async (id) => ({ id, status: "canceled" }),
         readLogTail: () => "a\nb",
@@ -135,6 +165,9 @@ test("admin system routes expose status, jobs and logs behind admin middleware",
 
         const jobs = await fetch(`${base}/admin-api/jobs?status=running`, { headers: { "X-Test-Admin": "1" } });
         assert.equal((await jobs.json()).query.status, "running");
+
+        const rum = await fetch(`${base}/admin-api/reader-rum?days=14`, { headers: { "X-Test-Admin": "1" } });
+        assert.deepEqual(await rum.json(), { days: 14, samples: 12, metrics: [], routes: [] });
 
         const missing = await fetch(`${base}/admin-api/jobs/404`, { headers: { "X-Test-Admin": "1" } });
         assert.equal(missing.status, 404);
@@ -157,6 +190,21 @@ test("admin system routes expose status, jobs and logs behind admin middleware",
         const auditPayload = await audit.json();
         assert.equal(auditPayload.query.status, "failed");
         assert.equal(auditPayload.query.limit, "5");
+
+        const adminAudit = await fetch(`${base}/admin-api/system/admin-audit?action=delete&limit=25`, { headers: { "X-Test-Admin": "1" } });
+        const adminAuditPayload = await adminAudit.json();
+        assert.equal(adminAuditPayload.query.action, "delete");
+        assert.equal(adminAuditPayload.query.limit, "25");
+        assert.equal(adminAuditPayload.rows[0].id, 2);
+
+        const tokens = await fetch(`${base}/admin-api/system/api-tokens`, { headers: { "X-Test-Admin": "1" } });
+        assert.equal((await tokens.json()).rows[0].token_prefix, "abcd...wxyz");
+        const revoked = await fetch(`${base}/admin-api/system/api-tokens/3/revoke`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ reason: "rotation" })
+        });
+        assert.equal((await revoked.json()).token.id, 3);
     });
 });
 
@@ -173,6 +221,7 @@ test("admin backup routes validate restore confirmation and call backup service"
             calls.push(input);
             return { success: true, restore: { file: input.fileName, bytes: 12 } };
         },
+        verifyBackupPayload: async (input) => ({ success: true, verification: { file: input.fileName, bytes: 12, archive_entries: 4 } }),
         logEvent: (...args) => calls.push({ log: args }),
         restartProcess: () => {}
     });
@@ -196,6 +245,13 @@ test("admin backup routes validate restore confirmation and call backup service"
             });
             assert.equal(ok.status, 200);
             assert.equal((await ok.json()).restore.file, "a.dump");
+
+            const verified = await fetch(`${base}/admin-api/backup/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+                body: JSON.stringify({ file: "a.dump" })
+            });
+            assert.equal((await verified.json()).verification.archive_entries, 4);
         });
     } finally {
         if (previous === undefined) delete process.env.PO18_RESTART_AFTER_RESTORE;
@@ -265,15 +321,24 @@ test("admin config routes read and update telegram, platform and export settings
         dailyReportConfig: async () => ({ enabled: true, time: "22:00", adminIds: "1", lastDate: "2026-06-05" }),
         dailyReportRecipients: async () => ["1", "2"],
         channelDailyReportRecipients: async () => ["2", "3"],
-        parseTelegramPushTypes: (value) => Array.isArray(value) ? value : [],
+        parseTelegramPushTypes: (value) => (Array.isArray(value) ? value : []),
         parseDailyReportTime: (value) => ({ value: String(value || "22:00") }),
         platformConfigPayload: async () => ({ labels: { po18: "PO18" } }),
-        cleanPlatformKey: (value) => String(value || "").trim().toLowerCase(),
-        exportPricingConfig: async () => ({ unlockCost: 10, freeCopperCost: 20, paidChapterSilverCost: 30 }),
+        cleanPlatformKey: (value) =>
+            String(value || "")
+                .trim()
+                .toLowerCase(),
+        exportPricingConfig: async () => ({
+            unlockCost: 10,
+            freeCopperCost: 20,
+            paidChapterSilverCost: 30,
+            epub: { styleId: "style1", includeColophon: true }
+        }),
         exportPricingPayload: (value) => ({
             unlockCost: Number(value.unlockCost || 0),
             freeCopperCost: Number(value.freeCopperCost || 0),
-            paidChapterSilverCost: Number(value.paidChapterSilverCost || 0)
+            paidChapterSilverCost: Number(value.paidChapterSilverCost || 0),
+            epub: value.epub
         }),
         sendDailyReport: async () => ({ sent: 1 }),
         postJson: async () => "{}"
@@ -302,7 +367,7 @@ test("admin config routes read and update telegram, platform and export settings
         const exportConfig = await fetch(`${base}/admin-api/config/export`, {
             method: "PUT",
             headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
-            body: JSON.stringify({ unlockCost: 11, freeCopperCost: 22, paidChapterSilverCost: 33 })
+            body: JSON.stringify({ unlockCost: 11, freeCopperCost: 22, paidChapterSilverCost: 33, epub: { styleId: "crane" } })
         });
         const exportBody = await exportConfig.json();
         assert.equal(exportBody.unlockCost, 11);
@@ -314,9 +379,10 @@ test("admin config routes read and update telegram, platform and export settings
         assert.equal((await daily.json()).sent, 1);
     });
 
-    assert.ok(writes.some((item) => item.key === "telegram_push_types" && item.value === "[\"daily\"]"));
-    assert.ok(writes.some((item) => item.key === "platform_labels" && item.value === "{\"po18\":\"PO18\"}"));
+    assert.ok(writes.some((item) => item.key === "telegram_push_types" && item.value === '["daily"]'));
+    assert.ok(writes.some((item) => item.key === "platform_labels" && item.value === '{"po18":"PO18"}'));
     assert.ok(writes.some((item) => item.key === "bot_export_unlock_cost" && item.value === "11"));
+    assert.ok(writes.some((item) => item.key === "bot_epub_style_config" && item.value === '{"styleId":"crane"}'));
 });
 
 test("admin crawler routes expose config and control endpoints", async () => {

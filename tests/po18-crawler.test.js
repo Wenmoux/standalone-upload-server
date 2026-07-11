@@ -15,6 +15,7 @@ const {
     formatBookDetailLog,
     formatChapterListLog
 } = require("../services/po18-crawler");
+const { createCredentialCrypto } = require("../services/credential-crypto");
 
 test("po18 crawler parses findbooks rows", () => {
     const rows = parseFindBooksHtml(`
@@ -229,6 +230,27 @@ test("po18 crawler preserves existing cookie when config save omits cookie", asy
     assert.equal(next.cookie, "a=1; b=2");
     assert.equal(JSON.parse(saved).cookie, "a=1; b=2");
     assert.equal(JSON.parse(saved).intervalMinutes, 30);
+});
+
+test("po18 crawler encrypts stored cookie profiles while keeping runtime config readable", async () => {
+    let saved = "";
+    const credentialCrypto = createCredentialCrypto({ fallbackSecret: "crawler-encryption-test" });
+    const service = createPo18CrawlerService({
+        query: async () => ({ rows: [] }),
+        configGet: async () => JSON.stringify({ cookie: "authtoken1=test-value", cookieProfiles: [], enabled: false }),
+        configSet: async (key, value) => { saved = value; },
+        credentialCrypto,
+        upsertBook: async () => {},
+        saveChapter: async () => {},
+        createSystemJob: async () => ({ id: 1 }),
+        updateSystemJob: async () => {},
+        fetchImpl: async () => ({ ok: true, status: 200, url: "", text: async () => "" })
+    });
+    const loaded = await service.loadConfig();
+    assert.equal(loaded.cookie, "authtoken1=test-value");
+    const stored = JSON.parse(saved);
+    assert.equal(credentialCrypto.isEncrypted(stored.cookie), true);
+    assert.deepEqual(credentialCrypto.decryptJson(stored.cookieProfiles), loaded.cookieProfiles);
 });
 
 test("po18 crawler masks cookie profiles and keeps active profile", () => {

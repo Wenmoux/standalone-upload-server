@@ -3,6 +3,7 @@
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
+const crypto = require("crypto");
 const { spawn } = require("child_process");
 const { Transform } = require("stream");
 const { pipeline } = require("stream/promises");
@@ -30,6 +31,15 @@ function timestamp() {
         pad(now.getMinutes()),
         pad(now.getSeconds())
     ].join("");
+}
+
+function appVersion() {
+    if (process.env.PO18_APP_VERSION) return String(process.env.PO18_APP_VERSION);
+    try {
+        return JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).version || "0.0.0";
+    } catch {
+        return "0.0.0";
+    }
 }
 
 function parseEnvLine(line) {
@@ -125,8 +135,56 @@ function runProcess(command, args, options = {}) {
     });
 }
 
+async function databaseBackupMetadata(connectionString, options = {}) {
+    const { arg, env } = pgDumpConnection(connectionString);
+    const run = options.runProcess || runProcess;
+    try {
+        const result = await run(
+            "psql",
+            [
+                "--no-align",
+                "--tuples-only",
+                "--field-separator=\t",
+                "--command",
+                "SELECT current_setting('server_version'), COALESCE((SELECT MAX(version) FROM schema_migrations), '');",
+                arg
+            ],
+            { env, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS }
+        );
+        const [postgresVersion = "", schemaVersion = ""] = String(result.stdout || "").trim().split("\t");
+        return { postgres_version: postgresVersion, schema_version: schemaVersion };
+    } catch {
+        return { postgres_version: "", schema_version: "" };
+    }
+}
+
 async function writeMeta(file, meta) {
     await fsp.writeFile(`${file}.json`, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+}
+
+async function fileSha256(file) {
+    const hash = crypto.createHash("sha256");
+    for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+    return hash.digest("hex");
+}
+
+async function verifyBackupChecksum(file, expected = "") {
+    const actual = await fileSha256(file);
+    const wanted = String(expected || "").trim().toLowerCase();
+    if (wanted && actual !== wanted) throw new Error(`backup checksum mismatch for ${path.basename(file)}`);
+    return actual;
+}
+
+async function verifyPostgresArchive(file, options = {}) {
+    const result = await runProcess("pg_restore", ["--list", file], {
+        timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS
+    });
+    const entries = String(result.stdout || "")
+        .split(/\r?\n/)
+        .filter((line) => line && !line.startsWith(";"))
+        .length;
+    if (!entries) throw new Error(`postgres backup archive is empty: ${path.basename(file)}`);
+    return { archive_verified_at: new Date().toISOString(), archive_entries: entries };
 }
 
 async function readMeta(file) {
@@ -168,11 +226,16 @@ async function createPostgresBackup(options = {}) {
     const createdAt = new Date().toISOString();
     const file = path.join(backupDir, `po18-pg-${timestamp()}.dump`);
     const { arg, env } = pgDumpConnection(connectionString);
+    const databaseMeta = await databaseBackupMetadata(connectionString, { timeoutMs: options.timeoutMs });
     await runProcess("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file", file, arg], {
         env,
         timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS
     });
     const stat = await fsp.stat(file);
+    const verification = await verifyPostgresArchive(file, { timeoutMs: options.timeoutMs }).catch(async (err) => {
+        await fsp.rm(file, { force: true }).catch(() => {});
+        throw err;
+    });
     const meta = {
         type: "postgres",
         created_at: createdAt,
@@ -180,8 +243,12 @@ async function createPostgresBackup(options = {}) {
         path: file,
         bytes: stat.size,
         database: redactPgUrl(connectionString),
+        app_version: appVersion(),
+        ...databaseMeta,
         format: "custom",
-        keep
+        keep,
+        sha256: await fileSha256(file),
+        ...verification
     };
     await writeMeta(file, meta);
     meta.removed = await pruneBackups({ backupDir, prefix: "po18-pg-", keep });
@@ -216,6 +283,10 @@ async function createUploadedPostgresBackup(readable, options = {}) {
         await fsp.rm(file, { force: true }).catch(() => {});
         throw new Error("uploaded backup is empty");
     }
+    const verification = await verifyPostgresArchive(file, { timeoutMs: options.timeoutMs }).catch(async (err) => {
+        await fsp.rm(file, { force: true }).catch(() => {});
+        throw err;
+    });
     const meta = {
         type: "postgres",
         source: "upload",
@@ -224,8 +295,13 @@ async function createUploadedPostgresBackup(readable, options = {}) {
         path: file,
         bytes: stat.size,
         database: "",
+        app_version: appVersion(),
+        postgres_version: "",
+        schema_version: "",
         format: "custom",
-        original_name: originalName
+        original_name: originalName,
+        sha256: await fileSha256(file),
+        ...verification
     };
     await writeMeta(file, meta);
     return meta;
@@ -243,6 +319,8 @@ async function restorePostgresBackup(options = {}) {
     const stat = await fsp.stat(file);
     const meta = (await readMeta(file)) || {};
     if (meta.type && meta.type !== "postgres") throw new Error("only postgres backups can be restored");
+    const sha256 = await verifyBackupChecksum(file, meta.sha256);
+    const verification = await verifyPostgresArchive(file, { timeoutMs: options.timeoutMs });
 
     const before = options.skipPreBackup
         ? null
@@ -263,6 +341,8 @@ async function restorePostgresBackup(options = {}) {
         restored_at: new Date().toISOString(),
         file: path.basename(file),
         bytes: stat.size,
+        sha256,
+        ...verification,
         database: redactPgUrl(connectionString),
         pre_restore_backup: before,
         stderr: String(result.stderr || "").slice(-2000)
@@ -282,7 +362,9 @@ async function createConfigBackup(options = {}) {
         created_at: new Date().toISOString(),
         file: path.basename(file),
         path: file,
-        bytes: stat.size
+        bytes: stat.size,
+        sha256: await fileSha256(file),
+        app_version: appVersion()
     };
     await writeMeta(file, meta);
     await pruneBackups({ backupDir, prefix: "po18-config-", keep: positiveInt(options.keep, DEFAULT_KEEP) });
@@ -300,7 +382,9 @@ async function createDiagnosticsBackup(diagnostics, options = {}) {
         created_at: new Date().toISOString(),
         file: path.basename(file),
         path: file,
-        bytes: stat.size
+        bytes: stat.size,
+        sha256: await fileSha256(file),
+        app_version: appVersion()
     };
     await writeMeta(file, meta);
     await pruneBackups({ backupDir, prefix: "po18-diagnostics-", keep: positiveInt(options.keep, DEFAULT_KEEP) });
@@ -324,11 +408,42 @@ async function listBackups(options = {}) {
             created_at: meta.created_at || stat.mtime.toISOString(),
             database: meta.database || "",
             format: meta.format || "",
+            sha256: meta.sha256 || "",
+            archive_verified_at: meta.archive_verified_at || null,
+            archive_entries: Number(meta.archive_entries || 0),
+            app_version: meta.app_version || "",
+            postgres_version: meta.postgres_version || "",
+            schema_version: meta.schema_version || "",
             removed: meta.removed || []
         });
     }
     rows.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     return rows;
+}
+
+async function verifyPostgresBackup(options = {}) {
+    const backupDir = options.backupDir || DEFAULT_BACKUP_DIR;
+    const file = resolveBackupFile(options.file || options.fileName, backupDir);
+    await fsp.access(file);
+    const stat = await fsp.stat(file);
+    const meta = (await readMeta(file)) || {};
+    if (meta.type && meta.type !== "postgres") throw new Error("only postgres backups can be verified");
+    const sha256 = await verifyBackupChecksum(file, meta.sha256);
+    const verification = await verifyPostgresArchive(file, { timeoutMs: options.timeoutMs });
+    const nextMeta = {
+        ...meta,
+        type: "postgres",
+        file: path.basename(file),
+        path: file,
+        bytes: stat.size,
+        app_version: meta.app_version || appVersion(),
+        postgres_version: meta.postgres_version || "",
+        schema_version: meta.schema_version || "",
+        sha256,
+        ...verification
+    };
+    await writeMeta(file, nextMeta);
+    return nextMeta;
 }
 
 function resolveBackupFile(fileName, backupDir = DEFAULT_BACKUP_DIR) {
@@ -376,9 +491,13 @@ module.exports = {
     createDiagnosticsBackup,
     createPostgresBackup,
     createUploadedPostgresBackup,
+    databaseBackupMetadata,
+    fileSha256,
     listBackups,
     loadConfigIntoEnv,
     redactPgUrl,
     restorePostgresBackup,
-    resolveBackupFile
+    resolveBackupFile,
+    verifyBackupChecksum,
+    verifyPostgresBackup
 };

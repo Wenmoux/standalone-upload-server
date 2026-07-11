@@ -161,6 +161,7 @@
 import defaultAvatarImage from '@/assets/d_avatar.jpg'
 import { getPlatformOptions, loadPlatformConfig, platformLabel } from '@/utils/platform'
 import { libraryQueryForSearch, parseSearchIntent } from '@/utils/search-intent'
+import { clearReaderSession } from '@/utils/reader-session'
 
 const DEFAULT_THEME = {
   theme: 'default',
@@ -194,6 +195,18 @@ const PALETTES = {
     control: '#fff9ed',
     accent: '#9b5d2e',
     shadow: '0 10px 30px rgba(88, 60, 30, 0.14)'
+  },
+  jianghu: {
+    page: '#e5d4bc',
+    paper: '#f3e6d4',
+    topbar: 'rgba(243, 230, 212, 0.96)',
+    text: '#17120e',
+    muted: '#756b60',
+    border: 'rgba(124, 82, 54, 0.2)',
+    soft: '#ead8bf',
+    control: '#f8eddd',
+    accent: '#a80000',
+    shadow: '0 12px 34px rgba(83, 49, 26, 0.16)'
   },
   green: {
     page: '#dbe8d3',
@@ -366,7 +379,7 @@ export default {
           return true
         },
         err => {
-          localStorage.removeItem('login_token')
+          clearReaderSession()
           this.loadStatus = -1
           this.errText = err
           this.$router.replace({ name: 'Login' })
@@ -427,7 +440,7 @@ export default {
             return
           }
           if (String(err).includes('登录')) {
-            localStorage.removeItem('login_token')
+            clearReaderSession()
             this.$router.replace({ name: 'Login' })
           }
           this.loadStatus = -1
@@ -538,7 +551,7 @@ export default {
         err => {
           this.addingBookId = ''
           if (String(err).includes('登录')) {
-            localStorage.removeItem('login_token')
+            clearReaderSession()
             this.$router.replace({ name: 'Login' })
           }
         }
@@ -576,7 +589,7 @@ export default {
             err => {
               this.removingBookId = ''
               if (String(err).includes('登录')) {
-                localStorage.removeItem('login_token')
+                clearReaderSession()
                 this.$router.replace({ name: 'Login' })
               }
             }
