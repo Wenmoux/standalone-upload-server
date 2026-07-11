@@ -48,7 +48,16 @@ test("style1 EPUB builds cover matter, intro, volume and chapter templates", asy
     assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/chapter_0001.xhtml"));
 
-    assert.match(contentOf(files, "OEBPS/content.opf"), /po18-epub-style" content="style1"/);
+    const coverPage = contentOf(files, "OEBPS/Text/cover.xhtml");
+    const mainCss = contentOf(files, "OEBPS/Styles/main.css");
+    const packageFile = contentOf(files, "OEBPS/content.opf");
+    assert.match(coverPage, /html class="cover-document"/);
+    assert.match(coverPage, /body class="cover-page"/);
+    assert.match(coverPage, /class="cover-svg"/);
+    assert.match(coverPage, /width=device-width,height=device-height/);
+    assert.match(mainCss, /html\.cover-document,html\.cover-document body\.cover-page/);
+    assert.match(packageFile, /po18-epub-style" content="style1"/);
+    assert.match(packageFile, /reference type="cover" title="Cover" href="Text\/cover\.xhtml"/);
     assert.match(contentOf(files, "OEBPS/Text/colophon.xhtml"), /class="design-box"/);
     assert.match(contentOf(files, "OEBPS/Text/intro.xhtml"), /class="introduction-title">作品简介/);
     assert.match(contentOf(files, "OEBPS/Text/volume_0001.xhtml"), /class="volume-sequence-number">第一卷/);

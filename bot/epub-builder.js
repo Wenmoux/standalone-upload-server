@@ -2,6 +2,12 @@ const fs = require("fs");
 const zlib = require("zlib");
 const { listEpubStyles, resolveEpubStyle } = require("./epub-styles");
 
+const COVER_PAGE_CSS = `
+html.cover-document,html.cover-document body.cover-page{margin:0!important;padding:0!important;width:100%!important;height:100%!important;min-height:100%!important;overflow:hidden!important;background:#000!important;}
+body.cover-page .cover{margin:0!important;padding:0!important;width:100%!important;height:100%!important;min-height:100%!important;display:block!important;text-align:center!important;text-indent:0!important;line-height:0!important;background:#000!important;}
+body.cover-page .cover-svg{margin:0!important;padding:0!important;width:100%!important;height:100%!important;display:block!important;}
+`;
+
 const CHAPTER_LABEL_REGEX = /第\s*[0-9０-９零一二三四五六七八九十百千万两〇○壹贰叁肆伍陆柒捌玖拾佰仟]+\s*[章节回卷篇话节集]/i;
 const VOLUME_LABEL_REGEX = /第\s*[0-9０-９零一二三四五六七八九十百千万两〇○壹贰叁肆伍陆柒捌玖拾佰仟]+\s*[卷部篇集]/i;
 
@@ -39,7 +45,7 @@ function createEpubBuilder(deps = {}) {
                     '<?xml version="1.0" encoding="utf-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
                 )
             },
-            { name: "OEBPS/Styles/main.css", content: Buffer.from(style.css) }
+            { name: "OEBPS/Styles/main.css", content: Buffer.from(`${style.css}\n${COVER_PAGE_CSS}`) }
         ];
 
         for (const asset of loadedAssets) {
@@ -48,11 +54,11 @@ function createEpubBuilder(deps = {}) {
         }
 
         let pageOrder = 0;
-        function addPage({ id, href, pageTitle, body, navTitle = "", linear = true }) {
+        function addPage({ id, href, pageTitle, body, navTitle = "", linear = true, documentOptions = {} }) {
             const itemId = cleanId(id);
             manifest.push(`<item id="${itemId}" href="${href}" media-type="application/xhtml+xml"/>`);
             spine.push(`<itemref idref="${itemId}"${linear ? "" : ' linear="no"'}/>`);
-            files.push({ name: `OEBPS/${href}`, content: Buffer.from(xhtmlDocument(pageTitle, body)) });
+            files.push({ name: `OEBPS/${href}`, content: Buffer.from(xhtmlDocument(pageTitle, body, documentOptions)) });
             if (navTitle) {
                 pageOrder += 1;
                 navPoints.push({ order: pageOrder, title: navTitle, href });
@@ -68,8 +74,9 @@ function createEpubBuilder(deps = {}) {
                 id: "cover-page",
                 href: "Text/cover.xhtml",
                 pageTitle: rawTitle,
-                body: `<body><div class="cover"><svg xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 ${cover.width || 1200} ${cover.height || 1600}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink"><image width="${cover.width || 1200}" height="${cover.height || 1600}" xlink:href="../${coverName}"/></svg></div></body>`,
-                linear: true
+                body: `<body class="cover-page"><div class="cover"><svg class="cover-svg" xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 ${cover.width || 1200} ${cover.height || 1600}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink"><image width="${cover.width || 1200}" height="${cover.height || 1600}" preserveAspectRatio="xMidYMid meet" xlink:href="../${coverName}"/></svg></div></body>`,
+                linear: true,
+                documentOptions: { cover: true }
             });
         }
 
@@ -140,10 +147,11 @@ function createEpubBuilder(deps = {}) {
         });
 
         const coverMeta = cover ? '<meta name="cover" content="cover-image"/>' : "";
+        const coverGuide = cover ? '<guide><reference type="cover" title="Cover" href="Text/cover.xhtml"/></guide>' : "";
         files.push({
             name: "OEBPS/content.opf",
             content: Buffer.from(
-                `<?xml version="1.0" encoding="utf-8"?><package version="2.0" unique-identifier="bookid" xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:identifier id="bookid">po18-${escapeXml(book.book_id)}</dc:identifier><dc:title>${title}</dc:title><dc:creator>${author}</dc:creator><dc:language>zh-CN</dc:language><dc:description>${escapeXml(descriptionText.slice(0, 2000))}</dc:description>${coverMeta}<meta name="po18-epub-style" content="${escapeXml(style.id)}"/></metadata><manifest>${manifest.join("")}</manifest><spine toc="ncx">${spine.join("")}</spine></package>`
+                `<?xml version="1.0" encoding="utf-8"?><package version="2.0" unique-identifier="bookid" xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:identifier id="bookid">po18-${escapeXml(book.book_id)}</dc:identifier><dc:title>${title}</dc:title><dc:creator>${author}</dc:creator><dc:language>zh-CN</dc:language><dc:description>${escapeXml(descriptionText.slice(0, 2000))}</dc:description>${coverMeta}<meta name="po18-epub-style" content="${escapeXml(style.id)}"/></metadata><manifest>${manifest.join("")}</manifest><spine toc="ncx">${spine.join("")}</spine>${coverGuide}</package>`
             )
         });
 
@@ -266,8 +274,11 @@ function escapedHeader(header) {
     return { number: escapeXml(header.number), name: escapeXml(header.name) };
 }
 
-function xhtmlDocument(title, body) {
-    return `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${escapeXml(title)}</title><link href="../Styles/main.css" type="text/css" rel="stylesheet"/></head>${body}</html>`;
+function xhtmlDocument(title, body, options = {}) {
+    const cover = options.cover === true;
+    const htmlClass = cover ? ' class="cover-document"' : "";
+    const viewport = cover ? '<meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0"/>' : "";
+    return `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html${htmlClass} xmlns="http://www.w3.org/1999/xhtml"><head><title>${escapeXml(title)}</title>${viewport}<link href="../Styles/main.css" type="text/css" rel="stylesheet"/></head>${body}</html>`;
 }
 
 function readFirstFile(paths) {
