@@ -432,6 +432,12 @@ function createReaderApiRoutes(deps = {}) {
     router.get("/reader-api/books/:bookId/chapters", async (req, res, next) => {
         try {
             const includeContent = ["1", "true", "yes"].includes(String(req.query.includeContent || "").toLowerCase());
+            const requestedLimit = Number(req.query.limit);
+            const paged = Number.isFinite(requestedLimit) && requestedLimit > 0;
+            const limit = paged ? positiveInteger(requestedLimit, 100, 500) : 0;
+            const offsetValue = Number(req.query.offset);
+            const offset = paged && Number.isFinite(offsetValue) && offsetValue > 0 ? Math.floor(offsetValue) : 0;
+            const fetchLimit = paged ? limit + 1 : 0;
             const rows = await query(
                 `WITH book_platform AS (
                     SELECT platform
@@ -446,15 +452,23 @@ function createReaderApiRoutes(deps = {}) {
                         ${includeContent ? ", html, text" : ""}
                  FROM chapter_cache
                  WHERE book_id = $1
-                 ORDER BY ${chapterListOrderSql("(SELECT platform FROM book_platform)")}`,
-                [String(req.params.bookId)]
+                 ORDER BY ${chapterListOrderSql("(SELECT platform FROM book_platform)")}
+                 ${paged ? "LIMIT $2 OFFSET $3" : ""}`,
+                paged ? [String(req.params.bookId), fetchLimit, offset] : [String(req.params.bookId)]
             );
+            const hasMore = paged && rows.rows.length > limit;
+            const visibleRows = hasMore ? rows.rows.slice(0, limit) : rows.rows;
             if (includeContent) {
-                for (const row of rows.rows) {
+                for (const row of visibleRows) {
                     row.text = chapterText(row);
                 }
             }
-            res.json({ rows: rows.rows, total: rows.rows.length });
+            const payload = { rows: visibleRows, total: visibleRows.length };
+            if (paged) {
+                payload.has_more = hasMore;
+                payload.next_offset = hasMore ? offset + visibleRows.length : null;
+            }
+            res.json(payload);
         } catch (err) {
             next(err);
         }

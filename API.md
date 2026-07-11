@@ -904,6 +904,26 @@ Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters?includ
 
 ## API Change Log
 
+### 2026-07-12
+
+`GET /reader-api/books/:bookId/chapters` 增加可选分页参数，供 Bot 分页拉取大书正文：
+
+| Param | Type | Default | Description |
+|------|------|---------|-------------|
+| `limit` | integer | 不分页 | 每页章节数，最大 `500`；不传时保持原有一次返回全部章节的行为。 |
+| `offset` | integer | `0` | 分页起始位置，仅在传入 `limit` 时生效。 |
+
+分页响应继续保留 `rows` 和 `total`，并增加：
+
+```json
+{
+  "has_more": true,
+  "next_offset": 100
+}
+```
+
+Bot 导出正文时默认每页请求 `100` 章，可通过 `PO18_BOT_EXPORT_PAGE_SIZE` 在 `20-500` 范围内调整。
+
 ### 2026-05-03
 
 `GET /reader-api/books/:bookId/chapters` 增加可选查询参数：

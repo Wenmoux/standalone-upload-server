@@ -17,7 +17,9 @@ class PgBotClient {
         this.baseUrl = String(options.baseUrl || process.env.PO18_SERVER_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
         this.shareBaseUrl = String(options.shareBaseUrl || process.env.PO18_SHARE_API_URL || this.baseUrl).replace(/\/+$/, "");
         this.botToken = options.botToken || process.env.PO18_BOT_API_TOKEN || "";
+        this.fetchImpl = options.fetchImpl || globalThis.fetch;
         this.requestTimeoutMs = positiveInt(options.requestTimeoutMs ?? process.env.PO18_BOT_API_TIMEOUT_MS, 30000);
+        this.exportPageSize = Math.max(20, Math.min(500, positiveInt(options.exportPageSize ?? process.env.PO18_BOT_EXPORT_PAGE_SIZE, 100)));
         this.cacheTtlMs = positiveInt(options.cacheTtlMs ?? process.env.PO18_BOT_CACHE_TTL_MS, 10000);
         this.cacheMax = Math.max(20, positiveInt(options.cacheMax ?? process.env.PO18_BOT_CACHE_MAX, 300));
         this.cache = new Map();
@@ -64,7 +66,8 @@ class PgBotClient {
             cache_keys: this.cache.size,
             inflight: this.inflight.size,
             cache_ttl_ms: this.cacheTtlMs,
-            timeout_ms: this.requestTimeoutMs
+            timeout_ms: this.requestTimeoutMs,
+            export_page_size: this.exportPageSize
         };
     }
 
@@ -91,7 +94,7 @@ class PgBotClient {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
             try {
-                const response = await fetch(url, { ...fetchOptions, headers, signal: controller.signal });
+                const response = await this.fetchImpl(url, { ...fetchOptions, headers, signal: controller.signal });
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) {
                     const error = new Error(data.error || `HTTP ${response.status}`);
@@ -283,9 +286,24 @@ class PgBotClient {
         return this.request(`/reader-api/books/${encodeURIComponent(bookId)}`);
     }
 
-    async getChapters(bookId, includeContent = false) {
-        const suffix = includeContent ? "?includeContent=1" : "";
-        return this.request(`/reader-api/books/${encodeURIComponent(bookId)}/chapters${suffix}`);
+    async getChapters(bookId, includeContent = false, options = {}) {
+        const encodedBookId = encodeURIComponent(bookId);
+        if (!includeContent) return this.request(`/reader-api/books/${encodedBookId}/chapters`);
+
+        const maxRows = Math.max(1, positiveInt(options.maxRows, 5000));
+        const rows = [];
+        let offset = 0;
+        while (rows.length < maxRows) {
+            const limit = Math.min(this.exportPageSize, maxRows - rows.length);
+            const query = new URLSearchParams({ includeContent: "1", limit: String(limit), offset: String(offset) });
+            const page = await this.request(`/reader-api/books/${encodedBookId}/chapters?${query.toString()}`);
+            const pageRows = Array.isArray(page.rows) ? page.rows : [];
+            rows.push(...pageRows.slice(0, limit));
+            if (!pageRows.length || !page.has_more || pageRows.length < limit) break;
+            const nextOffset = Number(page.next_offset);
+            offset = Number.isFinite(nextOffset) && nextOffset > offset ? nextOffset : offset + pageRows.length;
+        }
+        return { rows, total: rows.length };
     }
 
     async addBookshelf(telegramId, bookId) {

@@ -56,7 +56,7 @@ async function writeTxtExport(filePath, book, rows) {
 async function buildExport(bookOrId, format, from = null, exportOptions = {}) {
     const book = typeof bookOrId === "object" && bookOrId ? bookOrId : (await client.getBook(bookOrId)).book;
     const bookId = String(book.book_id || book.bookId || bookOrId).trim();
-    const chapters = await client.getChapters(bookId, true);
+    const chapters = await client.getChapters(bookId, true, { maxRows: exportMaxChapters });
     let rows = (chapters.rows || []).slice(0, exportMaxChapters);
     if (!rows.length && from) {
         const account = await client.po18Account(from.id).catch(() => null);

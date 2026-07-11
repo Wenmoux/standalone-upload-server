@@ -173,6 +173,40 @@ test("reader bookshelf list applies paging to the optimized shelf query", async 
     assert.deepEqual(calls[0].params, [1, 20, 20]);
 });
 
+test("reader chapter content route supports optional export paging", async () => {
+    const calls = [];
+    const router = createReaderApiRoutes(baseDeps({
+        query: async (sql, params = []) => {
+            calls.push({ sql, params });
+            return {
+                rows: [
+                    { chapter_id: "c2", html: "two", text: "" },
+                    { chapter_id: "c3", html: "three", text: "" },
+                    { chapter_id: "c4", html: "four", text: "" }
+                ]
+            };
+        },
+        chapterText: (row) => row.text || row.html
+    }));
+
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/reader-api/books/b1/chapters?includeContent=1&limit=2&offset=1`);
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), {
+            rows: [
+                { chapter_id: "c2", html: "two", text: "two" },
+                { chapter_id: "c3", html: "three", text: "three" }
+            ],
+            total: 2,
+            has_more: true,
+            next_offset: 3
+        });
+    });
+
+    assert.match(calls[0].sql, /LIMIT \$2 OFFSET \$3/);
+    assert.deepEqual(calls[0].params, ["b1", 3, 1]);
+});
+
 test("reader routes keep tts endpoints protected and return edge voice fallback", async () => {
     const router = createReaderApiRoutes(baseDeps());
 
