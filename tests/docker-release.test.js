@@ -15,6 +15,7 @@ const { selectPushTags } = require("../scripts/docker-push");
 const { createImageManifest, createReleaseManifest, parseManifestDigest } = require("../scripts/docker-release-manifest");
 const { REQUIRED_CONTEXT_FILES, ignored, walk } = require("../scripts/check-build-context");
 const { pgFailureSummary } = require("../scripts/run-pg-integration");
+const { smokeApplicationEnvironment, smokeFailureSummary } = require("../scripts/docker-smoke");
 
 const HASH = "a".repeat(64);
 
@@ -86,6 +87,17 @@ test("PostgreSQL CI failures keep the actionable tail and remove terminal colors
     assert.doesNotMatch(summary, /\u001b/);
     assert.doesNotMatch(summary, /pg line 1(?:\D|$)/);
     assert.match(summary, /pg line 80/);
+    assert.ok(summary.split("\n").length <= 60);
+});
+
+test("Docker smoke supplies every production security setting and exposes diagnostics", () => {
+    const environment = smokeApplicationEnvironment();
+    assert.ok(environment.includes("PO18_METRICS_TOKEN=smoke-metrics-token"));
+    assert.ok(environment.some((value) => value.startsWith("PO18_UPLOAD_SESSION_SECRET=")));
+    assert.ok(environment.some((value) => value.startsWith("PO18_UPLOAD_ADMIN_PASSWORD=")));
+    const summary = smokeFailureSummary(Array.from({ length: 80 }, (_, index) => `smoke line ${index + 1}`).join("\n"));
+    assert.doesNotMatch(summary, /smoke line 1(?:\D|$)/);
+    assert.match(summary, /smoke line 80/);
     assert.ok(summary.split("\n").length <= 60);
 });
 
