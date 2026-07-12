@@ -986,7 +986,7 @@ Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters?includ
 
 Bot 导出正文时默认每页请求 `100` 章，可通过 `PO18_BOT_EXPORT_PAGE_SIZE` 在 `20-500` 范围内调整。
 
-新增 EPUB 样式二后台接口：
+新增 EPUB 老二次元（内部 ID：`style2`）后台接口：
 
 ```http
 GET    /admin-api/config/export/style2-template

@@ -154,6 +154,7 @@ function createEpubBuilder(deps = {}) {
                 const rawChapterTitle = chapter.title || chapter.chapter_title || chapter.chapter_id || `第${index + 1}章`;
                 chapterNo += 1;
                 const header = escapedHeader(splitHeading(rawChapterTitle, chapterNo, CHAPTER_LABEL_REGEX, "章"));
+                const bodyText = stripDuplicateLeadingChapterTitle(chapterPlainText(chapter), rawChapterTitle);
                 addPage({
                     id: `chapter-${chapterNo}`,
                     href: `Text/chapter_${padNumber(chapterNo)}.xhtml`,
@@ -164,7 +165,7 @@ function createEpubBuilder(deps = {}) {
                         ...pageContext,
                         header,
                         chapterNo,
-                        bodyHtml: textToParagraphs(chapterPlainText(chapter))
+                        bodyHtml: textToParagraphs(bodyText)
                     })
                 });
             }
@@ -300,6 +301,22 @@ function splitHeading(rawTitle = "", sequence = 1, regex = CHAPTER_LABEL_REGEX, 
         .replace(/[\s:：·.。-]+$/, "")
         .trim();
     return { number, name: name || title || "正文" };
+}
+
+function comparableHeading(value = "") {
+    return String(value || "")
+        .normalize("NFKC")
+        .replace(/[\u200b-\u200d\ufeff]/g, "")
+        .replace(/\s+/g, "");
+}
+
+function stripDuplicateLeadingChapterTitle(value = "", rawTitle = "") {
+    const text = String(value || "").replace(/\r\n?/g, "\n");
+    const lines = text.split("\n");
+    const firstContent = lines.findIndex((line) => line.trim());
+    if (firstContent < 0 || comparableHeading(lines[firstContent]) !== comparableHeading(rawTitle)) return text;
+    lines.splice(firstContent, 1);
+    return lines.join("\n").replace(/^\s*\n+/, "").trim();
 }
 
 function escapedHeader(header) {

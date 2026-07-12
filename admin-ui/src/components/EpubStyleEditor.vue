@@ -164,7 +164,7 @@ const hasPreview = computed(() => isStyle1.value || isStyle2.value);
 const previewPages = computed(() => previewPageDefs.map((item) => (item.id === "title" && isStyle1.value ? { ...item, label: "封面" } : item)));
 const selectedDescription = computed(() => props.styles.find((item) => item.id === model.value.styleId)?.description || "选择后应用于下一次 EPUB 导出。");
 const previewLabel = computed(() => previewPages.value.find((item) => item.id === previewPage.value)?.label || "");
-const previewTitle = computed(() => `${isStyle1.value ? "样式 1" : "样式 2"} 预览`);
+const previewTitle = computed(() => (isStyle1.value ? "样式 1 预览" : "老二次元预览"));
 const effectiveCssHint = computed(() => isStyle2.value
   ? "只读预览；内置基础 CSS 与追加 CSS 已合并，保存后用于下一次 EPUB 导出。"
   : "只读预览；内容与样式一内置样式包 CSS 保持一致。");

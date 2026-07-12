@@ -174,7 +174,7 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.match(packageFile, /po18-epub-style" content="style2"/);
     assert.doesNotMatch(packageFile, /reference type="cover"/);
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 配角竟是我自己<\/text>/);
-    assert.ok(listEpubStyles().some((style) => style.id === "style2"));
+    assert.equal(listEpubStyles().find((style) => style.id === "style2")?.name, "老二次元");
 });
 
 test("style2 EPUB does not add a volume page when chapter data has no volume row", async () => {
@@ -202,4 +202,22 @@ test("style2 EPUB ignores an empty volume marker instead of inventing a title", 
     );
     assert.ok(!files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
     assert.doesNotMatch(contentOf(files, "OEBPS/toc.ncx"), /volume-placeholder|>正文<\/text>/);
+});
+
+test("EPUB removes only an exact duplicated chapter title from the first body line", async () => {
+    const { makeEpubFiles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
+    const files = await makeEpubFiles(
+        { book_id: "b6", title: "正文标题去重", author: "作者", description: "简介" },
+        [
+            { chapter_id: "c1", title: "第七章 电影院", text: "第七章　电影院\n美妇将换下的衣物提在店里。" },
+            { chapter_id: "c2", title: "第八章 回家", text: "第八章 回家。\n这是正常正文。" }
+        ],
+        { epub: { styleId: "style2", includeColophon: false } }
+    );
+    const first = contentOf(files, "OEBPS/Text/chapter_0001.xhtml");
+    const second = contentOf(files, "OEBPS/Text/chapter_0002.xhtml");
+    assert.match(first, /class="num">第七章/);
+    assert.doesNotMatch(first, /<p>第七章[\s　]*电影院<\/p>/);
+    assert.match(first, /<p>美妇将换下的衣物提在店里。<\/p>/);
+    assert.match(second, /<p>第八章 回家。<\/p>/);
 });

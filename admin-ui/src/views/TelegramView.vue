@@ -146,7 +146,7 @@
         <div class="section-head" style="margin-top: 24px">
           <div>
             <p class="section-title">EPUB 内置样式</p>
-            <p class="section-desc">配置默认样式、样式 2 模板与持久化图片资源。</p>
+            <p class="section-desc">配置默认样式、老二次元模板与持久化图片资源。</p>
           </div>
         </div>
         <EpubStyleEditor v-model="pricing.epub" :styles="pricing.epubStyles" @save="savePricing" @refresh="loadPricing" />

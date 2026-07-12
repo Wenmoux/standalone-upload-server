@@ -11,7 +11,7 @@ const {
 
 module.exports = {
     id: "style2",
-    name: "样式二 · 原书复刻",
+    name: "老二次元",
     description: "1:1 复刻参考 EPUB 的插画标题页、制作说明、书籍信息、分卷图和正文章头。",
     skipVisibleCoverPage: true,
     titlePageNavTitle: "版权声明",
