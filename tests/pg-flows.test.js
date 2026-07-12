@@ -547,7 +547,13 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
                 ["102", 1]
             ]
         );
-        const tx = await query("SELECT type, COUNT(*)::int count FROM reader_transactions GROUP BY type ORDER BY type");
+        const tx = await query(
+            `SELECT type, COUNT(*)::int count
+             FROM reader_transactions
+             WHERE telegram_id=ANY($1::text[])
+             GROUP BY type ORDER BY type`,
+            [["100", "101", "102"]]
+        );
         assert.deepEqual(tx.rows, [
             { type: "hb_receive", count: 2 },
             { type: "hb_send", count: 1 }
