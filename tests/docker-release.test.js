@@ -4,7 +4,13 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 
-const { createBuildIdentity, dockerBuildArgs, sourceContentHash } = require("../scripts/docker-build");
+const {
+    createBuildIdentity,
+    dockerFailureSummary,
+    dockerBuildArgs,
+    githubCommandEscape,
+    sourceContentHash
+} = require("../scripts/docker-build");
 const { selectPushTags } = require("../scripts/docker-push");
 const { createImageManifest, createReleaseManifest, parseManifestDigest } = require("../scripts/docker-release-manifest");
 
@@ -55,6 +61,15 @@ test("formal builds reject dirty or unverifiable Git state", () => {
     };
     assert.throws(() => createBuildIdentity({ ...base, dirty: true, gitAvailable: true }), /worktree is dirty/);
     assert.throws(() => createBuildIdentity({ ...base, dirty: false, gitAvailable: false }), /verification are required/);
+});
+
+test("GitHub Docker failures expose a bounded escaped diagnostic annotation", () => {
+    const lines = Array.from({ length: 60 }, (_, index) => `build line ${index + 1}`);
+    const summary = dockerFailureSummary(lines.slice(0, 30).join("\n"), lines.slice(30).join("\n"));
+    assert.doesNotMatch(summary, /build line 1(?:\D|$)/);
+    assert.match(summary, /build line 60/);
+    assert.ok(summary.split("\n").length <= 40);
+    assert.equal(githubCommandEscape("one%\ntwo\r"), "one%25%0Atwo%0D");
 });
 
 test("source hash excludes generated release metadata", () => {

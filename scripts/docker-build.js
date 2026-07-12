@@ -5,12 +5,7 @@ const path = require("path");
 
 const projectRoot = path.join(__dirname, "..");
 const DEFAULT_IMAGE_TAG = "wenmoux/reader:v2.0";
-const SOURCE_HASH_EXCLUDES = new Set([
-    ".docker-build.json",
-    ".po18-build.json",
-    "release-manifest.json",
-    "sbom.spdx.json"
-]);
+const SOURCE_HASH_EXCLUDES = new Set([".docker-build.json", ".po18-build.json", "release-manifest.json", "sbom.spdx.json"]);
 
 function readPackageVersion(root = projectRoot) {
     try {
@@ -63,7 +58,10 @@ function gitValue(command, args, root = projectRoot, fallback = "", exec = execF
 }
 
 function compactBuildDate(date) {
-    return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    return date
+        .toISOString()
+        .replace(/[-:]/g, "")
+        .replace(/\.\d{3}Z$/, "Z");
 }
 
 function resolveBuildDate(env = process.env, now = new Date()) {
@@ -130,9 +128,7 @@ function createBuildIdentity(options) {
     }
 
     const baseRevision = String(options.revisionOverride || gitRevision || "unknown");
-    const revision = dirty && !/\.dirty\./.test(baseRevision)
-        ? `${baseRevision}.dirty.${sourceHash.slice(0, 8)}`
-        : baseRevision;
+    const revision = dirty && !/\.dirty\./.test(baseRevision) ? `${baseRevision}.dirty.${sourceHash.slice(0, 8)}` : baseRevision;
     const buildDate = String(options.buildDate);
     const buildStamp = String(options.buildStamp || compactBuildDate(new Date(buildDate)).replace(/Z$/, ""));
     const versionRevision = safeTagPart(revision);
@@ -207,6 +203,21 @@ function appendGithubOutputs(identity, env = process.env) {
     fs.appendFileSync(env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
 }
 
+function githubCommandEscape(value) {
+    return String(value || "")
+        .replace(/%/g, "%25")
+        .replace(/\r/g, "%0D")
+        .replace(/\n/g, "%0A");
+}
+
+function dockerFailureSummary(stdout = "", stderr = "") {
+    const lines = `${stdout || ""}\n${stderr || ""}`
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .filter(Boolean);
+    return lines.slice(-40).join("\n").slice(-6000) || "docker build failed without diagnostic output";
+}
+
 function collectBuildIdentity(options = {}) {
     const root = options.root || projectRoot;
     const env = options.env || process.env;
@@ -250,9 +261,25 @@ function runBuild(options = {}) {
     console.log(`[docker-build] dirty=${identity.dirty}`);
     console.log(`[docker-build] formal_release=${identity.release}`);
 
-    const result = spawn("docker", dockerBuildArgs(identity), { cwd: root, stdio: "inherit" });
-    const status = result.status === null ? 1 : (result.status || 0);
-    if (status !== 0) return status;
+    const captureForActions = String(env.GITHUB_ACTIONS || "").toLowerCase() === "true";
+    const result = spawn(
+        "docker",
+        dockerBuildArgs(identity),
+        captureForActions ? { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] } : { cwd: root, stdio: "inherit" }
+    );
+    if (captureForActions) {
+        if (result.stdout) process.stdout.write(result.stdout);
+        if (result.stderr) process.stderr.write(result.stderr);
+    }
+    const status = result.status === null ? 1 : result.status || 0;
+    if (status !== 0) {
+        if (captureForActions) {
+            console.error(
+                `::error title=Docker image build failed::${githubCommandEscape(dockerFailureSummary(result.stdout, result.stderr))}`
+            );
+        }
+        return status;
+    }
 
     const metadataPath = path.join(root, ".docker-build.json");
     fs.writeFileSync(metadataPath, JSON.stringify(identity, null, 2));
@@ -279,8 +306,10 @@ module.exports = {
     collectBuildIdentity,
     compactBuildDate,
     createBuildIdentity,
+    dockerFailureSummary,
     dockerBuildArgs,
     gitCandidates,
+    githubCommandEscape,
     imageRepository,
     parseBoolean,
     readPackageVersion,
