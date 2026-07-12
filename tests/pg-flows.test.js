@@ -111,7 +111,17 @@ async function seedBotUser(query, { username, telegramId, copper = 0, silver = 0
 }
 
 test("postgres integration covers CDK, red packets and backup jobs", { skip: pgUrl ? false : "set PO18_TEST_PG_URL to run" }, async (t) => {
-    const { bookColumns, chapterColumns, initPg, pick, query, pool, runMigrationRollback, runMigrations, listMigrationFiles } = require("../pg-store");
+    const {
+        bookColumns,
+        chapterColumns,
+        initPg,
+        pick,
+        query,
+        pool,
+        runMigrationRollback,
+        runMigrations,
+        listMigrationFiles
+    } = require("../pg-store");
     const { createReaderApiRoutes } = require("../routes/reader-api");
     const { createBotApiRoutes } = require("../routes/bot-api");
     const { createAdminBackupRoutes } = require("../routes/admin-backups");
@@ -180,9 +190,20 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
 
     await t.test("unchanged qidian metadata payload writes typed timestamp columns", async () => {
         const numericBookFields = new Set([
-            "word_count", "chapter_count", "total_chapters", "subscribed_chapters", "free_chapters", "paid_chapters",
-            "favorites_count", "comments_count", "monthly_popularity", "total_popularity", "weekly_popularity",
-            "readers_count", "daily_popularity", "purchase_count"
+            "word_count",
+            "chapter_count",
+            "total_chapters",
+            "subscribed_chapters",
+            "free_chapters",
+            "paid_chapters",
+            "favorites_count",
+            "comments_count",
+            "monthly_popularity",
+            "total_popularity",
+            "weekly_popularity",
+            "readers_count",
+            "daily_popularity",
+            "purchase_count"
         ]);
         const service = createBookChapterService({
             query,
@@ -190,7 +211,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             pick,
             bookColumns,
             chapterColumns,
-            cleanPgText: (value) => typeof value === "string" ? value.replace(/\u0000/g, "") : value,
+            cleanPgText: (value) => (typeof value === "string" ? value.replace(/\u0000/g, "") : value),
             cleanPgValue: (value) => value,
             cleanPgObject: (value) => value,
             numericBookFields,
