@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供搜索与社交命令处理器交互契约的自动化回归断言
- * [POS]: tests 的搜索与社交命令处理器交互契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供搜索、私聊/群聊书评输入与取消清理交互契约的自动化回归断言
+ * [POS]: tests 的搜索与社交命令处理器交互契约守卫，防止 ForceReply 和草稿状态在取消后残留
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const test = require("node:test");
@@ -96,6 +96,7 @@ test("review argument parsing accepts links and keeps the full review body", () 
 function reviewFixture(overrides = {}) {
     const sent = [];
     const edited = [];
+    const deleted = [];
     const published = [];
     let messageId = 0;
     const reviewDrafts = createReviewDraftStore({ ttlMs: 60_000, maxSize: 10 });
@@ -120,12 +121,13 @@ function reviewFixture(overrides = {}) {
             return message;
         },
         editMessage: async (chatId, targetMessageId, text, extra) => edited.push({ chatId, targetMessageId, text, extra }),
+        deleteMessage: async (chatId, targetMessageId) => deleted.push({ chatId, targetMessageId }),
         escapeHtml: (value) => String(value),
         bookReviewsActions: (bookId) => ({ inline_keyboard: [[{ text: "书评", callback_data: `reviews|${bookId}` }]] }),
         reviewPromptActions: (bookId) => ({ inline_keyboard: [[{ text: "取消", callback_data: `reviewcancel|${bookId}` }]] }),
         reviewDrafts
     });
-    return { handlers, reviewDrafts, sent, edited, published };
+    return { handlers, reviewDrafts, sent, edited, deleted, published };
 }
 
 test("guided review flow only accepts the author's ForceReply in groups and publishes valid content", async () => {
@@ -169,6 +171,7 @@ test("guided review cancellation is scoped to the current book and publish failu
     });
     const message = { chat: { id: 7, type: "private" }, from: { id: 8 } };
     await fixture.handlers.handleReviewStart(message, "667518");
+    assert.equal(fixture.sent[0].extra.reply_markup, undefined);
     await assert.rejects(fixture.handlers.handleReviewDraft(message, "这段书评足够长了"), /草稿已保留/);
     assert.equal(fixture.reviewDrafts.get({ chatId: 7, userId: 8 }).bookId, "667518");
 
@@ -177,6 +180,7 @@ test("guided review cancellation is scoped to the current book and publish failu
     assert.equal(await fixture.handlers.handleReviewCancel(message, "667518", { chatId: 7, messageId: 9 }), "已取消");
     assert.equal(fixture.reviewDrafts.size(), 0);
     assert.match(fixture.edited[0].text, /已取消/);
+    assert.deepEqual(fixture.deleted, [{ chatId: "7", targetMessageId: "1" }]);
 
     failPublish = false;
 });

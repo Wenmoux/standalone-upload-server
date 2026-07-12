@@ -509,6 +509,7 @@ const {
     sendBookCards,
     sendMessage,
     editMessage,
+    deleteMessage: (chatId, messageId) => telegram("deleteMessage", { chat_id: chatId, message_id: messageId }),
     deliverLongGroupResult,
     escapeHtml,
     bookActions,
