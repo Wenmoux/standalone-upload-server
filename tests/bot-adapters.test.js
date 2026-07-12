@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供Bot 外部适配器的请求和错误规范化的自动化回归断言
+ * [POS]: tests 的Bot 外部适配器的请求和错误规范化守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const test = require("node:test");
 const { createPo18Client } = require("../bot/po18-client");

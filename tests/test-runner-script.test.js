@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供根测试发现器和覆盖率门槛的自动化回归断言
+ * [POS]: tests 的根测试发现器和覆盖率门槛守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const path = require("path");
 const test = require("node:test");

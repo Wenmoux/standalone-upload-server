@@ -36,6 +36,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖列定义、行数据、键生成规则以及父视图提供的表头/单元格插槽
+ * [OUTPUT]: 提供统一表格结构、空状态和按列插槽渲染能力
+ * [POS]: admin-ui/src/components 的只读展示原语，被列表型管理视图复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const props = defineProps({
   columns: { type: Array, required: true },
   rows: { type: Array, default: () => [] },

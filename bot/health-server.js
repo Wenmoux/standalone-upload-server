@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node HTTP、polling 状态、server/Telegram 客户端统计、任务队列和限流器快照
+ * [OUTPUT]: 对外提供 Bot live/ready/status 健康载荷与独立 HTTP 健康服务启动函数
+ * [POS]: bot 可观测性边界，将长轮询新鲜度和下游连通性折叠为容器编排可消费的健康状态
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const http = require("http");
 
 function botHealthPayload(options = {}) {

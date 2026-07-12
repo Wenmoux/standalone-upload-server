@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖 PostgreSQL 测试库、benchmarks/search-plan-baseline.json、EXPLAIN JSON 与重复采样参数
+ * [OUTPUT]: 提供计划树汇总、p95 计算、预算判定并执行关键词/taxonomy/cursor 搜索基准
+ * [POS]: scripts 的搜索性能守门器，以固定数据规模阻止索引或 SQL 计划静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const fs = require("fs");
 const path = require("path");
 const { Client } = require("pg");

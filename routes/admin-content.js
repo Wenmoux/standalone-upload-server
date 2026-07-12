@@ -1,4 +1,10 @@
-﻿const express = require("express");
+﻿/**
+ * [INPUT]: 依赖 Express、Admin 内容/配置领域服务及 admin-library/admin-users/admin-maintenance 子路由
+ * [OUTPUT]: 对外提供 createAdminContentRoutes，组合后台书库、用户、维护、反馈、CDK 与配置接口
+ * [POS]: routes 的 Admin 内容组合节点，按领域拆分子路由并保留兼容端点，不直接建立数据模型
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const express = require("express");
 const { createAdminMaintenanceRoutes } = require("./admin-maintenance");
 const { createAdminUsersRoutes } = require("./admin-users");
 const { createAdminLibraryRoutes } = require("./admin-library");

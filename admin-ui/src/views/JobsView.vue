@@ -136,6 +136,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable/StatCard、Admin Jobs API、格式化工具和全局确认服务
+ * [OUTPUT]: 提供持久任务筛选、详情观察以及受状态约束的重试/取消操作
+ * [POS]: admin-ui/src/views 的异步任务控制台，展示服务端状态机而不在浏览器推断任务结果
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, reactive, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import StatCard from "../components/StatCard.vue";

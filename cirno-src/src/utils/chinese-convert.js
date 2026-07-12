@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 opencc-js 双向转换器与项目补充的繁简字符映射表
+ * [OUTPUT]: 对外提供 convertText 统一转换函数以及冻结的 t2sCharMap/s2tCharMap
+ * [POS]: cirno-src/src/utils 的繁简转换事实源，被正文渲染和转换扫描共同验证
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import * as OpenCCT2CN from 'opencc-js/t2cn'
 import * as OpenCCCN2T from 'opencc-js/cn2t'
 

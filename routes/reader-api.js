@@ -1,4 +1,10 @@
-﻿const express = require("express");
+﻿/**
+ * [INPUT]: 依赖 Express、Reader session/书库权限、书籍搜索/社交/RUM 服务及 reader-auth/tts 子路由
+ * [OUTPUT]: 对外提供 Reader 发现、搜索、详情、目录/正文、书架、历史、书评、纠错和性能 API
+ * [POS]: routes 的 Reader 主协议边界，按公开元数据、登录会话和有效书库权限分层暴露内容
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const express = require("express");
 const { createReaderAuthRoutes } = require("./reader-auth");
 const { createReaderTtsRoutes } = require("./reader-tts");
 

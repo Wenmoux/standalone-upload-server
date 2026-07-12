@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Telegram getUpdates 客户端、update 处理器、server 连通检查、命令同步和可注入退避时钟
+ * [OUTPUT]: 对外提供长轮询单次执行、永久运行、启动重试和健康状态快照
+ * [POS]: bot Telegram 传输生命周期管理器，只负责 offset、退避、统计与连接状态，不承载业务命令
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createTelegramPollingRuntime(deps = {}) {
     const {
         telegram,

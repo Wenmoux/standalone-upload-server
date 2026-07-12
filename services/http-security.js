@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖进程环境中的绑定地址、CORS 来源、代理信任和生产 Token 配置
+ * [OUTPUT]: 对外提供生产安全断言、CORS/代理策略、回环地址判断及配置错误收集函数
+ * [POS]: services 的 HTTP 启动安全策略真源，在监听外网前拒绝不安全生产配置
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function listValues(value) {
     return String(value || "")
         .split(/[\s,]+/)

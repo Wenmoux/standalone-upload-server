@@ -1,7 +1,14 @@
-﻿const express = require("express");
+﻿/**
+ * [INPUT]: 依赖 Express/PostgreSQL、根级 Telegram 推送标记、routes/services 领域模块、Admin 静态产物及 /config 配置
+ * [OUTPUT]: 启动 3100 端口的 Admin/Setup/Reader/Bot/Upload/健康/OpenAPI 组合服务与后台调度器
+ * [POS]: 项目后端唯一组合根，负责依赖注入和生命周期，不把领域规则复制到入口层
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const express = require("express");
 const cors = require("cors");
 const compression = require("compression");
 const session = require("express-session");
+const { markTelegramSystemPush } = require("./telegram-push-contract");
 const PgSessionStore = require("connect-pg-simple")(session);
 const crypto = require("crypto");
 const path = require("path");
@@ -1036,7 +1043,7 @@ async function pushBookReviewToChannel({ review, book } = {}) {
     try {
         const raw = await postJson(telegramApiUrl(token, "sendMessage"), {
             chat_id: chatId,
-            text: bookReviewChannelText(review, book),
+            text: markTelegramSystemPush(bookReviewChannelText(review, book)),
             parse_mode: "HTML",
             disable_web_page_preview: true,
             reply_markup: bookReviewChannelMarkup(review)

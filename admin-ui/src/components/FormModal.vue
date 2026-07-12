@@ -35,6 +35,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、弹窗开关/标题/提交状态 props 与全局提示上下文
+ * [OUTPUT]: 提供可拦截关闭、统一错误呈现并通过插槽承载字段的表单弹窗
+ * [POS]: admin-ui/src/components 的表单容器，被书籍、用户和反馈等编辑流程复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, reactive, ref, watch } from "vue";
 
 const props = defineProps({

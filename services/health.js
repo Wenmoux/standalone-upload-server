@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖文件系统、注入的数据库检查器、外部健康 URL、Telegram 探测器与生产安全配置
+ * [OUTPUT]: 对外提供深度健康服务、必需表清单、检查结果格式化、超时信号和安全脱敏函数
+ * [POS]: services 的就绪性诊断内核，区分必需与可选依赖并向 health 路由返回结构化状态
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs/promises");
 const path = require("path");
 

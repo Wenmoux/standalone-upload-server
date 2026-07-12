@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖原始 Cookie 字符串、Set-Cookie 响应和多账户 Cookie profile 配置
+ * [OUTPUT]: 对外提供 Cookie 解析、合并、请求头生成、Profile 规范化/脱敏及稳定键函数
+ * [POS]: services 的 PO18 Cookie 纯函数边界，使 HTTP 客户端与后台配置共享同一演进和脱敏语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function boolValue(value, fallback = false) {
     if (value === undefined || value === null || value === "") return fallback;
     if (typeof value === "boolean") return value;

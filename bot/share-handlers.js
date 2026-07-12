@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 PgBotClient、PO18 已购内容客户端、共享载荷工具、Telegram 更新接口和奖励配置
+ * [OUTPUT]: 对外提供单书与已购书架共享上传处理器，以及供测试验证的共享资格判定内核
+ * [POS]: bot 共享域的长流程编排层，通过服务端幂等任务提交内容并避免重复上传与重复奖励
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createShareHandlers(options = {}) {
     const {
         client,

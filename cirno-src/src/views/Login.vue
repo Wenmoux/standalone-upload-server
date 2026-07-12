@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 Reader auth API、session 标记、Telegram 登录与登录页插图
+ * [OUTPUT]: 对外提供 Login 密码/CDK 注册和 Telegram 登录页面
+ * [POS]: Reader views 的身份门面，成功后只缓存已验证会话并跳转应用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="login">
     <div class="side-pic">

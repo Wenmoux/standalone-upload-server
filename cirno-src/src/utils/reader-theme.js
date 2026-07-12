@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader 主题设置及内置调色板、用户自定义颜色值
+ * [OUTPUT]: 对外提供默认主题、调色板集合、readerPalette 和 CSS 变量投影函数
+ * [POS]: cirno-src/src/utils 的视觉主题适配层，把设置模型稳定转换为页面样式
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 export const DEFAULT_THEME = {
   theme: 'default',
   customBg: '#f4ead8',

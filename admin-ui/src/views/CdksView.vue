@@ -65,6 +65,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable、Admin API、时长/数值/时间格式化与全局确认服务
+ * [OUTPUT]: 提供 Reader 注册 CDK 的筛选、批量生成和带原因撤销页面
+ * [POS]: admin-ui/src/views 的注册凭证生命周期视图，服务端仍负责唯一性和授权裁决
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { inject, onMounted, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import { api } from "../services/api";

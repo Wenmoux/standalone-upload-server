@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 system_jobs 查询/更新能力及各任务类型的领域重试执行器
+ * [OUTPUT]: 对外提供持久任务重试服务工厂，含类型映射、状态校验与破坏性确认保护
+ * [POS]: services 的任务恢复编排层，只重放被声明为可重试的领域任务并维护原任务语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function httpError(status, message, extra = {}) {
     const err = new Error(message);
     err.status = status;

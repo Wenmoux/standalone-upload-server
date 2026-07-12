@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供高成本请求体 JSON Schema 注册与拒绝契约的自动化回归断言
+ * [POS]: tests 的高成本请求体 JSON Schema 注册与拒绝契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const test = require("node:test");
 const {
@@ -55,6 +61,14 @@ test("request schemas bound identifiers and TTS proxy headers", () => {
         400
     );
     assert.deepEqual(compactAjvErrors([]), []);
+});
+
+test("reader registration schema requires a non-empty CDK or legacy code alias", () => {
+    const base = { username: "reader01", password: "123456" };
+    assert.equal(invoke({ path: "/reader-auth/register", body: { ...base, cdk: "CDK-TEST" } }).nextCalled, true);
+    assert.equal(invoke({ path: "/reader-auth/register", body: { ...base, code: "CDK-LEGACY" } }).nextCalled, true);
+    assert.equal(invoke({ path: "/reader-auth/register", body: base }).output.status, 400);
+    assert.equal(invoke({ path: "/reader-auth/register", body: { ...base, cdk: "" } }).output.status, 400);
 });
 
 test("manifest endpoints require a bounded versioned manifest envelope", () => {

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader/server 支持的平台标识与用户命令中的平台后缀约定
+ * [OUTPUT]: 对外提供默认平台、后缀到平台映射、展示名和查询后缀解析能力
+ * [POS]: bot 搜索域的平台词汇表，确保命令解析、API 参数和用户展示使用同一语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const DEFAULT_SEARCH_PLATFORM = "";
 const DEFAULT_RECOMMEND_PLATFORM = "po18";
 

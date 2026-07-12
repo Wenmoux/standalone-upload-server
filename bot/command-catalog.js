@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Telegram Bot 已实现命令的产品语义与别名约定
+ * [OUTPUT]: 对外提供 BOT_COMMAND_CATALOG、命令索引、命令规范化与分组查询能力
+ * [POS]: bot 命令面的单一元数据源，被帮助信息和命令注册一致性检查共同消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const BOT_COMMAND_CATALOG = [
     { command: "/start", group: "账户", description: "查看可用命令", help: "/start" },
     { command: "/reg", group: "账户", description: "注册账号", help: "/reg" },
@@ -9,9 +15,10 @@ const BOT_COMMAND_CATALOG = [
     { command: "/tasks", group: "任务", description: "查看我的后台任务", help: "/tasks" },
     { command: "/task", group: "任务", description: "查看任务详情", help: "/task 任务号" },
     { command: "/canceljob", group: "任务", description: "取消排队或运行任务", help: "/canceljob 任务号" },
-    { command: "/give", group: "账户", description: "管理员发币", help: "/give @user 100", adminOnly: true },
+    { command: "/give", group: "账户", description: "管理员发币", help: "/give TelegramID 铜币 100", adminOnly: true },
     { command: "/search", group: "搜书", description: "搜索书籍", help: "/search 关键词 [-qd|-fq]" },
     { command: "/hot", group: "搜书", description: "热门书籍", help: "/hot [-qd|-fq]" },
+    { command: "/wordcloud", group: "搜书", description: "热搜词云", help: "/wordcloud [-qd|-fq]", aliases: ["/cloud"] },
     { command: "/random", group: "搜书", description: "随机推荐", help: "/random [-qd|-fq]" },
     { command: "/info", group: "搜书", description: "书籍详情", help: "/info 书号" },
     { command: "/exporttxt", group: "导出", description: "导出 TXT", help: "/exporttxt 书号" },
@@ -20,7 +27,7 @@ const BOT_COMMAND_CATALOG = [
     { command: "/hb", group: "群互动", description: "发红包", help: "/hb 100 5", aliases: ["/hongbao"] },
     { command: "/qhb", group: "群互动", description: "抢红包", help: "/qhb", aliases: ["/qiang", "/qianghongbao"] },
     { command: "/crowd", group: "群互动", description: "众筹投票榜", help: "/crowd 书号", aliases: ["/cf", "/zhongchou", "/众筹"] },
-    { command: "/review", group: "群互动", description: "发布书评", help: "/review 书号 内容" },
+    { command: "/review", group: "群互动", description: "引导发布书评", help: "/review 书号 [内容]" },
     { command: "/reviews", group: "群互动", description: "查看书评", help: "/reviews 书号" },
     { command: "/reportreview", group: "群互动", description: "举报书评", help: "/reportreview 书评号 原因 说明" },
     { command: "/appealreview", group: "群互动", description: "申诉书评", help: "/appealreview 书评号 申诉说明" },

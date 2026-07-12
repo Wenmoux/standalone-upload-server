@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖浏览器 Service Worker/online 事件、Reader 会话与离线进度刷新工具
+ * [OUTPUT]: 对外提供 registerReaderPwa 和 syncReaderOfflineProgress 生命周期协调函数
+ * [POS]: cirno-src/src/utils 的 PWA 运行协调层，连接构建生成的应用壳与账号进度同步
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { flushOfflineProgress } from './reader-offline'
 import { cachedReaderUser } from './reader-session'
 

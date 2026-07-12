@@ -56,6 +56,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable、交易查询 Admin API 与币种/数值/时间格式化工具
+ * [OUTPUT]: 提供按 Telegram 用户、类型和币种筛选的分页交易流水页面
+ * [POS]: admin-ui/src/views 的账务只读视图，不在前端计算或修改余额
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, reactive, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import { api } from "../services/api";

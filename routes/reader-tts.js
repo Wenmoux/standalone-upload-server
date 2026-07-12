@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Reader 会话、TTS 服务、network-security SSRF 校验与 provider 配置
+ * [OUTPUT]: 对外提供 受保护的 TTS 代理、Edge voices/合成及多供应商合成路由
+ * [POS]: routes 的语音协议边界，在出站请求前强制身份、大小和网络目的地约束
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 const { assertSafeHttpTarget } = require("../services/network-security");
 

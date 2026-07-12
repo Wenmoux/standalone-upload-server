@@ -1,12 +1,13 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供管理审计 actor/target/reason、查询、过滤与脱敏契约的自动化回归断言
+ * [POS]: tests 的管理审计归因与脱敏守卫，确保高风险授权可追溯且敏感信息不落审计明文
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const { EventEmitter } = require("events");
 const test = require("node:test");
-const {
-    auditAction,
-    createAdminAuditMiddleware,
-    listAdminAuditLogs,
-    sanitizeAuditValue
-} = require("../services/admin-audit");
+const { auditAction, createAdminAuditMiddleware, listAdminAuditLogs, sanitizeAuditValue } = require("../services/admin-audit");
 
 test("admin audit sanitizer redacts nested credentials", () => {
     const value = sanitizeAuditValue({
@@ -26,13 +27,15 @@ test("admin audit sanitizer redacts nested credentials", () => {
 test("admin audit middleware records write actions after the response", async () => {
     const calls = [];
     const middleware = createAdminAuditMiddleware({
-        query: async (sql, params) => { calls.push({ sql, params }); }
+        query: async (sql, params) => {
+            calls.push({ sql, params });
+        }
     });
     const req = {
-        method: "PUT",
-        path: "/admin-api/users/42",
-        url: "/admin-api/users/42",
-        body: { reason: "manual correction", password: "never-log", copper_delta: 10 },
+        method: "PATCH",
+        path: "/admin-api/users/42/admin",
+        url: "/admin-api/users/42/admin",
+        body: { reason: "负责 Bot 运营", is_admin: true, password: "never-log" },
         query: { token: "never-log-query", page: "1" },
         headers: { "user-agent": "unit-test" },
         session: { adminUser: { id: 7, username: "owner" } },
@@ -42,7 +45,9 @@ test("admin audit middleware records write actions after the response", async ()
     const res = new EventEmitter();
     res.statusCode = 200;
     let continued = false;
-    middleware(req, res, () => { continued = true; });
+    middleware(req, res, () => {
+        continued = true;
+    });
     assert.equal(continued, true);
     res.emit("finish");
     await new Promise((resolve) => setImmediate(resolve));
@@ -51,11 +56,13 @@ test("admin audit middleware records write actions after the response", async ()
     assert.match(calls[0].sql, /INSERT INTO admin_audit_logs/);
     assert.equal(calls[0].params[0], 7);
     assert.equal(calls[0].params[1], "owner");
-    assert.equal(calls[0].params[4], "put.users.:id");
-    assert.equal(calls[0].params[6], "manual correction");
+    assert.equal(calls[0].params[3], "/admin-api/users/42/admin");
+    assert.equal(calls[0].params[4], "patch.users.:id.admin");
+    assert.equal(calls[0].params[6], "负责 Bot 运营");
     assert.equal(calls[0].params[7], "request-123");
     const details = JSON.parse(calls[0].params[10]);
     assert.equal(details.body.password, "<redacted>");
+    assert.equal(details.body.is_admin, true);
     assert.equal(details.query.token, "<redacted>");
     assert.equal(details.query.page, "1");
 });
@@ -63,7 +70,9 @@ test("admin audit middleware records write actions after the response", async ()
 test("admin audit ignores read-only requests and reports write failures", async () => {
     const events = [];
     const middleware = createAdminAuditMiddleware({
-        query: async () => { throw new Error("database offline"); },
+        query: async () => {
+            throw new Error("database offline");
+        },
         logEvent: (...args) => events.push(args)
     });
     const readRes = new EventEmitter();
@@ -74,14 +83,18 @@ test("admin audit ignores read-only requests and reports write failures", async 
 
     const writeRes = new EventEmitter();
     writeRes.statusCode = 500;
-    middleware({
-        method: "DELETE",
-        path: "/admin-api/books/9",
-        body: {},
-        query: {},
-        headers: {},
-        session: { adminUser: { id: 1, username: "admin" } }
-    }, writeRes, () => {});
+    middleware(
+        {
+            method: "DELETE",
+            path: "/admin-api/books/9",
+            body: {},
+            query: {},
+            headers: {},
+            session: { adminUser: { id: 1, username: "admin" } }
+        },
+        writeRes,
+        () => {}
+    );
     writeRes.emit("finish");
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(events.length, 1);

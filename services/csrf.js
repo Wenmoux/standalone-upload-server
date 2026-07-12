@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 http-security 的可信 CORS 来源、请求 Origin/Host 与 session cookie
+ * [OUTPUT]: 对外提供 CSRF 防护中间件以及来源提取、可信判断和保护条件函数
+ * [POS]: services 的浏览器会话写操作防线，与 CORS 共用来源真源以避免安全策略分叉
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { allowedCorsOrigins } = require("./http-security");
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);

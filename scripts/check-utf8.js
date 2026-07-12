@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖受控源码/文档目录、UTF-8 解码器与已知乱码特征
+ * [OUTPUT]: 扫描文本编码和异常字符并以文件/位置报告失败
+ * [POS]: scripts 的编码门禁，防止中文文档和界面文本在跨平台提交中损坏
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const fs = require("fs");
 const path = require("path");
 

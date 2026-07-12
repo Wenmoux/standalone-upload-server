@@ -1,3 +1,9 @@
+/*
+ * [INPUT]: 依赖 PO18 Admin/Setup 的共享视觉语义与浏览器 CSS 自定义属性
+ * [OUTPUT]: 提供背景、文字、品牌色、状态色、间距、圆角和阴影设计令牌
+ * [POS]: ui 的跨界面视觉事实源，被 Admin 构建和 Setup 控制面共同消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 :root {
   color-scheme: light;
   --po18-bg: #eef2f7;

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 PgBotClient、注册守卫、短期书评草稿、书籍/众筹/书评 UI 构造器和 Telegram 消息接口
+ * [OUTPUT]: 对外提供收藏、反馈、红包、众筹、引导式书评发布、投票、举报与申诉交互处理器
+ * [POS]: bot 社交治理域的交互编排层，把群聊动作和短期输入会话映射为服务端受审计的领域 API 调用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createSocialHandlers(options = {}) {
     const {
         client,
@@ -16,6 +22,8 @@ function createSocialHandlers(options = {}) {
         bookReviewsText,
         bookReviewsActions,
         reviewChannelText,
+        reviewDrafts,
+        reviewPromptActions,
         reviewVoteActions
     } = options;
 
@@ -107,9 +115,7 @@ function createSocialHandlers(options = {}) {
         return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "书评", ...(editTarget ? { editTarget } : {}) });
     }
 
-    async function handleReview(message, args = "") {
-        const { bookId, content } = parseReviewArgs(args);
-        if (!bookId || !content) return sendMessage(message.chat.id, "用法：/review 书号 内容");
+    async function publishReview(message, bookId, content) {
         await ensureRegistered(message.from);
         const result = await client.publishBookReview(bookId, message.from.id, content);
         const channelText = result.channel?.sent
@@ -132,6 +138,120 @@ function createSocialHandlers(options = {}) {
             ].join("\n"),
             { reply_markup: bookReviewsActions(bookId) }
         );
+    }
+
+    async function handleReviewStart(message, rawBook = "") {
+        const bookId = parseBookId(rawBook);
+        if (!bookId) return sendMessage(message.chat.id, "缺少书号，请从书籍详情点“写书评”。");
+        await ensureRegistered(message.from);
+        const payload = await client.listBookReviews(bookId, message.from.id, 1);
+        const rules = payload.rules || {};
+        const book = payload.book || {};
+        const title = book.title || book.book_title || bookId;
+        try {
+            const prompt = await sendMessage(
+                message.chat.id,
+                [
+                    `<b>写书评 · ${escapeHtml(title)}</b>`,
+                    `书号：<code>${escapeHtml(bookId)}</code>`,
+                    `请回复这条消息并发送书评内容（${Number(rules.min_length || 6)}-${Number(rules.max_length || 1200)} 字）。`,
+                    `发布将消耗 ${Number(rules.cost_copper ?? 100)} 铜币。`,
+                    "回复“取消”也可退出。"
+                ].join("\n"),
+                {
+                    reply_markup: {
+                        force_reply: true,
+                        selective: true,
+                        input_field_placeholder: "输入书评内容"
+                    }
+                }
+            );
+            reviewDrafts.begin({
+                chatId: message.chat.id,
+                userId: message.from.id,
+                bookId,
+                promptMessageId: prompt?.message_id,
+                rules
+            });
+            await sendMessage(message.chat.id, "不想发布时，可点下方取消。", {
+                reply_markup: reviewPromptActions(bookId),
+                reply_to_message_id: prompt?.message_id
+            }).catch(() => {});
+            return prompt;
+        } catch (err) {
+            reviewDrafts.cancel({ chatId: message.chat.id, userId: message.from.id, bookId });
+            throw err;
+        }
+    }
+
+    function reviewDraftContext(message, content = "") {
+        const draft = reviewDrafts.get({ chatId: message.chat.id, userId: message.from.id });
+        if (!draft) return null;
+        const text = String(content || "").trim();
+        if (/^\/cancel(?:@\w+)?$/i.test(text)) return draft;
+        if (text.startsWith("/")) return null;
+        const grouped = message.chat.type === "group" || message.chat.type === "supergroup";
+        if (grouped && String(message.reply_to_message?.message_id || "") !== draft.promptMessageId) return null;
+        return draft;
+    }
+
+    async function handleReviewDraft(message, content = "") {
+        const identity = { chatId: message.chat.id, userId: message.from.id };
+        const text = String(content || "").trim();
+        if (/^(?:取消|\/cancel(?:@\w+)?)$/i.test(text)) {
+            if (!reviewDrafts.cancel(identity)) return false;
+            await sendMessage(message.chat.id, "已取消发布书评。");
+            return true;
+        }
+        const checked = reviewDrafts.validate({ ...identity, content: text });
+        if (!checked.handled) return false;
+        if (checked.status !== "ready") {
+            const problem =
+                checked.status === "too_short"
+                    ? `内容太短，至少需要 ${checked.draft.minLength} 字（当前 ${checked.length} 字）。`
+                    : `内容太长，最多允许 ${checked.draft.maxLength} 字（当前 ${checked.length} 字）。`;
+            const prompt = await sendMessage(message.chat.id, `${problem}\n请回复这条消息重新发送，或回复“取消”退出。`, {
+                reply_markup: {
+                    force_reply: true,
+                    selective: true,
+                    input_field_placeholder: "重新输入书评内容"
+                }
+            });
+            reviewDrafts.begin({
+                ...identity,
+                bookId: checked.draft.bookId,
+                promptMessageId: prompt?.message_id,
+                rules: { min_length: checked.draft.minLength, max_length: checked.draft.maxLength }
+            });
+            return true;
+        }
+        try {
+            await publishReview(message, checked.draft.bookId, checked.content);
+        } catch (err) {
+            err.message = `书评发布失败，草稿已保留；请回复原提示重试，或点“取消发布”。原因：${err.message || String(err)}`;
+            throw err;
+        }
+        reviewDrafts.complete({ ...identity, bookId: checked.draft.bookId });
+        return true;
+    }
+
+    async function handleReviewCancel(message, rawBook = "", editTarget = null) {
+        const bookId = parseBookId(rawBook);
+        const canceled = reviewDrafts.cancel({ chatId: message.chat.id, userId: message.from.id, bookId });
+        if (editTarget) {
+            await editMessage(editTarget.chatId, editTarget.messageId, canceled ? "已取消发布书评。" : "这次书评输入已结束或过期。").catch(
+                () => {}
+            );
+        }
+        return canceled ? "已取消" : "没有待发布的书评";
+    }
+
+    async function handleReview(message, args = "") {
+        const { bookId, content } = parseReviewArgs(args);
+        if (!bookId) return sendMessage(message.chat.id, "用法：/review 书号 [内容]");
+        if (!content) return handleReviewStart(message, bookId);
+        reviewDrafts.cancel({ chatId: message.chat.id, userId: message.from.id });
+        return publishReview(message, bookId, content);
     }
 
     async function handleReviewVote(message, reviewId, vote, editTarget = null) {
@@ -189,11 +309,15 @@ function createSocialHandlers(options = {}) {
         handleFeedback,
         handleMyFav,
         handleReview,
+        handleReviewCancel,
+        handleReviewDraft,
+        handleReviewStart,
         handleReviews,
         handleReviewVote,
         handleReportReview,
         handleAppealReview,
-        parseReviewArgs
+        parseReviewArgs,
+        reviewDraftContext
     };
 }
 

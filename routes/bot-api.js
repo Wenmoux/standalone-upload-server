@@ -1,4 +1,10 @@
-﻿const express = require("express");
+﻿/**
+ * [INPUT]: 依赖 Express、Bot Token 鉴权、书库/搜索/导出/社交服务及 bot-api-system/users 子路由
+ * [OUTPUT]: 对外提供 createBotApiRoutes，组合 Telegram Bot 所需全部只读与受控写入 HTTP API
+ * [POS]: routes 的 Bot API 组合边界，是 Bot 与 PostgreSQL 领域之间的唯一服务端入口
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const express = require("express");
 const { createBotApiSystemRoutes } = require("./bot-api-system");
 const { createBotApiUserRoutes } = require("./bot-api-users");
 

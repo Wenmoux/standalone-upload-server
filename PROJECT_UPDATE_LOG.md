@@ -1,8 +1,22 @@
 ﻿# PO18 Reader 简化更新记录
 
+> 文档状态：持续维护的阶段级变更记录，不是部署手册。当前运行事实依次以代码/测试、运行时 `/openapi.json`、[README](README.md)、[Docker 手册](DOCKER.md)、[当前文档索引](docs/README.md)、[API 说明](API.md) 和 [迁移手册](db/MIGRATIONS.md) 为准。
+
 更新时间：2026-07-12
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
+
+## 2026-07-12：运行文档、部署契约与迁移手册校准
+
+- 建立根级 `AGENTS.md`、L1 `CLAUDE.md`、完整核心模块 L2 地图和全部受控源码 L3 契约；新增 `docs/README.md` 作为当前文档入口，并让 CI 拒绝断链、缺地图或缺契约的变更。
+- 重写 README、Docker、架构、配置和排障文档，明确单容器与 Compose 两种拓扑、`3100/3200/3300` 边界、GitHub Actions 发布链及 Docker Hub 移动/不可变标签区别。
+- 生产非 localhost 监听时明确要求 `PO18_METRICS_TOKEN`；Compose 补齐 Upload/Metrics Token、凭据加密、迁移超时、跨域、深度健康检查和进程重启配置，Reader/Bot 的业务 API 统一指向 `server-pg:3100`。
+- 数据库手册改用实际配置名 `PO18_PG_URL`；容器内维护命令显式加载 `/config/app.env`，回滚 CLI 自行加载项目配置，并说明 advisory lock、10 分钟迁移超时、`020` 正常日志及文本版本修复规则。
+- 历史评估与优化报告统一增加快照状态和权威顺序，不再让旧评分、测试数、镜像 digest 或当时待办伪装成当前运行事实。
+- Bot 书籍详情和书评列表增加“写书评”引导：Force Reply 草稿按聊天/用户隔离，群聊只消费指定回复，支持校验重试和取消，同时保留 `/review 书号 内容` 兼容入口。
+- 频道系统推送增加跨进程不可见标记；关联讨论群只对带标记的自动转发副本按精确消息 ID 取消置顶，人工频道帖与人工群置顶不受影响。
+- 后台用户页增加 owner 专属的 Reader/Bot 管理员设置与取消；专用接口要求布尔状态和审计原因，普通资料编辑不能夹带提权。
+- 验证通过：46 份 Markdown 与 310 个源码契约、UTF-8、20 个迁移及 Schema 指纹、ESLint、Prettier、Compose 解析、Docker 上下文、Admin/Reader 构建；Node 测试共 336 项，335 通过、1 项因未配置独立 PostgreSQL 测试库而跳过、0 失败。
 
 ## 2026-07-12：EPUB 疏影横斜（style3）与启动迁移修复
 

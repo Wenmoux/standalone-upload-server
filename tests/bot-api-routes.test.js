@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供Bot API 账户、书籍和任务路由契约的自动化回归断言
+ * [POS]: tests 的Bot API 账户、书籍和任务路由契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const http = require("http");
 const test = require("node:test");

@@ -1,3 +1,8 @@
+# [INPUT]: 依赖 PO18 Cookie 文件、目标书号、审计输出路径与 Node.js 站点目录审计脚本
+# [OUTPUT]: 提供 Windows 下安全传参并启动只读章节顺序站点审计的命令入口
+# [POS]: scripts 的 PowerShell 适配层，只负责本地参数编排，不实现审计算法
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+
 param(
     [string]$CookieFile = ".\po18-catalog-cookie.local.txt",
     [string]$Output = ".\chapter-order-site-audit.json",

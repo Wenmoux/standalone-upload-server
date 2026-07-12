@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Vue 异步组件能力、Ant Design Vue 组件模块与其 reset 样式
+ * [OUTPUT]: 默认导出 install 插件，按需注册 Reader 实际使用的 Ant 组件和消息接口
+ * [POS]: cirno-src/src/plugins 的 UI 适配层，以异步加载约束 Reader 初始包体
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { defineAsyncComponent, h } from 'vue'
 import 'ant-design-vue/dist/reset.css'
 

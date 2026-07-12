@@ -53,6 +53,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、Admin 认证 API、Reader 地址 prop 与父级 login 事件约定
+ * [OUTPUT]: 提供管理员凭据提交、错误反馈和认证成功事件
+ * [POS]: admin-ui/src/views 的未认证入口，由 App 负责决定显示并接管成功后的会话外壳
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { ref } from "vue";
 import { api } from "../services/api";
 

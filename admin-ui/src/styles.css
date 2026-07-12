@@ -1,3 +1,9 @@
+/*
+ * [INPUT]: 依赖 ui/design-tokens.css、Admin 组件语义类和响应式布局断点
+ * [OUTPUT]: 提供 Admin 全局框架、导航、表单、表格、弹窗、状态和移动端样式
+ * [POS]: admin-ui/src 的全局视觉组合层，由 main.js 唯一引入并服务全部后台视图
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 @import "../../ui/design-tokens.css";
 
 :root {

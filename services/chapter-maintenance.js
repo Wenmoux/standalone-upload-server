@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query/事务能力，读取并锁定重复章节顺序数据
+ * [OUTPUT]: 对外提供章节排序异常预览与确认重排的维护服务工厂
+ * [POS]: services 的章节结构修复用例层，以预览加事务确认保护目录排序不被盲目改写
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createChapterMaintenanceService(options = {}) {
     const query = options.query;
     const pool = options.pool;

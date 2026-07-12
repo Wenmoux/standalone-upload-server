@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query/事务、用户身份及签到/任务/转账/兑换/导出配额规则
+ * [OUTPUT]: 对外提供用户余额、流水、签到、任务奖励、转账、兑换与配额操作的领域服务工厂
+ * [POS]: services 的用户经济聚合根，以事务和幂等约束维持余额、奖励与流水的一致性
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createUserCurrencyService(options = {}) {
     const query = options.query;
     const pool = options.pool;

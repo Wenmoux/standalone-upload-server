@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖 db/migrations、db/schema-snapshot.json 与运行时代码中的 SQL/DDL 文本
+ * [OUTPUT]: 提供 migration fingerprint 计算、Schema 快照漂移和 migrations 外 DDL 检查
+ * [POS]: scripts 的数据库静态门禁，保证正向 SQL 链是 Schema 唯一事实源
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");

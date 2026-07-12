@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖产品定义的主题、排版、章头与 TTS 配置边界及可选主题列表
+ * [OUTPUT]: 对外提供默认设置、主题/字体/语音选项、克隆/数值钳制和完整归一化函数
+ * [POS]: cirno-src/src/utils 的阅读偏好 schema，约束 Settings 与 Reader 的持久化数据形状
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 export const DEFAULT_READER_SETTINGS = {
   theme: 'default',
   fontSize: 18,

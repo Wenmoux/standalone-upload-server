@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 bot/command-catalog 的命令真源及注入的 admin_config 读写能力
+ * [OUTPUT]: 对外提供 Bot 命令开关服务、配置键以及设置合并、解析和序列化函数
+ * [POS]: services 的 Bot 功能策略层，使后台配置只覆盖命令目录而不会产生漂移的平行清单
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { BOT_COMMAND_CATALOG, normalizeBotCommand } = require("../bot/command-catalog");
 
 const BOT_COMMAND_SETTINGS_KEY = "bot_command_settings";

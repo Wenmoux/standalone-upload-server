@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 search-platforms 的后缀解析，并接收用户输入中的关键词、标签、书号或详情 URL
+ * [OUTPUT]: 对外提供搜索查询结构化解析器与多种书号表示的规范化函数
+ * [POS]: bot 搜索域的输入边界，将自由文本压缩为 server API 可验证的稳定查询参数
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { parsePlatformSuffix } = require("./search-platforms");
 
 function createSearchQueryParser(options = {}) {

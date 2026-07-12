@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Vite bundle、公开应用壳、crypto 指纹与 Service Worker 模板
+ * [OUTPUT]: 对外提供 生成带内容指纹的 Reader PWA manifest/precache/Service Worker
+ * [POS]: cirno-src/scripts 的构建插件，明确绕过认证 API 并只缓存公开壳资源
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'

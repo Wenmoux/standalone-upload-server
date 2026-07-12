@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖 Docker、PostgreSQL 16、候选应用镜像、PG 集成测试与搜索基准配置
+ * [OUTPUT]: 启动/清理隔离数据库并执行 migration、领域流和查询计划验证，输出可读失败尾部
+ * [POS]: scripts 的真实数据库验收编排器，补足替身测试对 SQL/锁/计划行为的盲区
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const { spawnSync } = require("child_process");
 const path = require("path");
 

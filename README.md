@@ -2,298 +2,269 @@
 
 ![PO18 Reader Stack](assets/readme-hero.svg)
 
-一个面向个人自托管的小说书库、阅读器、后台和 Telegram Bot 一体化项目。它把上传缓存、书库检索、网页阅读、导出、Bot 交互、任务中心、备份恢复和 PO18 辅助遍历放进同一个 Docker 镜像里，适合部署在自己的服务器上长期维护私有书库。
+PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平台，把 PostgreSQL 后端、管理后台、网页阅读器、Telegram Bot、缓存上传、PO18 辅助遍历、任务中心和备份恢复整合在同一个代码库与 Docker 镜像中。
 
-> 项目默认使用 PostgreSQL。首次部署不需要手动建表，配置数据库连接后服务会自动初始化和迁移表结构。
+> 本项目不是 PO18 官方服务，也不提供账号、Cookie、数据库内容或书籍正文。请只处理你有权访问的内容，并遵守目标站点规则与当地法律。
 
-## 功能概览
+## 当前发布
 
-### 阅读器
+| 项目 | 当前值 |
+| --- | --- |
+| Docker 镜像 | `wenmoux/reader:v2.0` |
+| Node.js | 20 |
+| 默认并持续验证的数据库 | PostgreSQL 16 |
+| 最新迁移 | `022_review_governance` |
+| 后台/API | `3100` |
+| Reader | `3200` |
+| Bot 健康检查 | `3300`，建议仅容器内部或 localhost 使用 |
 
-- 独立阅读器端口：默认 `3200`。
-- 支持首页、书架、详情页、目录、正文阅读、搜索、榜单和书评展示。
-- 支持缓存章节阅读，避免每次打开都依赖外部站点。
-- 支持 TXT / EPUB 导出；EPUB 提供江湖纸卷、老二次元、疏影横斜和仙鹤章头样式，前三种可在后台实时预览，老二次元还可编辑文本、字体、CSS 与图片。
-- 支持公开书评列表，阅读器详情页可直接查看。
+推送 `main` 后，GitHub Actions 会执行测试、前端构建、真实 PostgreSQL 验证、Docker 冒烟和 registry digest 冒烟，再更新 Docker Hub 移动标签。本机不需要安装 Docker 来发布镜像。
 
-### 后台面板
+## 功能总览
 
-- 后台/API 端口：默认 `3100`。
-- 现代化管理面板，包含系统状态、书库、用户、交易、CDK、反馈、纠错、榜单、Bot、备份恢复、数据质量和任务中心。
-- 初始化面板 `/setup` 支持：
-  - 生成和保存配置。
-  - 测试 PostgreSQL 连接。
-  - 导入/导出 `/config/app.env`。
-  - 查看服务状态、日志和脱敏诊断。
-  - 手动重启服务。
-- 任务中心可跟踪备份、恢复、榜单刷新、Bot 导出、书架同步、共享上传、PO18 遍历、陈旧书清理和章节顺序修复。
+### Reader
+
+- 读者注册、CDK 激活、账号登录和 Telegram 登录。
+- 书库搜索、书籍详情、书架、阅读历史和继续阅读。
+- 长目录虚拟列表、章节进度、主题、简繁转换、正文纠错和多种 TTS。
+- PWA 静态壳、按读者账号隔离的离线章节与离线进度补传。
+- 书评浏览、投票、举报和申诉入口。
+
+### Admin 与 Setup
+
+- Setup 向导负责数据库测试、初始管理员、安全 Token、Bot 和 WebDAV 配置。
+- Admin 覆盖书库、章节、用户、交易、CDK、反馈、纠错、平台映射、榜单和数据质量。
+- 支持 owner/operator/moderator/viewer RBAC、追加式操作审计和内部 API Token 管理。
+- 任务中心统一展示备份、恢复、排行榜、Bot 导出、书架同步、Crawler 和维护任务。
+- Book Manifest 支持逐章 SHA-256、校验、增量导入以及跨平台同号冲突拒绝。
 
 ### Telegram Bot
 
-- 支持搜索、详情、收藏、书架、签到、钱包、TXT/EPUB 导出、众筹、书评、PO18 登录和已购书架共享。
-- Bot 不直连数据库，只通过后端 `/bot-api/*` 调用，使用 `PO18_BOT_API_TOKEN` 鉴权。
-- 导出和批量共享走任务队列，避免长任务阻塞普通消息。
-- 书评支持 Lv.2+ 发布，频道推送后可点赞/点踩，并结算铜币奖励或扣减。
+- 搜书、热门、随机推荐、热搜词云、详情和收藏按钮。
+- 签到、账户、流水、排行榜、CDK、红包和众筹。
+- TXT/EPUB 导出；EPUB 会先选择样式，再进入持久任务、额度和扣费流程。
+- PO18 登录、验证码、已购书架同步和共享上传。
+- 书评发布、查看、举报、申诉和任务查询/取消。
+- Bot 不直连 PostgreSQL；业务数据通过后端的 Reader/Bot/Upload API 访问。
 
-### PO18 辅助能力
+### 数据、运维与安全
 
-- 后台 PO18 遍历支持发现页、已购书架、元信息库、订阅列表等来源。
-- 支持 Cookie 档案、并发数、重试次数、定时执行、暂停/继续/停止。
-- 支持按标签、关键字、章节数和分类过滤。
-- PO18 章节顺序按网站显示编号保存，例如 `1,2,4` 不会重排为 `1,2,3`。
-- 已完结且缓存完整的书可标记并跳过后续补缺。
+- PostgreSQL 有序迁移、checksum 漂移检查、advisory lock 和显式 rollback。
+- 手动/后台创建本地备份、WebDAV/S3 远端上传、可选 AES-256-GCM 加密和对已有最新备份的定期恢复演练。
+- `/health/*`、Prometheus `/metrics`、结构化日志、慢查询和来源健康指标。
+- Session、CSRF、CORS、SSRF 防护、分路由请求体限制、限流、Scope Token 和凭据加密。
 
-### 运维与安全
-
-- 单镜像同时包含 `server-pg`、阅读器和 Bot。
-- `/config` 挂载保存配置、运行日志和备份。
-- 支持 `/health/ready`、`/health/version`、`/health/deep` 和 Prometheus `/metrics`。
-- 上传写入接口需要 `PO18_UPLOAD_API_TOKEN`，支持请求头 `X-Upload-Token` 或 `X-PO18-Upload-Token`。
-- Bot API 空 token 不放行，未配置 `PO18_BOT_API_TOKEN` 会返回 `503`。
-- 日志和诊断信息会对 token、Cookie、密码等敏感字段脱敏。
-
-## 架构
+## 架构与运行模式
 
 ```text
-Docker image: wenmoux/reader:v2.0
-
-┌──────────────────────────────────────────────────────────────┐
-│ po18-app                                                     │
-│                                                              │
-│  server-pg / admin / API       0.0.0.0:3100                 │
-│  reader web server             0.0.0.0:3200                 │
-│  telegram bot health           0.0.0.0:3300                 │
-│                                                              │
-│  /config/app.env             配置                           │
-│  /config/runtime.log          运行日志                       │
-│  /config/backups              数据库备份                     │
-└──────────────────────────────────────────────────────────────┘
+Browser / Userscript / Telegram
               │
               ▼
-        PostgreSQL 13+
+┌──────────────────────────────────────────────────────────┐
+│ server-pg :3100                                          │
+│ Admin · Setup · Reader API · Bot API · Upload API        │
+│ OpenAPI · Ranking · Jobs · Backup · Migration            │
+└──────────────────────────┬───────────────────────────────┘
+                           │
+              ┌────────────┴────────────┐
+              ▼                         ▼
+     Reader server :3200       Telegram Bot :3300
+              │                         │
+              └────────────┬────────────┘
+                           ▼
+                     PostgreSQL 16
 ```
+
+支持两种形态：
+
+- **单容器**：镜像默认运行 `docker/run-all.js`，分别监管 server、Reader 和 Bot；适合最简单部署。
+- **Compose**：PostgreSQL、server、Reader、Bot 为四个容器，三个应用容器复用同一镜像；适合独立健康检查和进程隔离。
+
+详细边界见 [架构说明](docs/ARCHITECTURE.md)。
 
 ## 快速部署
 
-### 方式一：单容器部署
+### 单容器与 Setup 向导
 
-适合已有远程 PostgreSQL，或者希望先启动安装向导再配置数据库的场景。
+适合已有外部 PostgreSQL，或希望先通过网页填写配置的场景：
 
 ```bash
-docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v2.0
+docker pull wenmoux/reader:v2.0
+docker run -d --name po18-app --restart unless-stopped \
+  -p 3100:3100 -p 3200:3200 \
+  -v /opt/po18/config:/config \
+  wenmoux/reader:v2.0
 ```
 
-For a read-only, non-root container, create `/opt/po18/config` with UID/GID `1000` ownership and add `--user 1000:1000 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=256m`. See [DOCKER.md](./DOCKER.md) for the full command and restart supervisor settings.
-
-查看初始化 token：
+首次无配置启动时，日志会显示 Setup Token：
 
 ```bash
 docker logs po18-app
 ```
 
-打开安装向导：
+打开：
 
 ```text
-http://服务器IP:3100/setup?token=日志里的TOKEN
+http://服务器IP:3100/setup?token=日志中的TOKEN
 ```
 
-在面板里填写 PostgreSQL、管理员账号、上传 API Token、Bot API Token、Telegram Bot Token 等配置。保存后容器会退出，Docker 会按 `--restart unless-stopped` 自动重启并进入正常服务。
+向导会自动生成 Session、上传 API、Bot API 和 Metrics Token。保存后容器退出，并由 `--restart unless-stopped` 自动拉起。默认安全导出为剔除密码、Token、Cookie、数据库 URL 和加密密钥的 `app.safe.env`；完整秘密导出必须额外确认。
 
-启动完成后访问：
+运行地址：
 
-- 后台/API：`http://服务器IP:3100`
-- 阅读器：`http://服务器IP:3200`
-- 初始化/配置面板：`http://服务器IP:3100/setup?token=TOKEN`
-- 状态面板：`http://服务器IP:3100/setup/status?token=TOKEN`
-- 日志面板：`http://服务器IP:3100/setup/logs?token=TOKEN`
+- Admin/API：`http://服务器IP:3100`
+- Reader：`http://服务器IP:3200`
+- Setup 状态：`http://服务器IP:3100/setup/status`
+- 运行日志：`http://服务器IP:3100/setup/logs`
 
-### 方式二：Docker Compose
+### Docker Compose
 
-适合想把 PostgreSQL 也放在同一台机器上管理的场景。
+适合把 PostgreSQL 一起部署：
 
 ```bash
 cp .env.docker.example .env
 ```
 
-编辑 `.env`，至少替换这些值：
+至少替换所有 `change-this` / `replace-with` 值，尤其是：
 
-```text
-POSTGRES_PASSWORD
-PO18_PG_URL
-PO18_UPLOAD_ADMIN_PASSWORD
-PO18_UPLOAD_SESSION_SECRET
-PO18_UPLOAD_API_TOKEN
-PO18_BOT_API_TOKEN
-TELEGRAM_BOT_TOKEN
-```
+- `POSTGRES_PASSWORD` 与 `PO18_PG_URL` 中的密码必须一致。
+- `PO18_UPLOAD_ADMIN_PASSWORD`
+- `PO18_UPLOAD_SESSION_SECRET`
+- `PO18_UPLOAD_API_TOKEN`
+- `PO18_BOT_API_TOKEN`
+- `PO18_METRICS_TOKEN`
+- `TELEGRAM_BOT_TOKEN`；完整 Compose 会启动 Bot，因此必须替换。若不用 Bot，按下方无 Bot 命令只启动前三个服务。
 
-启动：
+启动 Docker Hub 镜像：
 
 ```bash
 docker compose -f docker-compose.hub.yml up -d
-```
-
-查看状态：
-
-```bash
 docker compose -f docker-compose.hub.yml ps
 ```
 
-### 更新镜像
+不使用 Telegram Bot：
 
 ```bash
-docker pull wenmoux/reader:v2.0
-docker rm -f po18-app
-docker run -d --name po18-app --restart unless-stopped -p 3100:3100 -p 3200:3200 -v /opt/po18/config:/config wenmoux/reader:v2.0
+docker compose -f docker-compose.hub.yml up -d postgres server-pg reader
 ```
 
-如果使用 Compose：
+不要在仍启动 `bot` 服务时把 Token 留空；Bot 会明确失败退出并被 restart policy 重启。
+
+`PO18_METRICS_TOKEN` 在生产环境绑定 `0.0.0.0` 时是必填项，不是可选项。完整部署、反向代理、只读容器和备份说明见 [DOCKER.md](DOCKER.md)。
+
+## 更新镜像与数据库迁移
+
+Compose：
 
 ```bash
 docker compose -f docker-compose.hub.yml pull
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-## 配置说明
+单容器：先拉取镜像，再按原端口和 `/config` 挂载重建容器。不要删除 `/config` 或 PostgreSQL 数据卷。
 
-| 配置项 | 必填 | 说明 |
-| --- | --- | --- |
-| `PO18_PG_URL` | 是 | PostgreSQL 连接串，例如 `postgres://user:pass@host:5432/po18` |
-| `PO18_UPLOAD_ADMIN_USER` | 否 | 后台管理员用户名，默认 `admin` |
-| `PO18_UPLOAD_ADMIN_PASSWORD` | 是 | 后台管理员密码 |
-| `PO18_UPLOAD_SESSION_SECRET` | 是 | 后台 session 密钥，建议 32 位以上随机字符串 |
-| `PO18_UPLOAD_API_TOKEN` | 是 | 上传/写入 API token |
-| `PO18_BOT_API_TOKEN` | Bot 启用时必填 | Bot 调后端接口的 token |
-| `TELEGRAM_BOT_TOKEN` | Bot 启用时必填 | Telegram BotFather 生成的 token |
-| `PO18_METRICS_TOKEN` | 否 | `/metrics` 的 Bearer token |
-| `PIKPAK_WEBDAV_URL` | 否 | Bot 导出文件的可选 WebDAV 目标 |
+数据库迁移在 server 启动时自动执行：
 
-更多配置可参考 [.env.example](.env.example) 和 [.env.docker.example](.env.docker.example)。
+- 普通查询默认超时 30 秒；迁移默认独立使用 10 分钟。
+- advisory lock 保证同一时间只有一个实例改 schema。
+- 日志出现 `database migrations are running in another instance` 表示另一个实例持有迁移锁，通常不是故障。
+- 大库执行 `020_taxonomy_and_quality_semantics` 可能持续数分钟；应等待 `applied 020...`，不要反复重启。
 
-## 常用命令
+详见 [数据库迁移手册](db/MIGRATIONS.md) 与 [排障手册](docs/TROUBLESHOOTING.md)。
 
-查看容器日志：
+## EPUB 导出样式
 
-```bash
-docker logs -f po18-app
-```
+| 样式 | ID | Bot 可选 | Admin 预览 | 说明 |
+| --- | --- | --- | --- | --- |
+| 江湖纸卷 | `style1` | 是 | 是 | 暖纸、红黑章头、竖排分卷 |
+| 老二次元 | `style2` | 是 | 是 | 插画式页面，可编辑文字、CSS 和图片资源 |
+| 疏影横斜 | `style3` | 是 | 是 | 暖白留白、淡墨梅影、文艺简约 |
+| 仙鹤章头 | `crane` | 当前否 | 否 | 旧导出兼容样式，可由已有配置继续使用 |
 
-查看运行日志文件：
+分卷页只根据真实非空分卷数据生成，不会自动补“正文”。正文首行与章节标题完全等价时会自动去重。开发说明见 [EPUB 样式文档](bot/epub-styles/README.md)。
 
-```bash
-docker exec po18-app tail -n 200 /config/runtime.log
-```
-
-容器内状态检查：
+## 健康检查与备份
 
 ```bash
 docker exec po18-app node docker/status-check.js local
+docker exec po18-app tail -n 200 /config/runtime.log
 ```
 
-备份配置文件：
+主要端点：
 
-```bash
-docker exec po18-app sh -lc 'cp /config/app.env /config/app.env.bak.$(date +%Y%m%d-%H%M%S)'
-```
+- `GET /health/live`：进程存活。
+- `GET /health/ready`：数据库、schema 与服务就绪。
+- `GET /health/version`：镜像、版本、revision 和源码指纹。
+- `GET /health/deep`：数据库、磁盘、Reader、Bot 和 Telegram 深度检查。
+- `GET /metrics`：需要 `Authorization: Bearer <PO18_METRICS_TOKEN>`。
 
-手动回滚最近一次数据库迁移：
-
-```bash
-docker exec po18-app sh -lc 'cd /app && PO18_ALLOW_SCHEMA_ROLLBACK=1 npm run db:rollback -- --steps 1 --confirm ROLLBACK'
-```
+数据库备份默认保存到 `/config/backups`。后台支持手动创建/上传 dump、恢复前校验、恢复前自动备份以及对已有最新备份执行恢复演练；当前没有自动“创建备份”计划。远端加密备份需要自行取回并解密后再上传恢复。生产操作见 [DOCKER.md](DOCKER.md)。
 
 ## 本地开发
 
-安装依赖：
+安装三组依赖：
 
 ```bash
-npm install
+npm ci
+npm --prefix admin-ui ci
+npm --prefix cirno-src ci
 ```
 
-启动后端：
+常用命令：
 
 ```bash
-PO18_PG_URL="postgres://user:password@host:5432/po18" \
-PO18_UPLOAD_ADMIN_PASSWORD="change-this" \
-PO18_UPLOAD_SESSION_SECRET="change-this-long-random-secret" \
-PO18_UPLOAD_API_TOKEN="change-this-upload-token" \
-PO18_BOT_API_TOKEN="change-this-bot-token" \
-npm start
-```
-
-构建后台：
-
-```bash
-npm run admin:build
-```
-
-启动 Bot：
-
-```bash
-PO18_SERVER_URL="http://127.0.0.1:3100" \
-PO18_BOT_API_TOKEN="change-this-bot-token" \
-TELEGRAM_BOT_TOKEN="123456:ABC" \
-npm run bot
-```
-
-构建 Docker 镜像：
-
-```bash
-npm run docker:build
-```
-
-推送 Docker Hub：
-
-```bash
-npm run docker:push
-```
-
-运行测试：
-
-```bash
+npm start                              # 后端，默认 3100
+npm run bot                            # Telegram Bot
+npm --prefix admin-ui run dev          # Admin 开发服务器
+npm --prefix cirno-src run dev         # Reader 开发服务器
+npm run admin:build                    # 构建并发布 Admin 静态文件
+npm --prefix cirno-src run build:standalone
 npm test
+npm run check:docs
+npm run check:utf8
+npm run check:schema
+npm run lint
 ```
+
+发布默认流程是命令行提交并推送 `main`，由 GitHub Actions 更新 Docker Hub；不要把 Docker Hub Token 或 GitHub Token 写入仓库、远端 URL 或命令历史。
 
 ## 目录结构
 
 ```text
 .
-├─ admin-ui/              后台 Vue 管理面板
-├─ bot/                   Telegram Bot
-├─ cirno-src/             阅读器前端和 reader server
-├─ db/                    数据库迁移
-├─ docker/                单镜像入口、安装向导、状态检查和备份工具
-├─ routes/                Express 路由
-├─ services/              业务服务
-├─ tests/                 Node test 测试
-├─ Dockerfile             多阶段 Docker 构建
-├─ docker-compose.hub.yml 使用 Docker Hub 镜像的 Compose 部署
-├─ API.md                 API 文档
-└─ DOCKER.md              Docker 详细说明
+├─ .github/        CI、Docker 发布和 Dependabot
+├─ admin-ui/       Vue 3 Admin
+├─ bot/            Telegram Bot 与 EPUB 构建器
+├─ cirno-src/      Vue 3 Reader 与 Reader server
+├─ db/             migrations、rollbacks、schema snapshot
+├─ docker/         入口、Setup、监管、状态和备份工具
+├─ docs/           当前架构、配置和排障文档
+├─ monitoring/     Prometheus 告警规则
+├─ routes/         Express 路由
+├─ services/       业务服务
+├─ scripts/        构建、验证、维护和发布脚本
+├─ tests/          Node 与冒烟测试
+├─ ui/             Admin/Setup 共用设计令牌与 EPUB CSS
+├─ API.md          人工维护的接口示例和兼容说明
+├─ DOCKER.md       部署与运维手册
+└─ Dockerfile      多阶段、单镜像构建
 ```
 
-## API 文档
+## 文档
 
-- [API.md](API.md)：阅读器、后台、Bot、上传、书评、健康检查等接口。
-- [`/openapi.json`](http://localhost:3100/openapi.json)：运行时自动生成的 OpenAPI 3.1 端点索引。
-- [DOCKER.md](DOCKER.md)：Docker、安装向导、状态检查、备份恢复和发布流程。
-- [PROJECT_UPDATE_LOG.md](PROJECT_UPDATE_LOG.md)：阶段更新记录。
+统一入口见 [文档索引](docs/README.md)。常用文档：
 
-## 数据与隐私
+- [Docker 部署与运维](DOCKER.md)
+- [配置参考](docs/CONFIGURATION.md)
+- [排障手册](docs/TROUBLESHOOTING.md)
+- [API 文档](API.md) 与运行时 `/openapi.json`
+- [数据库迁移](db/MIGRATIONS.md)
+- [Bot 命令与运行方式](bot/README.md)
+- [阶段更新记录](PROJECT_UPDATE_LOG.md)
+- [Agent 协作规则](AGENTS.md) 与 [L1 项目地图](CLAUDE.md)；各核心目录的 `CLAUDE.md` 是对应 L2 模块地图，源码头部是 L3 契约。
 
-请不要把个人运行数据提交到 GitHub：
+## 数据、隐私与免责声明
 
-- `.env`
-- `/config/app.env`
-- `/config/runtime.log`
-- `/config/backups`
-- PO18 Cookie
-- Telegram token
-- 数据库 dump
-- 私人上传的书籍正文缓存
+不要提交或分享以下内容：`.env`、`/config/app.env`、运行日志、数据库 dump、Cookie、账号密码、Telegram Token、加密密钥和私人正文缓存。普通 Setup 配置导出默认已经脱敏，但仍应在分享前人工检查。
 
-仓库默认通过 `.gitignore` 和 Docker 构建上下文排除常见本地数据，但发布前仍建议手动检查一次。
-
-## 免责声明
-
-本项目为个人自托管工具，不是 PO18 官方项目，也不包含任何站点账号、Cookie、数据库内容或书籍正文。请仅缓存和阅读你有权访问的内容，遵守目标站点规则和当地法律法规。
+本项目适合个人或小规模可信用户自托管。当前数据模型仍保留部分平台无感的 `book_id` 兼容路径；跨平台同号 Manifest 会拒绝导入，但在完成统一 `book_key` 迁移前，不建议把系统直接作为开放注册的公网多租户服务。

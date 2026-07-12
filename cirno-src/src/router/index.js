@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 vue-router、Reader 会话探测工具与 views 下的懒加载页面
+ * [OUTPUT]: 默认导出带登录门禁和裸路径兼容的 Hash Router 实例
+ * [POS]: cirno-src/src/router 的导航事实源，集中裁决公开页、登录页与受保护页跳转
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { hasReaderSession } from '@/utils/reader-session'
 

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Koa、历史 Serverless/SCF 静态资源与请求上下文
+ * [OUTPUT]: 对外提供 旧 SCF Reader 静态响应入口
+ * [POS]: cirno-src 的历史部署兼容层，不属于当前 Docker 生产拓扑
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const Koa = require('koa')
 const KoaRouter = require('koa-router')
 const cors = require('koa2-cors')

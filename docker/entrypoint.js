@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖容器 CMD、/config/app.env 与进程环境
+ * [OUTPUT]: 加载持久配置并在首次初始化时启动 Setup，否则以信号透传方式执行目标命令
+ * [POS]: Docker 镜像 PID 1 入口，在不可变镜像和可变运行配置之间做最小模式选择
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const fs = require("fs");
 const { spawn } = require("child_process");
 

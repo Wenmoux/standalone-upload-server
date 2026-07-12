@@ -1,5 +1,7 @@
 # PO18 Reader v2.0 优化进度
 
+> 文档状态：2026-07-12 v2.0 加固工作的完成快照，用于解释“做过什么”和当时的验收证据，不承担当前部署与接口说明。当前事实优先级为：代码/测试 → 运行时 `/openapi.json` → [README](README.md)、[Docker 手册](DOCKER.md) 与 [docs/](docs/README.md) → [API 说明](API.md) 与 [迁移手册](db/MIGRATIONS.md) → 本文及其它历史报告。
+
 更新时间：2026-07-12
 
 ## 本轮边界
@@ -283,7 +285,9 @@
 - [x] `main` 推送自动触发 GitHub Actions，在远端完成 PostgreSQL/Docker 验证并更新 Docker Hub 移动标签与源码指纹标签。
 - [x] Node 测试由跨平台脚本显式枚举文件，不再依赖 Node 20 不支持的引号 glob；官方 Actions 升级到 Node 24 运行时版本。
 
-## 当前验证
+## 本轮验证快照（2026-07-12）
+
+> 下列数量、体积、版本和 digest 是 v2.0 本轮收口时的记录，不会随后续提交自动更新。验证当前提交请以本地必跑检查、对应 GitHub Actions 运行和容器 `/health/version` 为准；最新阶段变化见 [更新记录](PROJECT_UPDATE_LOG.md)。
 
 - [x] 本轮 Node 20 `npm test`：309 通过、1 个 PostgreSQL 集成入口因本机未配置 `PO18_TEST_PG_URL` 跳过、0 失败。
 - [x] Node 20 c8 覆盖率：语句/行 71.38%，分支 53.29%，函数 70.19%，均高于当前 CI 基线。

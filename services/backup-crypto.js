@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node crypto、流式文件系统、临时目录与环境中的备份加密密钥
+ * [OUTPUT]: 对外提供备份密钥解析、AES-256-GCM 加密文件生成、解密文件恢复及密文标识常量
+ * [POS]: services 的备份机密性边界，仅负责流式加解密并由远程备份与恢复流程编排
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const fs = require("fs");
 const fsp = require("fs/promises");

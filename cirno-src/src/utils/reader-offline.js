@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖浏览器 IndexedDB/localStorage、同源 Reader API 和账号/书籍/章节标识
+ * [OUTPUT]: 对外提供离线后端、章节缓存 CRUD、最近/固定章节与进度队列同步能力
+ * [POS]: cirno-src/src/utils 的账号隔离离线存储边界，供 HTTP 适配器、Reader 和会话层协作
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const DB_NAME = 'po18-reader-offline'
 const DB_VERSION = 2
 const STORE_NAME = 'chapters'

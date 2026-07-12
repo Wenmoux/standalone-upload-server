@@ -1,8 +1,20 @@
+/**
+ * [INPUT]: 依赖 Node path、疏影横斜梅影 SVG 和生成器提供的安全文本、章节及资源上下文
+ * [OUTPUT]: 对外提供 style3 疏影横斜的 CSS、资源声明和留白型制作说明、简介、分卷、章页渲染器
+ * [POS]: epub-styles 的文艺简约视觉插件，专注页面表现并服从上层 EPUB 结构与转义契约
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const path = require("path");
 
 const PLUM_SHADOW_NAME = "Images/style3-plum-shadow.svg";
 
 const STYLE3_CSS = `@charset "UTF-8";
+/*
+ * [INPUT]: 依赖疏影横斜 EPUB XHTML 语义类名、淡墨梅影装饰与兼容 Reader 的内嵌 CSS 能力
+ * [OUTPUT]: 提供 Style3 封面、说明、简介、真实分卷和正文的文艺简约排版规则
+ * [POS]: ui 的 Style3 规范 CSS，Bot 内嵌镜像与 Admin 预览必须通过测试保持字节一致
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 html{background:#fcfbf7;}
 body{margin:0;padding:0 6% 5%;background:#fcfbf7;color:#252321;font-family:"Songti SC","Noto Serif CJK SC","Source Han Serif SC","STSong","SimSun",serif;text-align:justify;text-justify:inter-ideograph;}
 p{margin:.72em 0;line-height:1.68;text-indent:2em;duokan-text-indent:2em;text-align:justify;text-justify:inter-ideograph;}

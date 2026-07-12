@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express/crypto、Reader auth 服务、session、CDK/用户经济与 Telegram 登录校验
+ * [OUTPUT]: 对外提供 Reader 注册、密码/Telegram 登录、退出、当前用户、签到和资料路由
+ * [POS]: routes 的 Reader 身份入口，保持 Reader session 与 Admin session 分离并强制注册 CDK
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const express = require("express");
 

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Admin 权限、book/chapter maintenance 服务、任务追踪与精确确认短语
+ * [OUTPUT]: 对外提供 陈旧书籍清理和章节顺序修复的预览/确认执行路由
+ * [POS]: routes 的破坏性维护边界，以预览和确认把 HTTP 请求安全映射到可审计领域任务
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 
 const STALE_PO18_BOOK_PLATFORM = "po18";

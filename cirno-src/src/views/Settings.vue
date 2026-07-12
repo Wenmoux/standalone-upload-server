@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 Reader session、账号 API、本地设置与离线 owner 清理能力
+ * [OUTPUT]: 对外提供 Settings 账号资料、阅读设置和退出页面
+ * [POS]: Reader views 的个人设置边界，账号切换时同步清理所属离线数据
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="settings-wrapper">
     <div class="top-bar">

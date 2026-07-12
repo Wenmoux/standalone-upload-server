@@ -69,7 +69,7 @@ RUN apk add --no-cache postgresql16-client
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
-COPY pg-store.js server-pg.js ./
+COPY pg-store.js server-pg.js telegram-push-contract.js ./
 COPY services ./services
 COPY assets ./assets
 COPY ui ./ui
@@ -78,7 +78,7 @@ COPY db ./db
 COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
 COPY public/legado-po18-reader-source.json public/rank.html ./public/
 COPY --from=admin-build /build/admin-ui/dist ./public/
-COPY docker/control-panel.js docker/entrypoint.js docker/setup-wizard.js docker/status-check.js docker/backup-pg.js docker/structured-log.js ./docker/
+COPY docker/control-panel.js docker/entrypoint.js docker/setup-wizard.js docker/status-check.js docker/backup-pg.js docker/structured-log.js docker/run-all.js docker/process-supervisor.js ./docker/
 EXPOSE 3100
 CMD ["node", "server-pg.js"]
 
@@ -108,6 +108,7 @@ RUN apk add --no-cache font-wqy-zenhei
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
+COPY telegram-push-contract.js ./telegram-push-contract.js
 COPY bot ./bot
 COPY services ./services
 COPY assets ./assets
@@ -180,7 +181,7 @@ RUN mkdir -p /config /tmp/po18 && chown -R node:node /config /tmp/po18
 COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
-COPY pg-store.js server-pg.js ./
+COPY pg-store.js server-pg.js telegram-push-contract.js ./
 COPY services ./services
 COPY assets ./assets
 COPY ui ./ui

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query、平台标签配置与书籍热度/互动数据
+ * [OUTPUT]: 对外提供榜单服务、榜单定义/排序常量及热度、分类、标签、摘要和来源链接转换函数
+ * [POS]: services 的动态榜单领域层，统一公开与 Admin 路由的计算、缓存、筛选和分页语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const RANK_MAX_SOURCE_LIMIT = 20000;
 const RANK_DEFAULT_SOURCE_LIMIT = 5000;
 const RANK_MAX_PAGE_LIMIT = 300;

@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 HTTP 适配器、平台/主题/session 工具、VirtualList、书籍目录与书评 API
+ * [OUTPUT]: 对外提供 BookDetail 详情、目录、书架、书评及进入阅读页面
+ * [POS]: Reader views 的单书组合页，协调公开元数据和受会话保护的个人操作
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="detail-page" :style="readerThemeStyle">
     <div class="detail-shell" ref="detailShell">

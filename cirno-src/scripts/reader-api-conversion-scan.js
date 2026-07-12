@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader API、分页/断点参数、繁简转换规则与报告目录
+ * [OUTPUT]: 对外提供 可续跑的书籍/章节繁转简残留扫描 JSON
+ * [POS]: cirno-src/scripts 的受控内容诊断工具，输出必须避免泄露凭据与私人正文
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')

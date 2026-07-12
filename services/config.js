@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 epub-style-config 的导出配置契约和注入的 admin_config PostgreSQL 访问能力
+ * [OUTPUT]: 对外提供平台标签、导出计价、EPUB 配置的读取/规范化服务及相关纯函数
+ * [POS]: services 的持久配置语义层，集中解释数据库键值并向 Admin、Bot 与推送模块提供稳定模型
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { EPUB_STYLE_OPTIONS, normalizeEpubExportConfig, parseEpubExportConfig } = require("./epub-style-config");
 
 const DEFAULT_PLATFORM_LABELS = {

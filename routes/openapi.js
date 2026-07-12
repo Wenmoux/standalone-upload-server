@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express 应用路由栈与 services/openapi 运行时索引生成器
+ * [OUTPUT]: 对外提供 /openapi.json 与轻量 /api-docs 路由
+ * [POS]: routes 的自省入口，暴露当前实际挂载端点索引但不冒充完整客户端契约
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 const { buildOpenApiDocument } = require("../services/openapi");
 

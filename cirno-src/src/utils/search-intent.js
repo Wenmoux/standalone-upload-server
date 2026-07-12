@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖用户搜索文本、可选平台过滤和约定的作者/标签/书名语法
+ * [OUTPUT]: 对外提供搜索值归一化、意图解析与书库查询参数投影函数
+ * [POS]: cirno-src/src/utils 的搜索语义适配层，被首页和全库页共享以消除解析分歧
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 export function normalizeSearchValue(value) {
   return String(value || '').trim()
 }

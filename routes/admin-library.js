@@ -1,4 +1,10 @@
-﻿const express = require("express");
+﻿/**
+ * [INPUT]: 依赖 Express、Admin 鉴权、书籍/章节/书评服务、PostgreSQL 查询和 CSV 输出
+ * [OUTPUT]: 对外提供 Admin 书库筛选、书籍章节 CRUD、导出、书评与目录查询路由
+ * [POS]: routes 的后台书库协议边界，将复杂写入委托给领域服务并保持历史管理接口兼容
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const express = require("express");
 
 function createAdminLibraryRoutes(deps = {}) {
     const router = express.Router();

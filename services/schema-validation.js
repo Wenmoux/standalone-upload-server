@@ -1,7 +1,14 @@
+/**
+ * [INPUT]: 依赖 Ajv、按 method/path 注册的请求 Schema 策略和 Express 请求体
+ * [OUTPUT]: 对外提供请求策略表、Book Manifest Schema、编译器、紧凑错误转换及验证中间件
+ * [POS]: services 的机器可执行 API 输入契约，在路由业务逻辑前拒绝结构错误并为 OpenAPI 提供同一 Schema 真源
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const Ajv = require("ajv");
 
 const identifier = { type: "string", minLength: 1, maxLength: 240 };
 const boundedText = (maxLength) => ({ type: "string", maxLength });
+const registrationCode = { type: "string", minLength: 1, maxLength: 256 };
 const sha256Checksum = {
     type: "object",
     required: ["algorithm", "value"],
@@ -103,12 +110,13 @@ const REQUEST_SCHEMA_POLICIES = Object.freeze([
         schema: {
             type: "object",
             required: ["username", "password"],
+            anyOf: [{ required: ["cdk"] }, { required: ["code"] }],
             properties: {
                 username: boundedText(128),
                 password: boundedText(1024),
                 nickname: boundedText(128),
-                cdk: boundedText(256),
-                code: boundedText(256)
+                cdk: registrationCode,
+                code: registrationCode
             },
             additionalProperties: true
         }

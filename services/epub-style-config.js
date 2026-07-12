@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Style2 默认配置以及来自 admin_config/请求的 EPUB 通用、Style2 与附加 CSS 数据
+ * [OUTPUT]: 对外提供样式选项、默认导出配置和 EPUB 配置解析、规范化、CSS 清洗函数
+ * [POS]: services 的 EPUB 样式契约层，在持久配置、后台表单和导出器之间维持同一配置模型
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { DEFAULT_STYLE2_CONFIG } = require("./epub-style2-template");
 
 const EPUB_STYLE_OPTIONS = Object.freeze([

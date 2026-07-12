@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node.js child_process、计时器、信号与调用方注入的日志/致命退出回调
+ * [OUTPUT]: 对外提供 createProcessSupervisor 与指数退避 restartDelay
+ * [POS]: docker 的通用子进程生命周期原语，由 run-all 组合 server、Reader 和 Bot，保持兄弟进程故障隔离
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { spawn } = require("child_process");
 
 function positiveNumber(value, fallback, minimum = 1) {

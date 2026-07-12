@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 calculateVirtualRange、滚动容器、定高条目与 scoped slot
+ * [OUTPUT]: 对外提供 VirtualList 窗口化列表组件
+ * [POS]: Reader components 的性能原语，被目录和详情长列表复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div ref="viewport" class="virtual-list-viewport" :style="viewportStyle" @scroll.passive="handleScroll">
     <div class="virtual-list-spacer" :style="{ height: range.totalHeight + 'px' }">

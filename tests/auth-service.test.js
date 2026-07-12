@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供密码、会话用户和管理员鉴权服务的自动化回归断言
+ * [POS]: tests 的密码、会话用户和管理员鉴权服务守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const crypto = require("crypto");
 const test = require("node:test");
@@ -55,18 +61,22 @@ test("auth service protects upload, bot and reader access", async () => {
         uploadApiTokenProvider: () => "upload-token",
         botApiTokenProvider: () => "bot-token",
         query: async () => ({
-            rows: [{
-                id: 10,
-                username: "reader",
-                membership_expires_at: new Date(Date.now() + 86400000).toISOString(),
-                membership_permanent: false,
-                library_access: true
-            }]
+            rows: [
+                {
+                    id: 10,
+                    username: "reader",
+                    membership_expires_at: new Date(Date.now() + 86400000).toISOString(),
+                    membership_permanent: false,
+                    library_access: true
+                }
+            ]
         })
     });
 
     let nextCalled = false;
-    service.requireUploadApi(mockReq({ "X-Upload-Token": "upload-token" }), mockRes(), () => { nextCalled = true; });
+    service.requireUploadApi(mockReq({ "X-Upload-Token": "upload-token" }), mockRes(), () => {
+        nextCalled = true;
+    });
     assert.equal(nextCalled, true);
 
     const badUpload = mockRes();
@@ -78,12 +88,16 @@ test("auth service protects upload, bot and reader access", async () => {
     assert.equal(noBotToken.statusCode, 503);
 
     nextCalled = false;
-    service.requireBotApi(mockReq({ "X-Bot-Token": "bot-token" }), mockRes(), () => { nextCalled = true; });
+    service.requireBotApi(mockReq({ "X-Bot-Token": "bot-token" }), mockRes(), () => {
+        nextCalled = true;
+    });
     assert.equal(nextCalled, true);
 
     const readerReq = mockReq({}, { readerUser: { id: 10 } });
     nextCalled = false;
-    await service.requireReaderContentAccess(readerReq, mockRes(), () => { nextCalled = true; });
+    await service.requireReaderContentAccess(readerReq, mockRes(), () => {
+        nextCalled = true;
+    });
     assert.equal(nextCalled, true);
     assert.equal(readerReq.readerUser.id, 10);
 });
@@ -98,7 +112,10 @@ test("auth helpers cover CDK, CSV and telegram login signatures", () => {
     const botToken = "123456:abcdef";
     const authDate = Math.floor(Date.now() / 1000);
     const payload = { id: "42", first_name: "A", username: "alice", auth_date: String(authDate) };
-    const checkString = Object.keys(payload).sort().map((key) => `${key}=${payload[key]}`).join("\n");
+    const checkString = Object.keys(payload)
+        .sort()
+        .map((key) => `${key}=${payload[key]}`)
+        .join("\n");
     const secretKey = crypto.createHash("sha256").update(botToken).digest();
     payload.hash = crypto.createHmac("sha256", secretKey).update(checkString).digest("hex");
 
@@ -132,12 +149,14 @@ test("admin roles enforce the documented access matrix", () => {
     assert.equal(normalizeAdminRole("OPERATOR"), "operator");
     assert.equal(normalizeAdminRole("unknown"), "viewer");
     assert.equal(adminRoleAllows("owner", request("DELETE", "/admin-api/auth/admins/2")), true);
+    assert.equal(adminRoleAllows("owner", request("PATCH", "/admin-api/users/42/admin")), true);
 
     assert.equal(adminRoleAllows("operator", request("GET", "/admin-api/books")), true);
     assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/books")), true);
     assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/backup")), true);
     assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/backup/restore")), false);
     assert.equal(adminRoleAllows("operator", request("PUT", "/admin-api/config/telegram")), false);
+    assert.equal(adminRoleAllows("operator", request("PATCH", "/admin-api/users/42/admin")), false);
 
     assert.equal(adminRoleAllows("moderator", request("GET", "/admin-api/corrections")), true);
     assert.equal(adminRoleAllows("moderator", request("POST", "/admin-api/corrections/1/approve")), true);

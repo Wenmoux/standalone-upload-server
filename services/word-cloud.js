@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的标签/热搜/榜单查询与平台过滤参数，将多来源权重合并为词频
+ * [OUTPUT]: 对外提供词云服务以及词条规范化、标签拆分、热词计分和结果合并函数
+ * [POS]: services 的发现聚合层，为 Bot 与 Reader 提供稳定词云而不暴露各来源查询结构
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const TAG_SPLIT_RE = /[,，、/\s:：;；|#]+/u;
 
 function clampInt(value, min, max, fallback) {

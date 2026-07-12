@@ -1,4 +1,10 @@
-﻿const crypto = require("crypto");
+﻿/**
+ * [INPUT]: 依赖 Express/crypto、Bot Scope、用户经济/认证/凭据服务与 Telegram 身份参数
+ * [OUTPUT]: 对外提供 Bot 用户注册、签到、余额流水、转账、CDK、额度及 PO18 凭据内部路由
+ * [POS]: routes 的 Bot 用户适配层，把 Telegram 身份映射到事务服务，避免 Bot 进程持有数据库权限
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const crypto = require("crypto");
 const express = require("express");
 const { bodyNumber, bodyString, enumValue, trimString } = require("../services/validation");
 

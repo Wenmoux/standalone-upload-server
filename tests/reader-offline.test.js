@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供离线缓存、更新与失效策略的自动化回归断言
+ * [POS]: tests 的离线缓存、更新与失效策略守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");

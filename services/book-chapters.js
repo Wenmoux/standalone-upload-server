@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 chapter-title-cleaner 的标题规范化规则和注入的 PostgreSQL query/事务能力
+ * [OUTPUT]: 对外提供书籍与章节写入、查询、排序及正文派生能力的领域服务工厂
+ * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一书籍章节数据语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { cleanChapterTitle } = require("./chapter-title-cleaner");
 
 function createBookChapterService(options = {}) {

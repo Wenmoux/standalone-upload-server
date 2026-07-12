@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express 请求参数/请求体与路由声明的字符串、数字、枚举、确认短语约束
+ * [OUTPUT]: 对外提供 HTTP/400 错误、字段提取、正整数、枚举、确认和紧凑 JSON 验证原语
+ * [POS]: services 的轻量路由输入适配层，处理局部语义校验并与 Ajv 结构校验形成互补边界
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function httpError(status, message, extra = {}) {
     const err = new Error(message);
     err.status = status;

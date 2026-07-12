@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node 文件/Blob 能力、Fetch 和 Telegram Bot HTTP API 的请求与错误语义
+ * [OUTPUT]: 对外提供统一 Telegram 请求、消息编辑、文档/图片发送、回调应答和传输统计客户端
+ * [POS]: bot 的 Telegram 网络适配层，集中处理超时、429 退避、文件上传、文本截断与可观测性
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs/promises");
 const { openAsBlob } = require("fs");
 const path = require("path");

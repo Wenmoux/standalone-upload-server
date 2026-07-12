@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 pg-store query 或注入查询器，以及 Telegram 命令执行产生的结构化审计载荷
+ * [OUTPUT]: 对外提供 Bot 审计服务工厂和审计载荷规范化函数
+ * [POS]: services 的 Bot 可追踪性边界，将命令结果落库并为 Admin 聚合查询提供稳定数据形态
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { query: defaultQuery } = require("../pg-store");
 
 const STATUSES = new Set(["succeeded", "failed", "queued", "ignored"]);

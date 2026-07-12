@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 docker/backup-pg 文件解析、backup-crypto 加密边界、文件系统与 WebDAV/S3 兼容 HTTP 协议
+ * [OUTPUT]: 对外提供远程备份配置/状态、签名请求、对象 URL、上传与保留策略函数
+ * [POS]: services 的远程备份适配层，只负责加密归档的上传、索引和删除，不冒充应用内下载/恢复通道
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const fs = require("fs");
 const fsp = require("fs/promises");

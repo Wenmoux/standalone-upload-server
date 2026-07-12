@@ -1,5 +1,7 @@
 # PO18 旁路服务 API 文档
 
+> 当前事实（2026-07-12）：本文以 `server-pg.js` 实际挂载的路由、路由级鉴权中间件和运行时请求契约为准。历史客户端仍在使用的兼容字段会明确标注；旧报告或旧页面名不能作为当前入口依据。
+
 基础地址：
 
 ```text
@@ -13,7 +15,7 @@ GET /openapi.json
 GET /api-docs
 ```
 
-`/openapi.json` 由运行中的 Express 路由栈生成，避免端点清单与实现漂移。错误响应保留原有 `error` 字段，并新增稳定的 `code` 与 `request_id`；响应头同时返回 `X-Request-Id`。
+`/openapi.json` 由运行中的 Express 路由栈生成，定位是“运行时端点索引”：它可以确认当前进程实际注册的方法与路径，并为少量已登记请求/响应附带 Schema，但不会完整表达所有查询参数、Reader 会话权限、非 JSON 响应及业务约束。因此它不是可直接用于生成完整客户端的契约；字段语义与兼容约定仍以本文和路由实现为准。错误响应保留原有 `error` 字段，并新增稳定的 `code` 与 `request_id`；响应头同时返回 `X-Request-Id`。
 
 ## v2.0 运行时端点、数据质量与备份扩展
 
@@ -72,7 +74,7 @@ Content-Type: application/json
 - `GET /reader-api/search` 支持 `fast=1`/`no_total=1`、`cursor` 和 `next_cursor`；fast 模式返回估算 `total`、`has_more`，不执行精确 `COUNT(*)`。
 - 标签和分类使用 `book_taxonomy.normalized_value` 精确匹配。
 - 榜单 `meta` 新增 `calculationCycleMs`、`refreshMode`、`sampleCount`、`eligibleCount`、`latestDataAt`，并返回 `definitions` 与每种排序的 `definition`。
-- `/openapi.json` 会把已注册 Ajv 请求契约绑定到对应 request body，并为搜索、Manifest、审核队列提供明确响应 Schema。
+- `/openapi.json` 会把已注册 Ajv 请求契约绑定到对应 request body，并为搜索、Manifest、审核队列提供部分响应 Schema；未登记的查询参数、鉴权和返回结构仍以本文与实现为准。
 
 ### 新增迁移
 
@@ -100,6 +102,22 @@ DELETE /admin-api/auth/admins/:id
 - `GET /admin-api/auth/access` 返回 `{ "role": "owner|operator|moderator|viewer" }`。
 - 旧 `POST /admin-api/auth/login` 和 `GET /admin-api/auth/me` 的 `user` 仍保持 `{id, username}`。
 - 管理员 CRUD 仅 owner 可用；最后一个 owner 不能删除或降级，当前登录管理员不能删除自己。
+
+#### Reader/Bot 管理员授权
+
+```http
+PATCH /admin-api/users/:id/admin
+Content-Type: application/json
+
+{
+  "is_admin": true,
+  "reason": "负责 Bot 运营"
+}
+```
+
+- 此处修改的是 `reader_users.is_admin`，用于 Bot 发币、免开通导出和未指定日报接收人时的管理员收件人；它与后台 `admin_users` 的 owner/operator/moderator/viewer RBAC 是两套独立权限。
+- 接口仅 owner 可用；`is_admin` 必须是 JSON 布尔值，`reason` 必须为 2-500 字。普通 `PUT /admin-api/users/:id` 明确拒绝夹带 `is_admin`，避免资料编辑顺带提权。
+- 设置和取消都会进入追加式后台审计，记录后台 actor、目标用户路径、原因和新状态。Reader/Bot 管理员允许全部取消为零，后台最后一个 owner 的删除/降级保护不受影响。
 
 ### 5.2 后台审计和内部 Token
 
@@ -131,6 +149,8 @@ Content-Type: application/json
 验证接口返回 `verification.sha256`、`verification.archive_verified_at` 和 `verification.archive_entries`，同时返回刷新后的 `backups` 列表。
 
 ### 5.4 Metrics 扩展
+
+生产环境只要服务绑定到非 localhost 地址，`PO18_METRICS_TOKEN` 就是启动必填项；访问时推荐使用 `Authorization: Bearer`，避免令牌进入 URL、代理日志或浏览器历史。
 
 `GET /metrics` 新增：
 
@@ -164,11 +184,7 @@ Content-Type: application/json
 GET /reader
 ```
 
-Cirno master 源码版页面：
-
-```http
-GET /cirno
-```
+`GET /reader` 会重定向到配置的 Reader 公网地址；未配置时按当前主机拼接 `3200` 端口。`/cirno`、`/cirno-app`、`/cirno-root` 及其子路径是已经停用的历史入口，当前服务显式返回 `404`，客户端不得继续依赖。
 
 读者账号使用独立 session，不影响后台管理员登录。
 
@@ -182,11 +198,14 @@ POST /reader-auth/register
 
 ```json
 {
-  "username": "reader01",
-  "password": "123456",
-  "nickname": "读者"
+    "username": "reader01",
+    "password": "123456",
+    "nickname": "读者",
+    "cdk": "CDK-XXXXXXXX-XXXXXXXX"
 }
 ```
+
+`cdk` 为必填注册 CDK；为兼容旧调用也接受同值字段 `code`。下载次数型 CDK 不能用于注册。
 
 ### 读者登录 / 退出 / 当前用户
 
@@ -200,8 +219,8 @@ GET  /reader-auth/me
 
 ```json
 {
-  "username": "reader01",
-  "password": "123456"
+    "username": "reader01",
+    "password": "123456"
 }
 ```
 
@@ -209,12 +228,12 @@ GET  /reader-auth/me
 
 ```json
 {
-  "success": true,
-  "user": {
-    "id": 1,
-    "username": "reader01",
-    "nickname": "读者"
-  }
+    "success": true,
+    "user": {
+        "id": 1,
+        "username": "reader01",
+        "nickname": "读者"
+    }
 }
 ```
 
@@ -242,9 +261,9 @@ POST /reader-api/me/history
 
 ```json
 {
-  "bookId": "545061",
-  "chapterId": "6424173",
-  "progress": 0.42
+    "bookId": "545061",
+    "chapterId": "6424173",
+    "progress": 0.42
 }
 ```
 
@@ -253,9 +272,19 @@ POST /reader-api/me/history
 - 注册登录会新增并使用 `reader_users`、`reader_bookshelf`、`reader_history`。
 - 现有 `book_metadata` 和 `chapter_cache` 字段不变。
 
-## 公共阅读器 API
+## 阅读器 API 与权限边界
 
-以下接口不需要登录，前缀为 `/reader-api`。
+Reader API 前缀为 `/reader-api`，当前权限不是“全部公开”，而是按数据敏感度分层：
+
+| 权限层级     | 当前接口                                                                              | 行为                                                           |
+| ------------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 公开查询     | `hot-keywords`、`platforms`、`search`、`search/suggest`、书籍详情、章节目录、公开书评 | 不需要登录，只返回发现、元信息、目录或公开社区数据             |
+| Reader 会话  | `performance`、`corrections`、全部 `tts/*`、书评举报/申诉，以及个人历史/部分书架操作  | 必须已有 Reader session；账号受限时，部分写入还会返回 `403`    |
+| 有效书库权限 | 章节正文 JSON、章节 HTML，以及书架列表/加入书架                                       | 除登录外，还要求 `library_access` 有效且会员未过期或为永久会员 |
+
+历史兼容：`GET /reader-api/books/:bookId/chapters?includeContent=1` 最初为 Bot 整本导出保留，当前路由仍可在未登录状态返回目录中的 `html`/`text`。这是已有兼容面，不代表新的正文客户端应绕过受保护的单章正文接口；新接入应使用下文带书库权限校验的章节正文路由。
+
+以下小节先列出公开查询接口，再单独说明受保护接口。
 
 ### 热搜关键词
 
@@ -274,15 +303,21 @@ GET /reader-api/search
 
 参数：
 
-| 参数 | 说明 |
-| --- | --- |
-| `keyword` / `q` | 关键词，匹配书名、作者、ID、标签 |
-| `author` | 作者筛选，模糊匹配 |
-| `tag` | 标签筛选，模糊匹配 |
-| `platform` | 站别，如 `po18`、`popo`、`haitang` |
-| `sort` | 排序，见下方 |
-| `page` | 页码，默认 `1` |
-| `limit` | 每页数量，默认 `20`，最大 `100` |
+| 参数                                | 说明                                                                    |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| `keyword` / `q`                     | 关键词，匹配书名、作者、ID、标签                                        |
+| `author`                            | 作者筛选，模糊匹配                                                      |
+| `tag`                               | 规范化标签或分类精确匹配，不区分大小写                                  |
+| `category`                          | 规范化分类精确匹配，不区分大小写                                        |
+| `platform`                          | 站别，如 `po18`、`popo`、`haitang`                                      |
+| `word_min` / `word_max`             | 字数下限 / 上限                                                         |
+| `cache_min` / `cache_max`           | 已缓存章节数下限 / 上限                                                 |
+| `popularity_min` / `popularity_max` | 总人气下限 / 上限                                                       |
+| `sort`                              | 排序，见下方                                                            |
+| `page`                              | 页码，默认 `1`                                                          |
+| `limit`                             | 每页数量，默认 `20`，最大 `100`                                         |
+| `fast` / `fast_search` / `no_total` | 真值时跳过精确 `COUNT(*)`，返回估算 `total` 与 `has_more`               |
+| `cursor`                            | 上一页返回的不透明游标；携带游标时自动启用快速模式，且必须沿用原 `sort` |
 
 排序：
 
@@ -290,9 +325,14 @@ GET /reader-api/search
 updated_desc / updated_asc
 cache_desc / cache_asc
 complete_desc / complete_asc
+chapters_desc / chapters_asc
 popularity_desc / popularity_asc
+word_desc / word_asc
+book_id_desc / book_id_asc
 title_asc / title_desc
 ```
+
+游标分页只支持 `updated_*`、`chapters_*`、`popularity_*`、`word_*`、`cache_*`。`complete_*`、`book_id_*`、`title_*` 仍使用页码/偏移分页。未传关键词时，当前实现默认只返回至少缓存了 1 章的书；显式 `cache_min` 可以提高该门槛，但不能把无缓存书加入无关键词结果。
 
 示例：
 
@@ -307,23 +347,25 @@ GET /reader-api/search?author=作者名&tag=仙侠&platform=po18
 
 ```json
 {
-  "rows": [
-    {
-      "book_id": "545061",
-      "title": "狐魅聖女",
-      "author": "...",
-      "tags": "...",
-      "platform": "po18",
-      "cache_count": 1033,
-      "total_popularity": 631657,
-      "updated_at": "2026-05-03T..."
-    }
-  ],
-  "total": 1,
-  "page": 1,
-  "limit": 20
+    "rows": [
+        {
+            "book_id": "545061",
+            "title": "狐魅聖女",
+            "author": "...",
+            "tags": "...",
+            "platform": "po18",
+            "cache_count": 1033,
+            "total_popularity": 631657,
+            "updated_at": "2026-05-03T..."
+        }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20
 }
 ```
+
+快速模式还可能返回 `total_is_estimated`、`has_more`、`next_cursor`；使用游标时同时返回 `cursor_applied`。`next_cursor` 只能作为不透明值原样传回，不应由客户端解析或拼装。
 
 ### 2. 书籍详情
 
@@ -341,15 +383,15 @@ GET /reader-api/books/545061
 
 ```json
 {
-  "book": {
-    "book_id": "545061",
-    "title": "狐魅聖女",
-    "author": "...",
-    "description": "...",
-    "tags": "...",
-    "cover": "...",
-    "cache_count": 1033
-  }
+    "book": {
+        "book_id": "545061",
+        "title": "狐魅聖女",
+        "author": "...",
+        "description": "...",
+        "tags": "...",
+        "cover": "...",
+        "cache_count": 1033
+    }
 }
 ```
 
@@ -369,17 +411,17 @@ GET /reader-api/books/545061/chapters
 
 ```json
 {
-  "rows": [
-    {
-      "book_id": "545061",
-      "chapter_id": "1",
-      "title": "第一章",
-      "chapter_order": 1,
-      "html_length": 12345,
-      "updated_at": "2026-05-03T..."
-    }
-  ],
-  "total": 1033
+    "rows": [
+        {
+            "book_id": "545061",
+            "chapter_id": "1",
+            "title": "第一章",
+            "chapter_order": 1,
+            "html_length": 12345,
+            "updated_at": "2026-05-03T..."
+        }
+    ],
+    "total": 1033
 }
 ```
 
@@ -388,6 +430,8 @@ GET /reader-api/books/545061/chapters
 ```http
 GET /reader-api/books/:bookId/chapters/:chapterId
 ```
+
+需要 Reader 登录且拥有有效书库权限；未登录返回 `401`，会员过期或书库权限被关闭返回 `403`。
 
 示例：
 
@@ -399,14 +443,14 @@ GET /reader-api/books/545061/chapters/1
 
 ```json
 {
-  "chapter": {
-    "book_id": "545061",
-    "chapter_id": "1",
-    "title": "第一章",
-    "html": "<p>...</p>",
-    "text": "从 html 派生的纯文本",
-    "updated_at": "2026-05-03T..."
-  }
+    "chapter": {
+        "book_id": "545061",
+        "chapter_id": "1",
+        "title": "第一章",
+        "html": "<p>...</p>",
+        "text": "从 html 派生的纯文本",
+        "updated_at": "2026-05-03T..."
+    }
 }
 ```
 
@@ -417,6 +461,8 @@ GET /reader-api/books/545061/chapters/1
 ```http
 GET /reader-api/books/:bookId/chapters/:chapterId/html
 ```
+
+权限与章节正文 JSON 相同：需要 Reader 登录和有效书库权限。
 
 示例：
 
@@ -438,24 +484,46 @@ GET /reader-api/books/:bookId/reviews?limit=10&page=1
 
 ```json
 {
-  "rows": [
-    {
-      "id": 1,
-      "book_id": "545061",
-      "content": "这本书节奏很好，角色也站得住。",
-      "author_nickname": "reader",
-      "author_telegram_username": "tg_name",
-      "like_count": 3,
-      "dislike_count": 0,
-      "created_at": "2026-06-20T..."
-    }
-  ],
-  "total": 1,
-  "limit": 10,
-  "offset": 0,
-  "page": 1
+    "rows": [
+        {
+            "id": 1,
+            "book_id": "545061",
+            "content": "这本书节奏很好，角色也站得住。",
+            "author_nickname": "reader",
+            "author_telegram_username": "tg_name",
+            "like_count": 3,
+            "dislike_count": 0,
+            "created_at": "2026-06-20T..."
+        }
+    ],
+    "total": 1,
+    "limit": 10,
+    "offset": 0,
+    "page": 1
 }
 ```
+
+### 7. Reader 会话保护接口
+
+下列接口不属于公共查询面：
+
+```http
+POST /reader-api/performance
+POST /reader-api/corrections
+POST /reader-api/tts/proxy
+GET  /reader-api/tts/edge/voices
+POST /reader-api/tts/edge
+POST /reader-api/tts/provider
+
+POST /reader-api/book-reviews/:reviewId/report
+POST /reader-api/book-reviews/:reviewId/appeals
+GET  /reader-api/book-review-appeals
+```
+
+- `performance`、`corrections`、TTS、书评举报和申诉要求 Reader session。
+- `corrections` 还会拒绝被限制账号；具体正文长度和等长修正规则由路由校验。
+- 章节正文 JSON/HTML 使用更严格的有效书库权限，不应与普通 Reader session 混为一谈。
+- `/reader-api/me/*` 均涉及个人数据：历史、书架状态和移除书架要求登录；读取书架列表与加入书架还要求有效书库权限。
 
 ## 油猴上传兼容 API
 
@@ -493,37 +561,37 @@ X-PO18-Upload-Token: <PO18_UPLOAD_API_TOKEN>
 
 ```json
 {
-  "books": [
-    {
-      "bookId": "545061",
-      "title": "狐魅聖女",
-      "author": "作者",
-      "cover": "https://...",
-      "description": "简介文本",
-      "descriptionHTML": "<p>简介</p>",
-      "tags": "标签1,标签2",
-      "wordCount": 123456,
-      "freeChapters": 10,
-      "paidChapters": 20,
-      "totalChapters": 30,
-      "subscribedChapters": 30,
-      "status": "连载中",
-      "latestChapterName": "最新章节",
-      "latestChapterDate": "2026-05-03",
-      "totalPopularity": 1000,
-      "monthlyPopularity": 100,
-      "weeklyPopularity": 10,
-      "dailyPopularity": 1,
-      "favoritesCount": 0,
-      "commentsCount": 0,
-      "purchaseCount": 0,
-      "readersCount": 0,
-      "platform": "po18",
-      "detailUrl": "https://www.po18.tw/books/545061/articles",
-      "uploader": "上传者",
-      "uploaderId": "上传者ID"
-    }
-  ]
+    "books": [
+        {
+            "bookId": "545061",
+            "title": "狐魅聖女",
+            "author": "作者",
+            "cover": "https://...",
+            "description": "简介文本",
+            "descriptionHTML": "<p>简介</p>",
+            "tags": "标签1,标签2",
+            "wordCount": 123456,
+            "freeChapters": 10,
+            "paidChapters": 20,
+            "totalChapters": 30,
+            "subscribedChapters": 30,
+            "status": "连载中",
+            "latestChapterName": "最新章节",
+            "latestChapterDate": "2026-05-03",
+            "totalPopularity": 1000,
+            "monthlyPopularity": 100,
+            "weeklyPopularity": 10,
+            "dailyPopularity": 1,
+            "favoritesCount": 0,
+            "commentsCount": 0,
+            "purchaseCount": 0,
+            "readersCount": 0,
+            "platform": "po18",
+            "detailUrl": "https://www.po18.tw/books/545061/articles",
+            "uploader": "上传者",
+            "uploaderId": "上传者ID"
+        }
+    ]
 }
 ```
 
@@ -531,12 +599,12 @@ X-PO18-Upload-Token: <PO18_UPLOAD_API_TOKEN>
 
 ```json
 {
-  "success": true,
-  "stats": {
-    "success": 1,
-    "failed": 0,
-    "errors": []
-  }
+    "success": true,
+    "stats": {
+        "success": 1,
+        "failed": 0,
+        "errors": []
+    }
 }
 ```
 
@@ -556,15 +624,15 @@ POST /api/parse/chapter-content
 
 ```json
 {
-  "bookId": "545061",
-  "chapterId": "6424173",
-  "title": "第一章",
-  "html": "<p>正文<img src=\"...\"></p>",
-  "text": "正文",
-  "fromUserScript": true,
-  "platform": "po18",
-  "uploader": "上传者",
-  "uploaderId": "上传者ID"
+    "bookId": "545061",
+    "chapterId": "6424173",
+    "title": "第一章",
+    "html": "<p>正文<img src=\"...\"></p>",
+    "text": "正文",
+    "fromUserScript": true,
+    "platform": "po18",
+    "uploader": "上传者",
+    "uploaderId": "上传者ID"
 }
 ```
 
@@ -572,11 +640,11 @@ POST /api/parse/chapter-content
 
 ```json
 {
-  "html": "<p>正文<img src=\"...\"></p>",
-  "text": "正文",
-  "title": "第一章",
-  "fromCache": false,
-  "uploaded": true
+    "html": "<p>正文<img src=\"...\"></p>",
+    "text": "正文",
+    "title": "第一章",
+    "fromCache": false,
+    "uploaded": true
 }
 ```
 
@@ -584,9 +652,9 @@ POST /api/parse/chapter-content
 
 ```json
 {
-  "bookId": "545061",
-  "chapterId": "6424173",
-  "cacheOnly": true
+    "bookId": "545061",
+    "chapterId": "6424173",
+    "cacheOnly": true
 }
 ```
 
@@ -594,10 +662,10 @@ POST /api/parse/chapter-content
 
 ```json
 {
-  "html": "<p>正文<img src=\"...\"></p>",
-  "text": "从 html 派生的纯文本",
-  "title": "第一章",
-  "fromCache": true
+    "html": "<p>正文<img src=\"...\"></p>",
+    "text": "从 html 派生的纯文本",
+    "title": "第一章",
+    "fromCache": true
 }
 ```
 
@@ -618,7 +686,7 @@ POST /api/parse/check-cache
 
 ```json
 {
-  "bookId": "545061"
+    "bookId": "545061"
 }
 ```
 
@@ -626,13 +694,13 @@ POST /api/parse/check-cache
 
 ```json
 {
-  "cached": true,
-  "chapterIds": ["6424173", "6424174"],
-  "cachedChapters": ["6424173", "6424174"],
-  "chapters": [
-    { "chapterId": "6424173", "chapterOrder": 1 },
-    { "chapterId": "6424174", "chapterOrder": 2 }
-  ]
+    "cached": true,
+    "chapterIds": ["6424173", "6424174"],
+    "cachedChapters": ["6424173", "6424174"],
+    "chapters": [
+        { "chapterId": "6424173", "chapterOrder": 1 },
+        { "chapterId": "6424174", "chapterOrder": 2 }
+    ]
 }
 ```
 
@@ -659,8 +727,8 @@ DELETE /api/chapters/545061
 
 ```json
 {
-  "success": true,
-  "deleted": 1033
+    "success": true,
+    "deleted": 1033
 }
 ```
 
@@ -678,8 +746,8 @@ POST /admin-api/auth/login
 
 ```json
 {
-  "username": "admin",
-  "password": "admin123"
+    "username": "admin",
+    "password": "admin123"
 }
 ```
 
@@ -687,10 +755,10 @@ POST /admin-api/auth/login
 
 ```json
 {
-  "user": {
-    "id": "1",
-    "username": "admin"
-  }
+    "user": {
+        "id": "1",
+        "username": "admin"
+    }
 }
 ```
 
@@ -747,7 +815,7 @@ POST /admin-api/jobs/:id/cancel
 
 ```json
 {
-  "confirm": "RETRY 123"
+    "confirm": "RETRY 123"
 }
 ```
 
@@ -810,7 +878,7 @@ q / tag / platform / sort / page / limit
 
 ```json
 {
-  "confirm": true
+    "confirm": true
 }
 ```
 
@@ -830,8 +898,8 @@ POST /admin-api/chapters/repair-order
 
 ```json
 {
-  "confirm": true,
-  "limit": 50
+    "confirm": true,
+    "limit": 50
 }
 ```
 
@@ -855,9 +923,9 @@ POST /admin-api/config/telegram/test
 
 ```json
 {
-  "enabled": true,
-  "botToken": "123456:ABC",
-  "chatId": "-1001234567890"
+    "enabled": true,
+    "botToken": "123456:ABC",
+    "chatId": "-1001234567890"
 }
 ```
 
@@ -937,18 +1005,18 @@ GET  /admin-api/backup/diagnostics
 
 ```json
 {
-  "epub": {
-    "styleId": "style1",
-    "includeColophon": true,
-    "colophonTitle": "制作说明",
-    "colophonText": "本书由 PO18 Reader 根据本地缓存内容生成……",
-    "introTitle": "作品简介",
-    "showTopImage": true
-  },
-  "epubStyles": [
-    { "id": "style1", "name": "样式一 · 江湖纸卷" },
-    { "id": "crane", "name": "仙鹤章头" }
-  ]
+    "epub": {
+        "styleId": "style1",
+        "includeColophon": true,
+        "colophonTitle": "制作说明",
+        "colophonText": "本书由 PO18 Reader 根据本地缓存内容生成……",
+        "introTitle": "作品简介",
+        "showTopImage": true
+    },
+    "epubStyles": [
+        { "id": "style1", "name": "样式一 · 江湖纸卷" },
+        { "id": "crane", "name": "仙鹤章头" }
+    ]
 }
 ```
 
@@ -957,11 +1025,16 @@ GET  /admin-api/backup/diagnostics
 ## PowerShell 测试
 
 ```powershell
+# 公开查询
 Invoke-RestMethod "http://localhost:3100/reader-api/search?keyword=狐魅&sort=cache_desc"
 Invoke-RestMethod "http://localhost:3100/reader-api/books/545061"
 Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters"
-Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters/1"
-Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters?includeContent=1"
+
+# 受保护正文：先登录并复用 Reader session cookie
+$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$body = @{ username = "reader01"; password = "123456" } | ConvertTo-Json
+Invoke-RestMethod "http://localhost:3100/reader-auth/login" -Method Post -ContentType "application/json" -Body $body -WebSession $session
+Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters/1" -WebSession $session
 ```
 
 ## API Change Log
@@ -970,17 +1043,17 @@ Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters?includ
 
 `GET /reader-api/books/:bookId/chapters` 增加可选分页参数，供 Bot 分页拉取大书正文：
 
-| Param | Type | Default | Description |
-|------|------|---------|-------------|
-| `limit` | integer | 不分页 | 每页章节数，最大 `500`；不传时保持原有一次返回全部章节的行为。 |
-| `offset` | integer | `0` | 分页起始位置，仅在传入 `limit` 时生效。 |
+| Param    | Type    | Default | Description                                                    |
+| -------- | ------- | ------- | -------------------------------------------------------------- |
+| `limit`  | integer | 不分页  | 每页章节数，最大 `500`；不传时保持原有一次返回全部章节的行为。 |
+| `offset` | integer | `0`     | 分页起始位置，仅在传入 `limit` 时生效。                        |
 
 分页响应继续保留 `rows` 和 `total`，并增加：
 
 ```json
 {
-  "has_more": true,
-  "next_offset": 100
+    "has_more": true,
+    "next_offset": 100
 }
 ```
 
@@ -1007,9 +1080,9 @@ DELETE /admin-api/config/export/style2-assets/:slot
 
 `GET /reader-api/books/:bookId/chapters` 增加可选查询参数：
 
-| Param | Type | Default | Description |
-|------|------|---------|-------------|
-| `includeContent` | `0/1` or `true/false` | `0` | 设置为 `1` 时，章节列表会同时返回 `html` 和由 HTML 派生出的 `text`。适合 Telegram Bot 或整本导出；阅读器目录页建议不传，保持轻量。 |
+| Param            | Type                  | Default | Description                                                                                                                        |
+| ---------------- | --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `includeContent` | `0/1` or `true/false` | `0`     | 设置为 `1` 时，章节列表会同时返回 `html` 和由 HTML 派生出的 `text`。适合 Telegram Bot 或整本导出；阅读器目录页建议不传，保持轻量。 |
 
 示例：
 
@@ -1021,19 +1094,19 @@ GET /reader-api/books/545061/chapters?includeContent=1
 
 ```json
 {
-  "rows": [
-    {
-      "book_id": "545061",
-      "chapter_id": "1",
-      "title": "第一章",
-      "chapter_order": 1,
-      "html_length": 12345,
-      "html": "<p>...</p>",
-      "text": "从 html 即时提取的纯文本",
-      "updated_at": "2026-05-03T..."
-    }
-  ],
-  "total": 1033
+    "rows": [
+        {
+            "book_id": "545061",
+            "chapter_id": "1",
+            "title": "第一章",
+            "chapter_order": 1,
+            "html_length": 12345,
+            "html": "<p>...</p>",
+            "text": "从 html 即时提取的纯文本",
+            "updated_at": "2026-05-03T..."
+        }
+    ],
+    "total": 1033
 }
 ```
 
@@ -1042,7 +1115,7 @@ GET /reader-api/books/545061/chapters?includeContent=1
 新增/补充：
 
 - `GET /health/live`、`GET /health/ready`、`GET /health/status`、`GET /health/version`、`GET /health/deep`。
-- `GET /metrics`，支持 `Authorization: Bearer <PO18_METRICS_TOKEN>` 或 `?token=`。
+- `GET /metrics`，支持 `Authorization: Bearer <PO18_METRICS_TOKEN>`；历史兼容仍接受 `?token=`。当前生产环境绑定非 localhost 时必须配置该 Token。
 - `GET /admin-api/system/status`、`diagnostics`、`overview`、`logs`、`POST /admin-api/system/restart`。
 - `GET /admin-api/jobs`、`GET /admin-api/jobs/:id`、`POST /admin-api/jobs/:id/retry`、`POST /admin-api/jobs/:id/cancel`。
 - `GET /admin-api/data-quality`。
@@ -1067,7 +1140,7 @@ GET /reader-api/books/545061/chapters?includeContent=1
 - `/admin-api/*` 需要后台管理员 session。
 - `/bot-api/*` 需要 `X-Bot-Token: <PO18_BOT_API_TOKEN>`。
 - `/health/*` 不需要登录，按检查结果返回 `200` 或 `503`。
-- `/metrics` 可公开访问；如果设置 `PO18_METRICS_TOKEN`，则需要 Bearer token 或 `?token=`。
+- `/metrics` 在未配置 Token 的本地回环开发环境可以直接访问；生产环境绑定非 localhost 时 `PO18_METRICS_TOKEN` 是启动必填项，请使用 Bearer token。`?token=` 仅为历史兼容，不建议使用。
 
 ### 上传 PostgreSQL dump
 
@@ -1090,8 +1163,8 @@ Content-Type: application/json
 
 ```json
 {
-  "file": "po18-pg-20260604-120000.dump",
-  "confirm": "RESTORE po18-pg-20260604-120000.dump"
+    "file": "po18-pg-20260604-120000.dump",
+    "confirm": "RESTORE po18-pg-20260604-120000.dump"
 }
 ```
 
@@ -1116,12 +1189,12 @@ GET /admin-api/bot/audit?limit=50&status=failed&command=/search&telegram_id=123
 
 `/admin-api/bot/audit` 需要后台管理员 session，查询 `bot_audit_logs`，支持：
 
-| 参数 | 说明 |
-| --- | --- |
-| `limit` | 返回条数，最大 200 |
-| `status` | `succeeded` / `failed` / `queued` / `ignored` |
-| `command` | 命令名，例如 `/search`、`/exporttxt` |
-| `telegram_id` | Telegram 用户 ID |
+| 参数          | 说明                                          |
+| ------------- | --------------------------------------------- |
+| `limit`       | 返回条数，最大 200                            |
+| `status`      | `succeeded` / `failed` / `queued` / `ignored` |
+| `command`     | 命令名，例如 `/search`、`/exporttxt`          |
+| `telegram_id` | Telegram 用户 ID                              |
 
 ### Bot 内部任务上报
 
@@ -1135,13 +1208,13 @@ Content-Type: application/json
 
 ```json
 {
-  "type": "bot_export_txt",
-  "created_by": "telegram_bot",
-  "input": {
-    "telegram_id": "123456",
-    "book_id": "545061",
-    "format": "txt"
-  }
+    "type": "bot_export_txt",
+    "created_by": "telegram_bot",
+    "input": {
+        "telegram_id": "123456",
+        "book_id": "545061",
+        "format": "txt"
+    }
 }
 ```
 
@@ -1164,12 +1237,12 @@ Content-Type: application/json
 
 ```json
 {
-  "status": "running",
-  "progress": 50,
-  "result": { "message": "half done" },
-  "error": "",
-  "started": true,
-  "finished": false
+    "status": "running",
+    "progress": 50,
+    "result": { "message": "half done" },
+    "error": "",
+    "started": true,
+    "finished": false
 }
 ```
 
@@ -1187,17 +1260,17 @@ Content-Type: application/json
 
 ```json
 {
-  "telegram_id": "123456",
-  "telegram_username": "reader",
-  "chat_id": "-100123",
-  "chat_type": "supergroup",
-  "command": "/exporttxt",
-  "action": "export_txt",
-  "status": "failed",
-  "error_code": "EXPORT_NO_CONTENT",
-  "error": "本地没有正文缓存",
-  "duration_ms": 1200,
-  "details": { "book_id": "545061", "format": "txt" }
+    "telegram_id": "123456",
+    "telegram_username": "reader",
+    "chat_id": "-100123",
+    "chat_type": "supergroup",
+    "command": "/exporttxt",
+    "action": "export_txt",
+    "status": "failed",
+    "error_code": "EXPORT_NO_CONTENT",
+    "error": "本地没有正文缓存",
+    "duration_ms": 1200,
+    "details": { "book_id": "545061", "format": "txt" }
 }
 ```
 
@@ -1218,15 +1291,15 @@ Content-Type: application/json
 
 ```json
 {
-  "telegram_id": "123456",
-  "telegram_username": "reader",
-  "nickname": "Reader",
-  "query": "搜索原文",
-  "clean_query": "搜索词",
-  "type": "search",
-  "platform": "po18",
-  "result_count": 0,
-  "source": "bot_search_no_result"
+    "telegram_id": "123456",
+    "telegram_username": "reader",
+    "nickname": "Reader",
+    "query": "搜索原文",
+    "clean_query": "搜索词",
+    "type": "search",
+    "platform": "po18",
+    "result_count": 0,
+    "source": "bot_search_no_result"
 }
 ```
 
@@ -1250,8 +1323,8 @@ Content-Type: application/json
 
 ```json
 {
-  "telegram_id": "123456",
-  "content": "这本书节奏很好，角色也站得住。"
+    "telegram_id": "123456",
+    "content": "这本书节奏很好，角色也站得住。"
 }
 ```
 
@@ -1259,8 +1332,8 @@ Content-Type: application/json
 
 ```json
 {
-  "telegram_id": "234567",
-  "vote": "like"
+    "telegram_id": "234567",
+    "vote": "like"
 }
 ```
 
@@ -1301,11 +1374,15 @@ GET /metrics
 Authorization: Bearer <PO18_METRICS_TOKEN>
 ```
 
-也支持：
+生产环境在 `NODE_ENV=production` 且 `PO18_UPLOAD_HOST` 绑定非 localhost 时，未配置 `PO18_METRICS_TOKEN` 会被安全检查拒绝启动。仅本地回环开发可以不配置并直接访问。
+
+历史兼容仍支持：
 
 ```http
 GET /metrics?token=<PO18_METRICS_TOKEN>
 ```
+
+查询参数可能被代理访问日志、监控系统和浏览器历史记录，生产调用应优先使用 Bearer 头。
 
 新增阅读器性能预算相关指标：
 
@@ -1338,14 +1415,14 @@ GET /bot-api/commands
 
 ```json
 {
-  "commands": [
-    {
-      "command": "/search",
-      "enabled": true,
-      "description": "搜索书籍",
-      "disabledMessage": "该命令暂时关闭"
-    }
-  ]
+    "commands": [
+        {
+            "command": "/search",
+            "enabled": true,
+            "description": "搜索书籍",
+            "disabledMessage": "该命令暂时关闭"
+        }
+    ]
 }
 ```
 
@@ -1442,6 +1519,7 @@ POST /admin-api/po18-crawler/test-cookie
 ```
 
 说明：
+
 - 需要后台管理员 session。
 - 配置存储在 `admin_config.po18_crawler_config`；状态接口不会返回明文 Cookie，只返回 `cookieConfigured`、`cookieLength`、`cookieProfileCount` 和脱敏 `cookieProfiles`。
 - `sourceMode` 支持 `discover`、`bookshelf`、`cache`、`subscription`。
@@ -1452,32 +1530,33 @@ POST /admin-api/po18-crawler/test-cookie
 - Cookie 失效或返回登录/验证页时，运行中的任务会暂停，等待后台更新 Cookie 后继续。
 
 配置示例：
+
 ```json
 {
-  "enabled": true,
-  "sourceMode": "subscription",
-  "subscriptionBookIds": ["844058", "868156"],
-  "startPage": 1,
-  "endPage": 20,
-  "maxBooksPerRun": 200,
-  "cacheIdLimit": 500,
-  "bookshelfStartYear": 2010,
-  "bookshelfEmptyYearStop": 3,
-  "sort": "time",
-  "status": "all",
-  "words": "all",
-  "bookConcurrency": 1,
-  "chapterConcurrency": 3,
-  "delayMs": 800,
-  "requestIntervalMs": 250,
-  "timeoutMs": 20000,
-  "uploadMetadata": true,
-  "uploadChapters": true,
-  "skipCached": true,
-  "overwrite": false,
-  "intervalMinutes": 360,
-  "activeCookieProfile": "default",
-  "cookieName": "default",
-  "cookie": "po18_login_cookie_here"
+    "enabled": true,
+    "sourceMode": "subscription",
+    "subscriptionBookIds": ["844058", "868156"],
+    "startPage": 1,
+    "endPage": 20,
+    "maxBooksPerRun": 200,
+    "cacheIdLimit": 500,
+    "bookshelfStartYear": 2010,
+    "bookshelfEmptyYearStop": 3,
+    "sort": "time",
+    "status": "all",
+    "words": "all",
+    "bookConcurrency": 1,
+    "chapterConcurrency": 3,
+    "delayMs": 800,
+    "requestIntervalMs": 250,
+    "timeoutMs": 20000,
+    "uploadMetadata": true,
+    "uploadChapters": true,
+    "skipCached": true,
+    "overwrite": false,
+    "intervalMinutes": 360,
+    "activeCookieProfile": "default",
+    "cookieName": "default",
+    "cookie": "po18_login_cookie_here"
 }
 ```

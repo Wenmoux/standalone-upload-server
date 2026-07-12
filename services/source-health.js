@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖时间、连续成功/失败信号及可配置的熔断阈值和窗口
+ * [OUTPUT]: 对外提供外部来源健康熔断器工厂，含请求许可、成功/失败记录和状态快照能力
+ * [POS]: services 的外部来源韧性原语，被 PO18 HTTP 客户端复用以抑制故障源上的放大重试
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function positiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
     const number = Math.trunc(Number(value));
     return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;

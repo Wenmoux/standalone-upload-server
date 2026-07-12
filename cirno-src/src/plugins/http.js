@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 axios、浏览器 fetch、Reader 会话缓存和账号隔离的离线章节/进度工具
+ * [OUTPUT]: 默认导出 Reader HTTP install 插件及兼容版本标识，向组件注入统一请求适配器
+ * [POS]: cirno-src/src/plugins 的网络边界，协调会话失效、API 响应与离线回退
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import axios from 'axios'
 import {
   clearReaderSession,

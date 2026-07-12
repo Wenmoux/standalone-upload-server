@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 docker/backup-pg 的创建/校验/恢复原语、文件系统、远程上传适配器与 system-jobs 跟踪能力
+ * [OUTPUT]: 对外提供备份创建、上传、校验、下载解析、恢复和恢复演练的载荷构建与任务入口
+ * [POS]: services 的备份用例编排层，把底层命令封装成 Admin 可追踪的持久任务而不复制存储实现
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs/promises");
 const path = require("path");
 const {

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node.js 文件系统/加密能力、请求上下文和运行日志路径配置
+ * [OUTPUT]: 提供结构化事件/请求/慢日志写入、敏感字段脱敏、JSON Lines 尾读与慢请求聚合
+ * [POS]: docker 与 server 共用的可观测边界，统一日志格式并阻止 Token/密码进入持久日志
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");

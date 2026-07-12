@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Git 源码身份、Docker Buildx、package 版本、.docker-build.json 与发布环境变量
+ * [OUTPUT]: 构建 revision/source-hash/移动或 semver 标签，并向 GitHub Actions 输出不可变候选标签
+ * [POS]: scripts 的镜像构建组合器，保证镜像内容与可追溯源码身份绑定
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { execFileSync, spawnSync } = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");

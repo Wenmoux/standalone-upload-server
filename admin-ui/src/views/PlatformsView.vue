@@ -26,6 +26,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable、Admin 平台配置 API、数值格式化与全局提示服务
+ * [OUTPUT]: 提供自动发现平台标识的展示名查询和批量保存页面
+ * [POS]: admin-ui/src/views 的分类展示配置视图，不改变书籍原始 platform 标识
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { inject, onMounted, reactive, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import { api } from "../services/api";

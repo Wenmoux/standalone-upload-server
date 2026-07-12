@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖文件系统、Style2 资源槽定义和上传请求流，校验图片媒体类型、尺寸与字节预算
+ * [OUTPUT]: 对外提供老二次元 EPUB 资源服务、图片探测函数、请求体读取器及大小上限
+ * [POS]: services 的 Style2 可替换资源边界，把 /config 覆盖文件约束在模板声明的安全槽位内
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs/promises");
 const path = require("path");
 const {

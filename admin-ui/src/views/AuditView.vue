@@ -40,6 +40,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable、Admin API 和 App 注入的提示服务
+ * [OUTPUT]: 提供管理审计记录筛选、分页查询与脱敏详情展示页面
+ * [POS]: admin-ui/src/views 的审计只读视图，消费 system/admin-audit 领域接口
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { inject, onMounted, reactive, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import { api } from "../services/api";

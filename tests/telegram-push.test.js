@@ -1,5 +1,12 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供Telegram 推送队列、批次和失败恢复的自动化回归断言
+ * [POS]: tests 的Telegram 推送队列、批次和失败恢复守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const test = require("node:test");
+const { hasTelegramSystemPushMarker } = require("../telegram-push-contract");
 const {
     createTelegramPushService,
     originalChapterUrl,
@@ -53,6 +60,7 @@ test("telegram service sends chapter push and marks event sent", async () => {
     assert.equal(posts[0].body.chat_id, "chat-1");
     assert.match(posts[0].body.text, /A&amp;B/);
     assert.match(posts[0].body.text, /T&lt;1&gt;/);
+    assert.equal(hasTelegramSystemPushMarker(posts[0].body.text), true);
     assert.deepEqual(updates[0].params, [7]);
     assert.match(updates[0].sql, /telegram_status = 'sent'/);
 });
@@ -107,6 +115,8 @@ test("telegram service sends metadata push as cover card with jump buttons", asy
     assert.match(posts[0].body.caption, /状态：连载/);
     assert.match(posts[0].body.caption, /标签：热血 \/ 升级 \/ 玄幻/);
     assert.match(posts[0].body.caption, /简介：\n<blockquote expandable>这是一段 &amp; 符号的简介。<\/blockquote>/);
+    assert.equal(hasTelegramSystemPushMarker(posts[0].body.caption), true);
+    assert.ok(posts[0].body.caption.length <= 1024);
     assert.deepEqual(posts[0].body.reply_markup.inline_keyboard[0], [
         { text: "阅读器详情", url: "https://reader.example/#/detail?bid=9" },
         { text: "原站链接", url: "https://www.example.com/books/9" }
@@ -206,6 +216,7 @@ test("daily report merges recipients, sends messages and records last date", asy
     assert.ok(sent.every((item) => item.url === "https://api.telegram.org/bottoken-2/sendMessage"));
     assert.match(sent[0].body.text, /PO18/);
     assert.match(sent[0].body.text, /up&amp;1/);
+    assert.ok(sent.every((item) => hasTelegramSystemPushMarker(item.body.text)));
     assert.equal(saved.length, 1);
     assert.equal(saved[0].key, "telegram_daily_report_last_date");
     assert.match(saved[0].value, /^\d{4}-\d{2}-\d{2}$/);

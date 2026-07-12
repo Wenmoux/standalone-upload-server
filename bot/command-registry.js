@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 command-catalog 的命令元数据、别名规范化规则和运行时启停配置
+ * [OUTPUT]: 对外提供命令注册表、命令解析执行、启停状态和 Telegram 命令列表投影
+ * [POS]: bot 命令声明与业务处理器之间的运行时路由层，不承载具体命令业务
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { commandCatalogMap, normalizeBotCommand } = require("./command-catalog");
 
 function normalizeCommand(value = "") {

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖 PostgreSQL 客户端工具、/config/app.env、备份目录、文件系统与可选进程执行适配器
+ * [OUTPUT]: 提供 PostgreSQL/config/诊断备份、校验、列表、保留、上传接收、恢复与临时库演练原语
+ * [POS]: docker 的本地备份基础设施层，被 Admin 备份服务和恢复演练调度器复用，不负责远端传输
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");

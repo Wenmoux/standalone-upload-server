@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express response 的 json 发送路径及既有 status/error 响应载荷
+ * [OUTPUT]: 对外提供错误响应规范化中间件、错误载荷补全与 HTTP 状态码映射函数
+ * [POS]: services 的 HTTP 错误兼容层，为遗留路由补齐稳定 code 和 request_id 而不重写领域错误
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function statusErrorCode(status = 500) {
     const codes = {
         400: "BAD_REQUEST",

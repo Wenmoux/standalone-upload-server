@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Bot Token Scope、system-jobs/bot-audit/config 服务与搜索需求写入能力
+ * [OUTPUT]: 对外提供 Bot 健康、持久任务登记/更新、审计、搜索需求和命令配置内部路由
+ * [POS]: routes 的 Bot 系统协作边界，让 Worker 通过 HTTP 管理任务生命周期而不直连数据库
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 const { bodyString, compactJson, enumValue, paramPositiveInt } = require("../services/validation");
 

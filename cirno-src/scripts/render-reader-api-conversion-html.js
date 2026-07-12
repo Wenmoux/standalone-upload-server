@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader API 转换扫描 JSON 与 HTML 转义/模板
+ * [OUTPUT]: 对外提供 独立繁简残留人工检查 HTML 报告
+ * [POS]: cirno-src/scripts 的报告渲染器，将机器扫描结果变为可审阅证据
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require('fs')
 const path = require('path')
 

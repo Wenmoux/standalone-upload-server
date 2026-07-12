@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 vue-router 与 views 下按领域拆分的懒加载页面
+ * [OUTPUT]: 对外提供 adminNavItems 导航事实源和 router 路由实例
+ * [POS]: admin-ui/src 的页面注册中心，统一 URL、权限元数据与导航顺序
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { createRouter, createWebHistory } from "vue-router";
 
 export const adminNavItems = [

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query、请求身份上下文与响应完成事件，按敏感字段规则脱敏审计载荷
+ * [OUTPUT]: 对外提供管理操作审计中间件、审计日志查询以及 action/reason/载荷清洗函数
+ * [POS]: services 的 Admin 审计边界，把 HTTP 管理动作固化为可追踪记录并供后台系统查询
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const SECRET_KEY = /(token|password|passwd|pwd|secret|cookie|authorization|pg_?url|database_?url|config)/i;
 
 function sanitizeAuditValue(value, key = "", depth = 0) {

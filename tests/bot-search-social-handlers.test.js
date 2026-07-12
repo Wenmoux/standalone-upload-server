@@ -1,5 +1,12 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供搜索与社交命令处理器交互契约的自动化回归断言
+ * [POS]: tests 的搜索与社交命令处理器交互契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { createReviewDraftStore } = require("../bot/bot-session");
 const { createSearchHandlers } = require("../bot/search-handlers");
 const { createSocialHandlers } = require("../bot/social-handlers");
 
@@ -84,4 +91,92 @@ test("review argument parsing accepts links and keeps the full review body", () 
         content: "太棒了 我的启蒙书"
     });
     assert.deepEqual(handlers.parseReviewArgs("无效参数"), { bookId: "", content: "" });
+});
+
+function reviewFixture(overrides = {}) {
+    const sent = [];
+    const edited = [];
+    const published = [];
+    let messageId = 0;
+    const reviewDrafts = createReviewDraftStore({ ttlMs: 60_000, maxSize: 10 });
+    const client = {
+        listBookReviews: async () => ({
+            book: { title: "远南" },
+            rules: { min_length: 6, max_length: 20, cost_copper: 100 }
+        }),
+        publishBookReview: async (bookId, userId, content) => {
+            published.push({ bookId, userId, content });
+            return { cost: 100, user: { copper_coins: 900 }, channel: { sent: true } };
+        },
+        ...overrides.client
+    };
+    const handlers = createSocialHandlers({
+        client,
+        ensureRegistered: async () => ({}),
+        parseBookId: (value) => String(value || "").match(/([\w-]+)/)?.[1] || "",
+        sendMessage: async (chatId, text, extra) => {
+            const message = { message_id: ++messageId, chat: { id: chatId }, text };
+            sent.push({ chatId, text, extra, message });
+            return message;
+        },
+        editMessage: async (chatId, targetMessageId, text, extra) => edited.push({ chatId, targetMessageId, text, extra }),
+        escapeHtml: (value) => String(value),
+        bookReviewsActions: (bookId) => ({ inline_keyboard: [[{ text: "书评", callback_data: `reviews|${bookId}` }]] }),
+        reviewPromptActions: (bookId) => ({ inline_keyboard: [[{ text: "取消", callback_data: `reviewcancel|${bookId}` }]] }),
+        reviewDrafts
+    });
+    return { handlers, reviewDrafts, sent, edited, published };
+}
+
+test("guided review flow only accepts the author's ForceReply in groups and publishes valid content", async () => {
+    const fixture = reviewFixture();
+    const author = { id: 88, username: "reader" };
+    const chat = { id: -100, type: "supergroup" };
+    await fixture.handlers.handleReviewStart({ chat, from: author }, "667518");
+
+    assert.equal(fixture.sent[0].extra.reply_markup.force_reply, true);
+    assert.equal(fixture.sent[1].extra.reply_markup.inline_keyboard[0][0].callback_data, "reviewcancel|667518");
+    assert.equal(fixture.handlers.reviewDraftContext({ chat, from: author }, "普通群聊"), null);
+    assert.equal(fixture.handlers.reviewDraftContext({ chat, from: { id: 99 } }, "这不是我的草稿"), null);
+    assert.equal(
+        fixture.handlers.reviewDraftContext(
+            { chat, from: author, reply_to_message: { message_id: fixture.sent[0].message.message_id } },
+            "短"
+        ).bookId,
+        "667518"
+    );
+
+    await fixture.handlers.handleReviewDraft({ chat, from: author }, "短");
+    const retryPrompt = fixture.sent.at(-1).message;
+    assert.match(fixture.sent.at(-1).text, /至少需要 6 字/);
+    assert.equal(fixture.reviewDrafts.get({ chatId: chat.id, userId: author.id }).promptMessageId, String(retryPrompt.message_id));
+
+    await fixture.handlers.handleReviewDraft({ chat, from: author }, "这本真的非常好看");
+    assert.deepEqual(fixture.published, [{ bookId: "667518", userId: 88, content: "这本真的非常好看" }]);
+    assert.equal(fixture.reviewDrafts.get({ chatId: chat.id, userId: author.id }), null);
+    assert.match(fixture.sent.at(-1).text, /书评已发布/);
+});
+
+test("guided review cancellation is scoped to the current book and publish failures retain the draft", async () => {
+    let failPublish = true;
+    const fixture = reviewFixture({
+        client: {
+            publishBookReview: async () => {
+                if (failPublish) throw new Error("temporary outage");
+                return { cost: 100, user: { copper_coins: 900 }, channel: { skipped: "disabled" } };
+            }
+        }
+    });
+    const message = { chat: { id: 7, type: "private" }, from: { id: 8 } };
+    await fixture.handlers.handleReviewStart(message, "667518");
+    await assert.rejects(fixture.handlers.handleReviewDraft(message, "这段书评足够长了"), /草稿已保留/);
+    assert.equal(fixture.reviewDrafts.get({ chatId: 7, userId: 8 }).bookId, "667518");
+
+    assert.equal(await fixture.handlers.handleReviewCancel(message, "other"), "没有待发布的书评");
+    assert.equal(fixture.reviewDrafts.size(), 1);
+    assert.equal(await fixture.handlers.handleReviewCancel(message, "667518", { chatId: 7, messageId: 9 }), "已取消");
+    assert.equal(fixture.reviewDrafts.size(), 0);
+    assert.match(fixture.edited[0].text, /已取消/);
+
+    failPublish = false;
 });

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖调用方提供的动作键、冷却时长和时间戳
+ * [OUTPUT]: 对外提供进程内动作冷却限流器、等待时间格式化和毫秒配置规范化
+ * [POS]: bot 交互保护层，为高成本命令提供轻量用户级节流；它不是跨实例的配额或安全鉴权机制
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function positiveMs(value, fallback) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : fallback;

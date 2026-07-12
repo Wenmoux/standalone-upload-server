@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node 文件与压缩能力、epub-styles 插件注册表，以及调用方注入的文本清洗、卷章识别和资源读取能力
+ * [OUTPUT]: 对外提供将书籍元数据、章节和样式配置组装为 EPUB 2 文件集合与 ZIP 字节流的生成器
+ * [POS]: bot 导出域的 EPUB 唯一组合器，统一掌管容器、manifest、目录、XHTML、资源与样式插件生命周期
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs");
 const zlib = require("zlib");
 const { listEpubStyles, resolveEpubStyle } = require("./epub-styles");

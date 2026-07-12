@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader TTS 纯工具、浏览器 Speech/Audio/fetch 与 Reader 组合根的段落和设置状态
+ * [OUTPUT]: 默认导出浏览器、Edge、云端及自定义 TTS 的队列、请求、播放和清理状态机
+ * [POS]: cirno-src/src/mixins 的语音阅读切片，把引擎副作用与 Reader.vue 页面编排分离
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import {
   audioSourceFromBase64 as ttsAudioSourceFromBase64,
   buildTtsQueueFromParagraphs as buildReaderTtsQueue,

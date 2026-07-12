@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query/事务、用户身份与平台配置，执行书评、投票、红包和众筹结算
+ * [OUTPUT]: 对外提供书籍社区读写与并发结算能力的领域服务工厂
+ * [POS]: services 的书籍社交聚合根，在事务边界内维护公开视图、余额变化与互动一致性
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function boundedConfigInteger(value, fallback, min, max) {
     const number = Number(value);
     return Number.isSafeInteger(number) ? Math.min(max, Math.max(min, number)) : fallback;

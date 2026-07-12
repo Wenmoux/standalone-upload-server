@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node.js 文件系统与加密能力、统一限流器、/config/app.env 运行配置及 Admin 构建产物
+ * [OUTPUT]: 对外提供 Setup/Admin 控制面板请求处理、配置导入导出、状态诊断、设计令牌与版本信息
+ * [POS]: docker 运行面的配置边界，把首次初始化和运维操作收敛到可审计入口，不承载业务数据访问
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const fs = require("fs/promises");
 const fsSync = require("fs");
@@ -12,7 +18,8 @@ const RESTART_DELAY_MS = Number(process.env.PO18_SETUP_RESTART_DELAY_MS || 3000)
 const defaultSecrets = {
     session: randomSecret(),
     bot: randomSecret(),
-    upload: randomSecret()
+    upload: randomSecret(),
+    metrics: randomSecret()
 };
 
 let generatedSetupToken = "";
@@ -311,7 +318,7 @@ function currentValues(configFile = DEFAULT_CONFIG_FILE) {
         PO18_UPLOAD_ADMIN_PASSWORD: value("PO18_UPLOAD_ADMIN_PASSWORD"),
         PO18_UPLOAD_SESSION_SECRET: value("PO18_UPLOAD_SESSION_SECRET", defaultSecrets.session),
         PO18_UPLOAD_API_TOKEN: value("PO18_UPLOAD_API_TOKEN", defaultSecrets.upload),
-        PO18_METRICS_TOKEN: value("PO18_METRICS_TOKEN"),
+        PO18_METRICS_TOKEN: value("PO18_METRICS_TOKEN", defaultSecrets.metrics),
         PO18_BOT_API_TOKEN: value("PO18_BOT_API_TOKEN", defaultSecrets.bot),
         TELEGRAM_BOT_TOKEN: value("TELEGRAM_BOT_TOKEN") || value("BOT_TOKEN"),
         TELEGRAM_API_BASE: value("TELEGRAM_API_BASE", "https://api.telegram.org"),
@@ -453,7 +460,7 @@ function formPage({ configFile = DEFAULT_CONFIG_FILE, auth = {}, message = "", e
               ${field({ id: "PO18_UPLOAD_ADMIN_PASSWORD", label: "管理员密码", type: "password", value: values.PO18_UPLOAD_ADMIN_PASSWORD, required: true, autocomplete: "new-password", secret: true })}
               ${field({ id: "PO18_UPLOAD_SESSION_SECRET", label: "Session Secret", value: values.PO18_UPLOAD_SESSION_SECRET, required: true, wide: true, helper: "用于浏览器会话签名。建议使用自动生成值。", generator: true })}
               ${field({ id: "PO18_UPLOAD_API_TOKEN", label: "上传写入 API Token", value: values.PO18_UPLOAD_API_TOKEN, required: true, wide: true, helper: "外部上传脚本调用写入接口时需要放到 X-Upload-Token 或 X-PO18-Upload-Token 请求头。", secret: true, generator: true })}
-              ${field({ id: "PO18_METRICS_TOKEN", label: "Prometheus Metrics Token", value: values.PO18_METRICS_TOKEN, wide: true, helper: "可选。留空时 /metrics 开放；填写后需要 Authorization: Bearer Token。", secret: true, generator: true })}
+              ${field({ id: "PO18_METRICS_TOKEN", label: "Prometheus Metrics Token", value: values.PO18_METRICS_TOKEN, required: true, wide: true, helper: "生产环境绑定非 localhost 时必填；访问 /metrics 需要 Authorization: Bearer Token。", secret: true, generator: true })}
             </div>
           </div>
           <div class="section"><div class="section-head"><p class="section-title">Bot</p><p class="section-desc">不使用 Bot 可以留空 Telegram Token；通信 Token 用于后端和 Bot 之间校验。</p></div>
@@ -558,7 +565,7 @@ function importedValuesFromText(text, configFile = DEFAULT_CONFIG_FILE) {
             PO18_UPLOAD_ADMIN_PASSWORD: imported.PO18_UPLOAD_ADMIN_PASSWORD || "",
             PO18_UPLOAD_SESSION_SECRET: imported.PO18_UPLOAD_SESSION_SECRET || "",
             PO18_UPLOAD_API_TOKEN: imported.PO18_UPLOAD_API_TOKEN || "",
-            PO18_METRICS_TOKEN: imported.PO18_METRICS_TOKEN || "",
+            PO18_METRICS_TOKEN: imported.PO18_METRICS_TOKEN || current.PO18_METRICS_TOKEN,
             PO18_BOT_API_TOKEN: imported.PO18_BOT_API_TOKEN || "",
             TELEGRAM_BOT_TOKEN: imported.TELEGRAM_BOT_TOKEN || "",
             TELEGRAM_API_BASE: imported.TELEGRAM_API_BASE || current.TELEGRAM_API_BASE || "https://api.telegram.org",
@@ -581,6 +588,7 @@ function validate(values) {
     if (!values.PO18_UPLOAD_ADMIN_PASSWORD) return "后台管理员密码不能为空。";
     if (!values.PO18_UPLOAD_SESSION_SECRET || values.PO18_UPLOAD_SESSION_SECRET.length < 16) return "Session Secret 至少需要 16 个字符。";
     if (!values.PO18_UPLOAD_API_TOKEN || values.PO18_UPLOAD_API_TOKEN.length < 16) return "上传写入 API Token 至少需要 16 个字符。";
+    if (!values.PO18_METRICS_TOKEN || values.PO18_METRICS_TOKEN.length < 16) return "Prometheus Metrics Token 至少需要 16 个字符。";
     if (!values.PO18_BOT_API_TOKEN || values.PO18_BOT_API_TOKEN.length < 16) return "服务端与 Bot 通信 Token 至少需要 16 个字符。";
     return "";
 }

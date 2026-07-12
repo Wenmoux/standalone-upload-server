@@ -1,3 +1,15 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供标题清洗规则与幂等性的自动化回归断言
+ * [POS]: tests 的标题清洗规则与幂等性守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供标题清洗规则与幂等性的自动化回归断言
+ * [POS]: tests 的标题清洗规则与幂等性守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const test = require("node:test");
 const { cleanChapterTitle } = require("../services/chapter-title-cleaner");

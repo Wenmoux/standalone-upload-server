@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 Vue h、sanitizeImageUrl 与正文段落类型数据
+ * [OUTPUT]: 对外提供 Paragraph 净化文本/链接/图片 vnode 渲染组件
+ * [POS]: Reader components 的正文最小渲染边界，阻止不可信图片 URL 直接进入 DOM
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <script>
 import { h } from 'vue'
 import { sanitizeImageUrl } from '../utils/sanitize-html'

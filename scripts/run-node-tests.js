@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 tests 目录、Node.js test runner、可选 c8 和覆盖率门槛参数
+ * [OUTPUT]: 提供跨平台测试文件发现/命令构造，并执行普通或覆盖率回归套件
+ * [POS]: scripts 的根测试组合器，消除 shell glob 差异并确保 CI 与本地发现同一批测试
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");

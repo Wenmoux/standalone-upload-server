@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖请求身份/IP、时间窗口预算与 Express next/response 能力
+ * [OUTPUT]: 对外提供进程内限流窗口、限流中间件、正整数配置和请求 IP 解析函数
+ * [POS]: services 的轻量入口节流原语，为登录、指标和敏感路由生成统一 429/Retry-After 响应
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function positiveInteger(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.trunc(number) : fallback;

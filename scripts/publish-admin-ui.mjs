@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 admin-ui/dist、根 public 目录与 Node.js 文件系统
+ * [OUTPUT]: 清理旧 public/assets 并复制 Admin dist，同时保留 public 中 Reader/书源等非 Admin 兼容文件
+ * [POS]: scripts 的 Admin 发布边界，保证 index/assets 来自当前构建且不误删其它公共发布内容
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

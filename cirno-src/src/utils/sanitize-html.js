@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 DOMPurify、不可信正文 HTML/图片地址和可选解析基址
+ * [OUTPUT]: 对外提供白名单 sanitizeHtml 与协议受限的 sanitizeImageUrl
+ * [POS]: cirno-src/src/utils 的 DOM 注入安全边界，所有富文本和外部图片渲染前必须经过此层
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import DOMPurify from 'dompurify'
 
 const URI_SAFE = /^(?:(?:https?|data|blob):|\/\/)/i

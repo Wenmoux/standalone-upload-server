@@ -1,4 +1,10 @@
-﻿function createBotUi(deps = {}) {
+/**
+ * [INPUT]: 依赖调用方注入的 HTML 清洗、截断、卷章识别能力及书籍、众筹、书评、资产领域对象
+ * [OUTPUT]: 对外提供 Telegram 书卡、分页、回调键盘、引导式书评、众筹、资产和导出报价格式化能力
+ * [POS]: bot 的集中 Telegram 视图层，保持 callback_data 协议和展示规则不散落在领域处理器中
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+function createBotUi(deps = {}) {
     const escapeHtml = deps.escapeHtml || ((value = "") => String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])));
     const cleanText = deps.cleanText || ((value = "") => String(value || "").replace(/<[^>]+>/g, "").trim());
     const truncate = deps.truncate || ((value = "", max = 300) => String(value || "").slice(0, max));
@@ -21,7 +27,8 @@ function bookActions(bookId, detailUrl = "") {
         [
             { text: "喜欢", callback_data: callback(["like", id]) },
             { text: "不喜欢", callback_data: callback(["dislike", id]) },
-            { text: "书评", callback_data: callback(["reviews", id]) }
+            { text: "书评", callback_data: callback(["reviews", id]) },
+            { text: "写书评", callback_data: callback(["reviewnew", id]) }
         ],
         [
             { text: "TXT", callback_data: callback(["txt", id]) },
@@ -61,7 +68,19 @@ function reviewVoteActions(review = {}) {
 
 function bookReviewsActions(bookId = "") {
     const id = String(bookId || "");
-    return id ? { inline_keyboard: [[{ text: "书籍详情", callback_data: callback(["info", id]) }]] } : undefined;
+    return id
+        ? {
+              inline_keyboard: [[
+                  { text: "写书评", callback_data: callback(["reviewnew", id]) },
+                  { text: "书籍详情", callback_data: callback(["info", id]) }
+              ]]
+          }
+        : undefined;
+}
+
+function reviewPromptActions(bookId = "") {
+    const id = String(bookId || "");
+    return id ? { inline_keyboard: [[{ text: "取消发布", callback_data: callback(["reviewcancel", id]) }]] } : undefined;
 }
 
 function listActions(books = []) {
@@ -175,7 +194,7 @@ function bookReviewsText(bookId, payload = {}) {
         ? rows.slice(0, 5).map((row, index) => reviewLine(row, index + 1)).join("\n\n")
         : "暂无书评。";
     const footer = [
-        `<b>发布</b>：<code>/review ${escapeHtml(bookId || "书号")} 内容</code>`,
+        "<b>发布</b>：点下方“写书评”，然后直接发送内容",
         `<b>规则</b>：Lv.${rules.min_level || 2}+ · ${rules.cost_copper ?? 100} 铜 · ${rules.min_length || 6}-${rules.max_length || 1200} 字`
     ].join("\n");
     return [header, body, footer].filter(Boolean).join("\n\n");
@@ -373,6 +392,7 @@ function redPacketMarkup(packetId) {
         detailCardText,
         crowdCardText,
         reviewChannelText,
+        reviewPromptActions,
         reviewVoteActions,
         currencyLabel,
         transactionLine,

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express 路由栈、schema-validation 的请求策略以及运行时已注册的端点元数据
+ * [OUTPUT]: 对外提供 OpenAPI 文档构建、Express 路由收集、路径转换、安全策略和请求/响应 Schema 推导函数
+ * [POS]: services 的运行时 API 索引生成器，从真实路由装配提取文档以减少人工端点清单漂移
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function expressPathToOpenApi(value = "") {
     return (
         String(value || "")

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node 主机身份、job-queue、PgBotClient 的 system_jobs 契约及任务生命周期消息和审计适配器
+ * [OUTPUT]: 对外提供可租约、心跳、重试、取消和重启恢复的 Bot 持久任务运行时
+ * [POS]: bot 后台任务域的可靠性核心，把进程内执行与 server-pg 持久状态连接起来
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const os = require("os");
 const { createJobQueue } = require("./job-queue");
 

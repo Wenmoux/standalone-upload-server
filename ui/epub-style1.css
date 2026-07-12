@@ -1,4 +1,10 @@
 @charset "UTF-8";
+/*
+ * [INPUT]: 依赖江湖纸卷 EPUB XHTML 语义类名与兼容 Reader 的内嵌 CSS 能力
+ * [OUTPUT]: 提供 Style1 标题页、制作说明、简介、分卷与正文的统一排版规则
+ * [POS]: ui 的 Style1 规范 CSS，Bot 内嵌镜像与 Admin 预览必须通过测试保持字节一致
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 body{margin:0;padding:0;text-align:justify;font-family:"Songti SC","Noto Serif CJK SC","Source Han Serif SC","STSong","SimSun",serif;background:#f3e6d4;color:#17120e;}
 p{line-height:1.4em;text-align:justify;text-justify:inter-ideograph;text-indent:2em;duokan-text-indent:2em;margin:.7em 0;}
 div{margin:0;padding:0;line-height:1.3;text-align:justify;}

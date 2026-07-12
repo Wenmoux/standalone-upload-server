@@ -1,10 +1,14 @@
 # PO18 Reader 综合评估与改善报告
 
+> 文档状态：历史评估与实施复核快照。第 1–18 节保留 2026-07-11 评估当时的风险、评分与建议，第 0 节记录 2026-07-12 的一次实施复核；两者都不会随代码自动更新，不能代替当前运行文档。
+>
+> 当前事实优先级：代码/测试 → 运行时 `/openapi.json` → [README](README.md)、[Docker 手册](DOCKER.md) 与 [docs/](docs/README.md) → [API 说明](API.md) 与 [迁移手册](db/MIGRATIONS.md) → [优化进度快照](V2_OPTIMIZATION_PROGRESS.md) 与本报告。阶段变化见 [更新记录](PROJECT_UPDATE_LOG.md)。
+>
 > 评估日期：2026-07-11
 > 评估对象：单镜像部署、PostgreSQL 后端、Reader、Admin/Setup、Telegram Bot、PO18 Crawler、Legado 书源及运维工具
 > 评估原则：以当前工作区代码为准；兼顾自用部署与开放给多用户后的安全、性能和维护成本。
 
-## 0. 2026-07-12 实施复核
+## 0. 2026-07-12 实施复核快照
 
 本报告提出的整改已继续实施。按用户确认的边界，只保留以下两项未实施：
 

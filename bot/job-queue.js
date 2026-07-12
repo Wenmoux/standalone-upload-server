@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖调用方提供的并发上限、任务生命周期回调、互斥键和可选取消信号
+ * [OUTPUT]: 对外提供进程内有界并发队列、同键互斥、取消与运行统计
+ * [POS]: bot 任务域的内存执行器；跨重启状态、租约和恢复语义由 task-runtime 与服务端 system_jobs 负责
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function positiveInt(value, fallback) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : fallback;

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node crypto/path、注入的 fetch 与 Edge/火山/阿里云/Azure/ElevenLabs/Cartesia 配置
+ * [OUTPUT]: 对外提供各 TTS 提供商合成适配器、Edge 声音目录、重试请求、错误读取和速度/配置转换函数
+ * [POS]: services 的语音提供商适配层，统一上游协议差异并由 Reader TTS 路由负责鉴权与安全目标约束
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const path = require("path");
 

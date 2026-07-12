@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖 server/Reader/Bot 健康 URL、可选 PostgreSQL URL 与命令行检查模式
+ * [OUTPUT]: 输出本地/Compose/单 HTTP 目标的可读诊断，并用退出码表达整体状态
+ * [POS]: docker 运维 CLI，把部署后的多端点事实压缩为人工和流水线都能消费的检查结果
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const fs = require("fs");
 
 const CONFIG_FILE = process.env.PO18_CONFIG_FILE || "/config/app.env";

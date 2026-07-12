@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node-html-parser 与 PO18 发现页、书架、详情、目录和正文 HTML
+ * [OUTPUT]: 对外提供 PO18 URL/表单构造、HTML 解析、文本规范化、登录失效识别及 CookieInvalidError
+ * [POS]: services 的 PO18 协议解析边界，把易变页面结构收敛为爬虫编排层使用的稳定领域数据
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { parse } = require("node-html-parser");
 
 const PO18_BASE = "https://www.po18.tw";

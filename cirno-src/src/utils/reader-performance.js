@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖浏览器 Performance/路由事件、fetch 和 `/reader-api/performance` 采集端点
+ * [OUTPUT]: 对外提供可配置 RUM reporter 与 installReaderPerformance 路由集成函数
+ * [POS]: cirno-src/src/utils 的客户端可观测性边界，批量上报而不阻塞 Reader 交互
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const ENDPOINT = '/reader-api/performance'
 const MAX_QUEUE = 30
 

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖 pg-store、chapter-title-cleaner、命令行筛选和显式 apply 开关
+ * [OUTPUT]: 提供标题清洗 SQL 构造/参数解析，并以 dry-run 默认批量预览或更新章节标题
+ * [POS]: scripts 的受控数据维护入口，复用生产清洗规则而不复制标题算法
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const { Pool } = require("pg");
 const { cleanChapterTitle } = require("../services/chapter-title-cleaner");
 

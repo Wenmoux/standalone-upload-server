@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Admin RBAC、健康/诊断/日志/概览/任务/审计服务与重启回调
+ * [OUTPUT]: 对外提供 后台系统状态、日志、任务控制、安全审计和显式重启路由
+ * [POS]: routes 的运维控制面，将只读诊断和高风险命令分级鉴权并写入审计链
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 
 function createAdminSystemRoutes(options = {}) {

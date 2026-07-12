@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node 文件系统读取慢查询日志，并通过注入的 query、任务/指标/诊断收集器聚合运行状态
+ * [OUTPUT]: 对外提供 Admin 概览服务、慢日志解析器和高频失败原因统计函数
+ * [POS]: services 的运维概览聚合层，为 Admin 系统页折叠数据库、任务、性能与安全信号
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs/promises");
 
 function parseSlowLogLines(text, limit = 20) {

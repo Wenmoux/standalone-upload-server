@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express/文件流、Admin 鉴权、backups/remote-backups 服务、任务追踪与审计日志
+ * [OUTPUT]: 对外提供 Admin 备份创建、上传、下载、校验、恢复、演练和远端上传路由工厂
+ * [POS]: routes 的备份 HTTP 适配层，只编排确认与传输，归档/恢复安全性由领域服务和 docker 原语承担
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs/promises");
 const path = require("path");
 const express = require("express");

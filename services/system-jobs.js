@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 pg-store 的 Pool/query 和 PostgreSQL system_jobs 表、事务锁与租约时钟
+ * [OUTPUT]: 对外提供任务创建、认领、心跳、更新、取消、列表、跟踪执行及状态/指标聚合原语
+ * [POS]: services 的持久任务基础设施，为 Bot、备份、爬虫与维护作业提供统一恢复和并发所有权语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { pool, query } = require("../pg-store");
 
 function adminActor(req) {

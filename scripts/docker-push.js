@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖已构建镜像标签集合、Docker CLI 与 registry 凭据环境
+ * [OUTPUT]: 推送所有来源身份标签和选定移动标签，并暴露可诊断的 registry 失败摘要
+ * [POS]: scripts 的 registry 写入边界，只发布已经由构建/测试链验证的本地标签
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");

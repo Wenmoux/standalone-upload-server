@@ -1,3 +1,8 @@
+# [INPUT]: 依赖 Docker CLI、镜像标签、Setup 端口和根级构建/测试/推送命令
+# [OUTPUT]: 提供 Windows 环境的显式本地镜像发布与冒烟辅助流程
+# [POS]: scripts 的兼容发布入口；默认生产发布仍由 GitHub Actions 执行
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+
 param(
     [string]$Image = "wenmoux/reader:v2.0",
     [int]$SetupPort = 13100,

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Cookie 纯函数、爬虫解析错误、注入的安全 fetch/延迟器与来源健康熔断器
+ * [OUTPUT]: 对外提供 PO18 HTTP 客户端、可重试错误判断、抖动退避、限流页和重试提示解析函数
+ * [POS]: services 的 PO18 传输适配层，集中处理 Cookie 演进、限流退避与鉴权失效并向编排层返回稳定结果
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { cookieHeader, cookieProfileToHeader, mergeCookies, parseCookieString, parseSetCookieHeaders } = require("./po18-crawler-cookies");
 const { CookieInvalidError, authErrorFromResponse } = require("./po18-crawler-parsers");
 

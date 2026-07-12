@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖本机 server/Reader/Bot 健康端点、进程环境和有限超时 fetch
+ * [OUTPUT]: 为 Docker HEALTHCHECK 输出聚合状态并返回稳定成功/失败退出码
+ * [POS]: app 单容器的外层健康探针，只判断服务可用性，不复制服务内部诊断逻辑
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const fs = require("fs");
 
 const CONFIG_FILE = process.env.PO18_CONFIG_FILE || "/config/app.env";

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 TTS 引擎配置、正文段落、请求模板、响应头和 JSON 音频载荷
+ * [OUTPUT]: 对外提供引擎识别、文本切片/队列、模板渲染、响应解析和音频源生成纯函数
+ * [POS]: cirno-src/src/utils 的 TTS 无副作用内核，具体网络和播放生命周期由 reader-tts mixin 负责
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const CLOUD_TTS_ENGINES = new Set(['volcengine', 'aliyun', 'azure', 'elevenlabs', 'cartesia'])
 
 export const CLOUD_TTS_SETTING_KEYS = [

@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 Reader 路由与 cirno 历史标识资源
+ * [OUTPUT]: 对外提供 About 项目说明页面
+ * [POS]: Reader views 的静态说明与应用内导航页，不表达运行配置真相
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="home">
     <div class="header">

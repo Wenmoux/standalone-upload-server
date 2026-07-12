@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 botTaskQueue、Telegram 消息接口和导出、书架同步、共享领域执行器
+ * [OUTPUT]: 对外提供持久 Bot 任务类型、幂等任务构造与导出/同步/共享调度和恢复工厂
+ * [POS]: bot 任务域的声明式调度层，统一任务类型、互斥键、持久输入和实际执行函数之间的映射
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const PERSISTENT_BOT_JOB_TYPES = [
     "bot_export_txt",
     "bot_export_epub",

@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 搜索意图、平台配置、Reader session/主题和分页搜索 API
+ * [OUTPUT]: 对外提供 BookLibrary 全库检索与分页浏览页面
+ * [POS]: Reader views 的书库发现页，把 UI 筛选映射到统一搜索契约
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="library-page" :style="readerThemeStyle">
     <div class="top-bar">

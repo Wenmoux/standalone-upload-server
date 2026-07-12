@@ -1,4 +1,10 @@
-﻿const fs = require("fs/promises");
+/**
+ * [INPUT]: 依赖 Node 临时目录、文件流与路径能力，以及注入的 server API 客户端、文本工具、EPUB 生成器和 ZIP 构建器
+ * [OUTPUT]: 对外提供按书号拉取可读章节并生成临时 TXT/EPUB 文件的导出构建器
+ * [POS]: bot 导出域的格式编排层，在远端章节分页与具体 TXT/EPUB 序列化之间建立稳定边界
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const fs = require("fs/promises");
 const { createWriteStream } = require("fs");
 const os = require("os");
 const path = require("path");

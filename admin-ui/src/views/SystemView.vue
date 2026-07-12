@@ -351,6 +351,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、StatCard、系统/备份/指标/认证 Admin API、格式化工具与当前管理员权限
+ * [OUTPUT]: 提供运行状态、日志、备份恢复、远端备份、指标、管理员、Token、诊断和重启运维界面
+ * [POS]: admin-ui/src/views 的系统运维组合页，高风险操作均经 App 确认服务和服务端授权
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, reactive, ref } from "vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";

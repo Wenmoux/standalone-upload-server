@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖词频行、画布尺寸与字体选项，并在 PNG 路径按需加载 @resvg/resvg-js
+ * [OUTPUT]: 对外提供确定性词云布局、SVG 文本/字节和 PNG 字节渲染能力
+ * [POS]: bot 搜索展示层的无状态图像生成器，为词云命令提供可测试的布局与双格式输出
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const CLOUD_COLORS = [
     "#0ea5e9",
     "#22c55e",

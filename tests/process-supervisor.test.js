@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供子进程重启退避、信号和退出策略的自动化回归断言
+ * [POS]: tests 的子进程重启退避、信号和退出策略守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const { EventEmitter } = require("events");
 const test = require("node:test");

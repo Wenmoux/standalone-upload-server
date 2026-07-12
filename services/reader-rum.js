@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader 上报的性能事件、允许指标集合与注入的 PostgreSQL query
+ * [OUTPUT]: 对外提供 RUM 事件清洗、批量落库、路由/指标聚合服务及允许指标常量
+ * [POS]: services 的 Reader 真实用户性能观测边界，拒绝无界载荷并为健康与 Admin 概览供数
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const ALLOWED_METRICS = new Set(["page_load", "ttfb", "fcp", "lcp", "cls", "inp", "route", "long_task"]);
 
 function cleanToken(value, max = 120) {

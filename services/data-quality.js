@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query 与书库质量阈值，执行只读诊断 SQL
+ * [OUTPUT]: 对外提供重复书籍、缺章、元数据异常与大正文诊断服务，以及查询/行号辅助函数
+ * [POS]: services 的数据质量观测层，只报告潜在缺陷而不混入修复副作用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const latestBooksSql = `
     SELECT DISTINCT ON (book_id)
            book_id, title, author, cover, description, platform, status,

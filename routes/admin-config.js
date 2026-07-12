@@ -1,4 +1,11 @@
+/**
+ * [INPUT]: 依赖 Express、根级 Telegram 推送标记、Admin 权限、config/bot-settings/EPUB Style2 服务与输入校验
+ * [OUTPUT]: 对外提供 平台、Telegram、导出计价、Bot 命令和 EPUB 模板/资源配置路由
+ * [POS]: routes 的 Admin 配置边界，把持久配置能力分组为受角色保护的 HTTP 契约
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
+const { markTelegramSystemPush } = require("../telegram-push-contract");
 const { DEFAULT_STYLE2_CONFIG, STYLE2_BASE_CSS } = require("../services/epub-style2-template");
 
 function createAdminConfigRoutes(options = {}) {
@@ -189,7 +196,10 @@ function createAdminConfigRoutes(options = {}) {
             const token = await configGet("telegram_bot_token");
             const chatId = await configGet("telegram_chat_id");
             if (!token || !chatId) return res.status(400).json({ error: "请先保存 Bot Token 和 Chat ID" });
-            await postJson(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: chatId, text: "PO18 上传管理服务测试消息" });
+            await postJson(`https://api.telegram.org/bot${token}/sendMessage`, {
+                chat_id: chatId,
+                text: markTelegramSystemPush("PO18 上传管理服务测试消息")
+            });
             res.json({ success: true });
         } catch (err) {
             next(err);

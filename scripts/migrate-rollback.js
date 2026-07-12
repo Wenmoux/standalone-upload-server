@@ -1,3 +1,13 @@
+/**
+ * [INPUT]: 依赖 docker/run-all 的受信配置加载器与 pg-store 的迁移回滚事务能力
+ * [OUTPUT]: 提供按步数或目标版本执行显式 PostgreSQL 回滚的命令行入口及结果输出
+ * [POS]: scripts 数据库运维工具，复用应用配置边界并把危险操作交由 pg-store 的确认机制约束
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const { loadConfig } = require("../docker/run-all");
+
+loadConfig(process.env.PO18_CONFIG_FILE || "/config/app.env");
+
 const { pool, runMigrationRollback } = require("../pg-store");
 
 function argValue(name) {

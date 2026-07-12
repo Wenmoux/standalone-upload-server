@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 registry descriptor、构建元数据、Git revision/source hash 与正式/开发发布模式
+ * [OUTPUT]: 生成绑定 digest、标签和源码身份的发布 manifest，并提供 registry 传播重试/解析工具
+ * [POS]: scripts 的发布证明层，为 registry 冒烟、签名和审计提供机器可读事实
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");

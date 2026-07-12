@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖起点章节标题列表、现有缓存记录、pg-store 与显式应用参数
+ * [OUTPUT]: 生成起点来源专用标题匹配/顺序修复计划并可事务落库
+ * [POS]: scripts 的来源适配器，隔离起点标题格式差异并复用通用修复安全边界
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs");
 const path = require("path");
 const { pool, query } = require("../pg-store");

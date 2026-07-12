@@ -1,6 +1,8 @@
 /**
- * Shared domain contracts used by JavaScript services. These are documentation-only
- * typedefs so existing runtime and API fields remain unchanged.
+ * [INPUT]: 依赖跨模块现行字段语义，不依赖运行时实现
+ * [OUTPUT]: 通过 JSDoc 提供 BookIdentity、ChapterRecord、SystemJob、AuthScope 与 CrawlerResult 类型契约
+ * [POS]: types 的文档型领域边界，让 JavaScript 模块共享术语而不改变既有运行时和 API 字段
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 /** @typedef {{bookId: string, platform: string}} BookIdentity */

@@ -32,6 +32,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue 响应式能力以及标题、正文、风险级别和原因要求等 props
+ * [OUTPUT]: 提供带焦点管理的确认/取消对话框，并向调用方回传确认原因
+ * [POS]: admin-ui/src/components 的高风险操作门禁，由 App 全局确认服务统一驱动
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, nextTick, ref, watch } from "vue";
 
 const props = defineProps({

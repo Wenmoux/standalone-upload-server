@@ -198,6 +198,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、EpubStyleEditor/StatCard、Bot/Telegram/导出 Admin API 与全局提示服务
+ * [OUTPUT]: 提供 Bot 状态与命令、Telegram 推送/日报、连接测试及 TXT/EPUB 导出配置页面
+ * [POS]: admin-ui/src/views 的 Telegram 与导出配置组合页，EPUB 细节委托 EpubStyleEditor
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, reactive, ref } from "vue";
 import EpubStyleEditor from "../components/EpubStyleEditor.vue";
 import StatCard from "../components/StatCard.vue";

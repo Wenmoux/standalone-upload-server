@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖本地 TXT/目录结构、Upload API、元数据推断规则、并发/断点参数与文件系统
+ * [OUTPUT]: 提供书库扫描、稳定书/章 ID、批量元数据/正文上传、进度恢复和结果汇总
+ * [POS]: scripts 的本地内容导入核心，被 CLI 与 local-library-upload-ui 共同复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const crypto = require("crypto");
 const fsp = require("fs/promises");
 const os = require("os");

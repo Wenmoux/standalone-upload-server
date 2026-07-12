@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 source-health 熔断器、po18-crawler HTTP/Cookie/Parser 边界及注入的配置、缓存和 system_jobs 能力
+ * [OUTPUT]: 对外提供 PO18 爬虫服务、任务/配置常量、状态机错误、解析兼容导出及书籍过滤/完整性辅助函数
+ * [POS]: services 的 PO18 抓取编排核心，协调来源访问、断点持久化、缓存写入和暂停恢复而不重实现协议细节
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const CONFIG_KEY = "po18_crawler_config";
 const JOB_TYPE = "po18_crawler_run";
 const { createSourceHealthCircuit } = require("./source-health");

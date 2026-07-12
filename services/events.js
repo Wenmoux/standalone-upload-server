@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query 和上传/更新产生的事件字段
+ * [OUTPUT]: 对外提供上传事件记录、查询与状态更新能力的事件服务工厂
+ * [POS]: services 的上传事件事实源，为更新历史、Telegram 推送与后台观测提供统一落库边界
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createEventService(options = {}) {
     const query = options.query;
     const cleanPgText = options.cleanPgText || ((value) => value);

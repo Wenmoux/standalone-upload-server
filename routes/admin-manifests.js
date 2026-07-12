@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Admin 权限、Book Manifest 服务与导入确认约定
+ * [OUTPUT]: 对外提供 单书 Manifest 导出、包校验和确认导入路由
+ * [POS]: routes 的书籍可移植协议边界，保持校验和/身份冲突规则集中在 book-manifest 服务
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 
 function createAdminManifestRoutes(options = {}) {

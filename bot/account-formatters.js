@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖账户、签到、流水与排行接口返回的领域对象，以及调用方注入的 HTML 转义和等级格式化能力
+ * [OUTPUT]: 对外提供注册、账户、钱包、签到和启动帮助的 Telegram HTML 文本格式化函数
+ * [POS]: bot 展示层的账户文案适配器，使命令处理器不直接拼接领域数据和 Telegram 标记
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function defaultEscape(value) {
     return String(value ?? "");
 }

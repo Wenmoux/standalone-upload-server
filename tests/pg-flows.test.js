@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供真实 PostgreSQL 迁移、事务、领域流与查询计划集成测试的自动化回归断言
+ * [POS]: tests 的真实 PostgreSQL 迁移、事务、领域流与查询计划集成测试守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const crypto = require("crypto");
 const fs = require("fs/promises");

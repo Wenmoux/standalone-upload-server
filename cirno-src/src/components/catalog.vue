@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 VirtualList、章节/分卷目录数据、当前章节和选择回调
+ * [OUTPUT]: 对外提供 Catalog 目录抽屉组件
+ * [POS]: Reader components 的章节导航视图，过滤分卷并把可读章节选择交回组合页
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="catalog-container">
     <a-modal

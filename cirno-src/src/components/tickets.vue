@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 Vuex Reader/作品上下文与票券交互 API
+ * [OUTPUT]: 对外提供 Tickets 票券/打赏弹窗组件
+ * [POS]: Reader components 的作品互动局部状态机，不维护独立用户身份
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="tickets">
     <a-modal v-model:open="visible" @cancel="cancel" title="打赏投票" width="30vw" :allowClear="true">

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供镜像标签、来源身份和发布清单规则的自动化回归断言
+ * [POS]: tests 的镜像标签、来源身份和发布清单规则守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
@@ -105,6 +111,10 @@ test("Docker context keeps every runtime build input required by PWA and shared 
     const contextFiles = new Set(walk(path.join(__dirname, "..")).map((file) => file.path));
     for (const required of REQUIRED_CONTEXT_FILES) assert.equal(contextFiles.has(required), true, required);
     assert.equal(ignored("cirno-src/scripts/reader-pwa-plugin.mjs"), false);
+
+    const dockerfile = fs.readFileSync(path.join(__dirname, "..", "Dockerfile"), "utf8");
+    assert.equal((dockerfile.match(/COPY pg-store\.js server-pg\.js telegram-push-contract\.js \.\//g) || []).length, 2);
+    assert.match(dockerfile, /COPY telegram-push-contract\.js \.\/telegram-push-contract\.js/);
 });
 
 test("PostgreSQL CI failures keep the actionable tail and remove terminal colors", () => {

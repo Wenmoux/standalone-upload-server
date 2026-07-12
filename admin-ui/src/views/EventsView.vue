@@ -30,6 +30,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable、Admin 事件 API 与全局提示服务
+ * [OUTPUT]: 提供最近上传、修改和删除事件的只读列表页面
+ * [POS]: admin-ui/src/views 的内容变更观察视图，为运维定位书库变化提供时间线
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { inject, onMounted, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import { api } from "../services/api";

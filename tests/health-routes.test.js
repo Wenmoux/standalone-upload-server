@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供liveness、readiness、deep health HTTP 契约的自动化回归断言
+ * [POS]: tests 的liveness、readiness、deep health HTTP 契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const test = require("node:test");
 const {

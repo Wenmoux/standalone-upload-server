@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 本地转换样本、chinese-convert 规则与文件系统
+ * [OUTPUT]: 对外提供 繁简覆盖 JSON/HTML 报告及验证退出码
+ * [POS]: cirno-src/scripts 的本地规则验证器，不进入生产请求链
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require('fs')
 const path = require('path')
 

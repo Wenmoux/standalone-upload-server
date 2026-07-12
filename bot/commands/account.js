@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 command-registry 的注册接口与调用方注入的账户、签到、流水和后台任务处理器
+ * [OUTPUT]: 对外提供账户域 Telegram 命令的集中注册函数
+ * [POS]: bot/commands 的账户命令装配器，只声明命令到处理器的映射，不实现账户业务
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function registerAccountCommands(registry, handlers = {}) {
     const {
         handleStart,

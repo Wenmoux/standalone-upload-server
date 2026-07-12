@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node crypto、注入的 PostgreSQL query 与请求 IP/路径信息，校验哈希 Token、scope 和来源限制
+ * [OUTPUT]: 对外提供 API Token 服务工厂、Bot scope 推导、Token 哈希/前缀及请求 IP 规范化函数
+ * [POS]: services 的内部 API 凭证边界，保护 Bot 与 Upload 调用而不向路由泄露存储细节
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 
 const DEFAULT_BOT_SCOPES = ["bot:read", "bot:user", "bot:export", "bot:po18"];

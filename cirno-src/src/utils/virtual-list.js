@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖项目数、定高行高、滚动位置、视口高度和 overscan 参数
+ * [OUTPUT]: 对外提供 calculateVirtualRange 纯函数，返回窗口起止、偏移与总高度
+ * [POS]: cirno-src/src/utils 的虚拟列表算法内核，被目录和书籍详情的渲染组件复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 export function calculateVirtualRange({ itemCount, itemHeight, scrollTop, viewportHeight, overscan = 6 }) {
   const count = Math.max(0, Math.trunc(Number(itemCount || 0)))
   const height = Math.max(1, Number(itemHeight || 1))

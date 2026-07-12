@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖产品允许在 Telegram 直接选择的 EPUB 样式白名单和 64 字节 callback_data 约束
+ * [OUTPUT]: 对外提供样式选项、白名单规范化和 EPUB 样式 inline keyboard 构造能力
+ * [POS]: bot 交互层的 EPUB 样式选择边界，刻意隐藏仅用于历史兼容的生成器样式
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const EPUB_EXPORT_STYLE_CHOICES = Object.freeze([
     { id: "style1", label: "样式 1 · 江湖纸卷" },
     { id: "style2", label: "老二次元" },

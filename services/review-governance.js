@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 PostgreSQL query/事务、书评举报与申诉身份上下文及治理阈值
+ * [OUTPUT]: 对外提供书评举报原因常量、治理服务工厂、领域错误和文本/整数规范化函数
+ * [POS]: services 的书评治理聚合根，在事务内维护举报计数、隐藏状态、申诉与审核决议一致性
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const REPORT_REASONS = new Set(["spam", "abuse", "spoiler", "illegal", "other"]);
 
 function governanceError(status, code, message, details) {

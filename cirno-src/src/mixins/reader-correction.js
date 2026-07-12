@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader 组合根提供的章节、段落、选区、HTTP 和消息能力
+ * [OUTPUT]: 默认导出纠错 computed/methods 状态机，管理等长校验、选择与提交
+ * [POS]: cirno-src/src/mixins 的正文纠错切片，由 Reader.vue 混入以控制组合根体积
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 export default {
   computed: {
     correctionOriginalLength() {

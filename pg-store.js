@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 pg Pool、db/migrations 与 db/rollbacks SQL 链、结构化日志和运行时数据库超时配置
+ * [OUTPUT]: 对外提供连接池查询、指标、迁移/回滚执行、checksum 校验及兼容字段/占位符工具
+ * [POS]: services 下方的 PostgreSQL 基础设施边界，统一连接和 Schema 演进，不承载 HTTP 或 Bot 协议
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const fs = require("fs/promises");
 const path = require("path");

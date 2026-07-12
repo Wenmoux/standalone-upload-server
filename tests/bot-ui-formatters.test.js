@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供Telegram 文案、按钮和转义格式的自动化回归断言
+ * [POS]: tests 的Telegram 文案、按钮和转义格式守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const test = require("node:test");
 const { createBotUi } = require("../bot/ui-formatters");
@@ -10,6 +16,7 @@ test("bot ui formatters build callbacks, buttons and export quotes", () => {
 
     const actions = ui.bookActions("book-1", "https://example.test/book");
     assert.equal(actions.inline_keyboard[0][0].callback_data, "info|book-1");
+    assert.equal(actions.inline_keyboard[1][3].callback_data, "reviewnew|book-1");
     assert.equal(actions.inline_keyboard.at(-1)[0].url, "https://example.test/book");
 
     const crowd = ui.crowdActions("book-1");
@@ -41,5 +48,7 @@ test("bot ui formatters build callbacks, buttons and export quotes", () => {
     assert.match(reviews, /作者：狄醉山/);
     assert.match(reviews, /书号：<code>667518<\/code> · po18/);
     assert.match(reviews, /<b>01｜@wenmoux<\/b>/);
-    assert.match(reviews, /<b>发布<\/b>：<code>\/review 667518 内容<\/code>/);
+    assert.match(reviews, /<b>发布<\/b>：点下方“写书评”/);
+    assert.equal(ui.bookReviewsActions("667518").inline_keyboard[0][0].callback_data, "reviewnew|667518");
+    assert.equal(ui.reviewPromptActions("667518").inline_keyboard[0][0].callback_data, "reviewcancel|667518");
 });

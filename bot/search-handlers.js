@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node 临时文件能力、word-cloud 渲染器、PgBotClient、查询解析器和 Telegram UI/发送适配器
+ * [OUTPUT]: 对外提供搜索、热门、词云、随机推荐、详情卡片及缺书需求提交处理器
+ * [POS]: bot 检索发现域的交互编排层，连接 server API 查询结果、分页会话与 Telegram 展示
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");

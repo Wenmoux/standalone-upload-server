@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 Reader session、平台选项、搜索建议、书架/历史与详情导航
+ * [OUTPUT]: 对外提供 Index 登录后首页和个人书架页面
+ * [POS]: Reader views 的用户入口，聚合个人内容但不复制服务端权限判定
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="index-wrapper" :style="readerThemeStyle">
     <div class="top-bar">

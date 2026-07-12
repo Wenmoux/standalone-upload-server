@@ -215,6 +215,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable/FormModal、Admin API、格式化工具与全局确认/提示服务
+ * [OUTPUT]: 提供书籍/章节查询编辑、清单校验导入、陈旧清理和章节批量维护页面
+ * [POS]: admin-ui/src/views 的书库管理主视图，编排 books/chapters 多组受审计写接口
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, reactive, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import FormModal from "../components/FormModal.vue";

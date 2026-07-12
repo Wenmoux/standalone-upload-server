@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express/crypto、health 服务、构建信息、运行指标采集器和 Metrics Token 提供器
+ * [OUTPUT]: 对外提供 live/ready/status/version/deep 路由、Prometheus 文本、摘要与 Metrics 鉴权中间件
+ * [POS]: routes 的可观测协议边界，区分公开健康与受 Token 保护的内部指标
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 const express = require("express");
 const fs = require("fs");

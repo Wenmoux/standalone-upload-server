@@ -104,6 +104,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、StatCard、Admin API 与统一数值/时间格式化工具
+ * [OUTPUT]: 提供公共榜单缓存状态、来源统计和显式刷新任务控制页面
+ * [POS]: admin-ui/src/views 的榜单运维视图，连接 rank 状态与持久任务入口
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, ref } from "vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";

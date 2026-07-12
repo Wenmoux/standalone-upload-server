@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖 control-panel 请求处理器、Setup 专用 host/port 与目标配置文件
+ * [OUTPUT]: 启动首次配置 HTTP 服务，保存配置后以退出语义交还 Docker restart policy
+ * [POS]: docker 的最小初始化进程，仅在尚无可用数据库配置时运行
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const http = require("http");
 const { handlePanelRequest, logSetupToken, setupToken } = require("./control-panel");
 

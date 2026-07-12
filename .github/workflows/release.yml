@@ -65,6 +65,7 @@ jobs:
 
             - name: Static quality gates
               run: |
+                  npm run check:docs
                   npm run check:utf8
                   npm run check:schema
                   npm run lint

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖四个 EPUB 样式插件与 services/epub-style-config 的合法配置和样式元数据
+ * [OUTPUT]: 对外提供样式解析、默认回退和可用 EPUB 样式列表
+ * [POS]: epub-styles 的唯一插件注册表，连接服务端配置语义与 epub-builder 的具体渲染实现
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crane = require("./crane");
 const styleOne = require("./style-one");
 const styleTwo = require("./style-two");

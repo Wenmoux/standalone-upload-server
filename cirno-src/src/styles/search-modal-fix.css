@@ -1,3 +1,9 @@
+/*
+ * [INPUT]: 依赖 Ant Design Vue portal 生成的全局 modal/select DOM 类名与移动端视口
+ * [OUTPUT]: 提供 Reader 搜索弹窗宽度、层级、滚动和下拉定位修正规则
+ * [POS]: cirno-src/src/styles 的全局兼容补丁，必须保持非 scoped 才能覆盖 portal 节点
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 /* Global modal fixes for Ant Design Vue portals. Do not scope this block. */
 .search-modal-wrap .ant-modal {
   max-width: calc(100vw - 32px) !important;

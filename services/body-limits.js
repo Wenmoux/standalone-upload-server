@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express json/raw 解析器、路由前缀与 PO18_BODY_LIMIT 系列环境配置
+ * [OUTPUT]: 对外提供分级请求体预算常量、配置解析器及按路由安装 body parser 的函数
+ * [POS]: services 的入口资源保护策略，在业务路由之前按风险分配请求体上限
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const DEFAULT_BODY_LIMITS = Object.freeze({
     auth: "32kb",
     lookup: "256kb",

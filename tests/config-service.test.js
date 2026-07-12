@@ -1,3 +1,15 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供配置解析、默认值和安全校验的自动化回归断言
+ * [POS]: tests 的配置解析、默认值和安全校验守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供配置解析、默认值和安全校验的自动化回归断言
+ * [POS]: tests 的配置解析、默认值和安全校验守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const test = require("node:test");
 const { createConfigService, exportPricingPayload, normalizePlatformKey, parsePlatformLabels } = require("../services/config");

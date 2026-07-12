@@ -105,6 +105,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、内置 EPUB CSS/章头资产、Admin API 及父级传入的样式配置模型
+ * [OUTPUT]: 提供 EPUB 样式选择、实时预览、模板参数编辑和自定义资产上传/删除界面
+ * [POS]: admin-ui/src/components 的导出样式工作台，由 TelegramView 组合进导出配置流程
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, ref, watch } from "vue";
 import style1TopImage from "../../../bot/epub-styles/assets/jianghu-top.png";
 import style3PlumShadow from "../../../bot/epub-styles/assets/style3-plum-shadow.svg";

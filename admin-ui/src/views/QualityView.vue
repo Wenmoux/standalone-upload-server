@@ -59,6 +59,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable/StatCard、数据质量 Admin API、格式化工具和全局确认服务
+ * [OUTPUT]: 提供重复/缺失/异常数据统计及章节顺序修复的预览与执行页面
+ * [POS]: admin-ui/src/views 的数据质量控制台，修复动作遵循服务端预览后执行协议
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { defineComponent, h, inject, onMounted, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import StatCard from "../components/StatCard.vue";

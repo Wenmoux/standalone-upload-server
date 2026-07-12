@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Fetch/URLSearchParams、server-pg 的 Bot/Reader/Upload HTTP 契约和环境中的服务地址与 Bot Token
+ * [OUTPUT]: 对外提供 PgBotClient 统一 HTTP 客户端，以及 Telegram 用户显示名和邀请参数解析工具
+ * [POS]: bot 到 server-pg 的唯一业务数据访问层，封装鉴权、超时、缓存、幂等键与分页聚合，禁止直连 PostgreSQL
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { URLSearchParams } = require("url");
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3100";

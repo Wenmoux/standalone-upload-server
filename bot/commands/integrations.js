@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 command-registry 与 PikPak、PO18 凭据登录、书架同步相关处理器和冷却包装器
+ * [OUTPUT]: 对外提供外部存储与 PO18 集成命令的集中注册函数
+ * [POS]: bot/commands 的集成装配器，保持第三方交互入口与具体网络流程解耦
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function registerIntegrationCommands(registry, handlers = {}) {
     const {
         withPikpakCooldown,

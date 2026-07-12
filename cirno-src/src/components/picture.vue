@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 sanitizeImageUrl 与图片段落数据
+ * [OUTPUT]: 对外提供 Picture 安全图片组件
+ * [POS]: Reader components 的图片协议过滤边界，为正文图片提供失败回退
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="pic-dialog">
     <a-modal v-model:open="visible" title="" :footer="null" :closable="false">

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖来源目录审计结果、pg-store、章节维护确认参数与文件系统
+ * [OUTPUT]: 按来源目录映射生成章节重排预览，并在显式确认后事务应用
+ * [POS]: scripts 的来源事实驱动修复器，连接只读审计证据与统一章节排序写入
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs");
 const path = require("path");
 const { pool, query } = require("../pg-store");

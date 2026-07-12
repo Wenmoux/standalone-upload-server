@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Prettier 与 Reader Vue/JS/CSS 文件类型
+ * [OUTPUT]: 对外提供 Reader 子项目统一格式化配置
+ * [POS]: cirno-src 的源码格式约定，避免与根构建行为耦合
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 module.exports = {
   // tab缩进大小,默认为2
   tabWidth: 2,

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 docker/backup-pg 的本地备份清单、backups 的演练任务入口与调度环境配置
+ * [OUTPUT]: 对外提供周期恢复演练调度器和布尔开关解析函数
+ * [POS]: services 的恢复演练调度边界，选择现有归档并把执行与可观测状态交给持久任务系统
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { listBackups } = require("../docker/backup-pg");
 const { drillBackupJob } = require("./backups");
 

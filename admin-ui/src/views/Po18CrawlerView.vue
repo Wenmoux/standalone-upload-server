@@ -274,6 +274,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、StatCard、PO18 Crawler Admin API、格式化工具与全局确认/提示服务
+ * [OUTPUT]: 提供遍历来源、Cookie/计划配置、实时日志和运行/暂停/恢复/停止控制台
+ * [POS]: admin-ui/src/views 的外部抓取任务编排视图，持久状态与并发规则由服务端负责
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";

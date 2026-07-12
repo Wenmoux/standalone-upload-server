@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 services/epub-style2-template 提供的可配置 CSS、页面模板和图片槽位定义
+ * [OUTPUT]: 对外提供 style2 老二次元插件元数据、资源声明及标题页到章页的完整渲染接口
+ * [POS]: epub-styles 的插画型适配器，复用服务端预览与实际 EPUB 共享模板以保持两相一致
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const {
     STYLE2_ASSET_DEFINITIONS,
     buildStyle2Css,

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖候选应用镜像、临时 PostgreSQL、Docker 网络/CLI 与生产安全配置
+ * [OUTPUT]: 启动隔离栈并验证 Setup、迁移、server/Reader/Bot 深健康、版本与清理语义
+ * [POS]: scripts 的镜像级验收入口，覆盖单元测试无法证明的真实容器运行边界
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const { spawnSync } = require("child_process");
 
 const suffix = `${Date.now()}-${process.pid}`;

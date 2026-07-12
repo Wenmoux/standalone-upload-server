@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供Admin 领域服务组合与边界回归的自动化回归断言
+ * [POS]: tests 的Admin 领域服务组合与边界回归守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const http = require("http");
 const test = require("node:test");
@@ -8,6 +14,7 @@ const { createAdminSystemRoutes } = require("../routes/admin-system");
 const { createAdminBackupRoutes } = require("../routes/admin-backups");
 const { createAdminConfigRoutes } = require("../routes/admin-config");
 const { createAdminCrawlerRoutes } = require("../routes/admin-crawler");
+const { hasTelegramSystemPushMarker } = require("../telegram-push-contract");
 
 async function withApp(router, fn) {
     const app = express();
@@ -321,6 +328,7 @@ test("admin config routes read and update telegram, platform and export settings
     };
     const writes = [];
     const style2AssetCalls = [];
+    const telegramPosts = [];
     const router = createAdminConfigRoutes({
         requireAdmin: adminOnly,
         configGet: async (key) => stored[key] || "",
@@ -377,7 +385,10 @@ test("admin config routes read and update telegram, platform and export settings
             }
         },
         sendDailyReport: async () => ({ sent: 1 }),
-        postJson: async () => "{}"
+        postJson: async (url, body) => {
+            telegramPosts.push({ url, body });
+            return "{}";
+        }
     });
 
     await withApp(router, async (base) => {
@@ -392,6 +403,12 @@ test("admin config routes read and update telegram, platform and export settings
             body: JSON.stringify({ enabled: true, pushTypes: ["daily"], botToken: "next", chatId: "chat-2", dailyReportTime: "21:30" })
         });
         assert.equal(updateTelegram.status, 200);
+
+        const testTelegram = await fetch(`${base}/admin-api/config/telegram/test`, {
+            method: "POST",
+            headers: { "X-Test-Admin": "1" }
+        });
+        assert.equal(testTelegram.status, 200);
 
         const platform = await fetch(`${base}/admin-api/config/platforms`, {
             method: "PUT",
@@ -452,6 +469,8 @@ test("admin config routes read and update telegram, platform and export settings
     assert.ok(writes.some((item) => item.key === "platform_labels" && item.value === '{"po18":"PO18"}'));
     assert.ok(writes.some((item) => item.key === "bot_export_unlock_cost" && item.value === "11"));
     assert.ok(writes.some((item) => item.key === "bot_epub_style_config" && item.value === '{"styleId":"crane"}'));
+    assert.equal(telegramPosts[0].body.chat_id, "chat-2");
+    assert.equal(hasTelegramSystemPushMarker(telegramPosts[0].body.text), true);
     assert.deepEqual(style2AssetCalls, [
         { action: "send", slot: "title-background" },
         { action: "upload", slot: "title-background" },

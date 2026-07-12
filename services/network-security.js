@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node DNS/net、待访问 HTTP URL 与可选的外部主机白名单规则
+ * [OUTPUT]: 对外提供安全目标断言、DNS/地址阻断、主机规则匹配和主机名规范化函数
+ * [POS]: services 的出站 SSRF 防线，被 Reader TTS 与外部请求适配器复用以阻断内网和保留地址
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const dns = require("dns");
 const net = require("net");
 

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 PgBotClient 的 system_jobs 查询/取消接口、用户注册守卫和 Telegram 文本发送能力
+ * [OUTPUT]: 对外提供任务列表、任务详情和所有权受控的取消命令处理器
+ * [POS]: bot 任务域的用户查询边界，将持久任务状态转换为可读 Telegram 视图并执行所有权校验
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createTaskStatusHandlers(options = {}) {
     const { client, ensureRegistered, sendMessage, escapeHtml } = options;
 

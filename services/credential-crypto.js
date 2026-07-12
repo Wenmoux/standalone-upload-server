@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node crypto、版本化主密钥环和待存储的 PO18 Cookie/账户凭证字段
+ * [OUTPUT]: 对外提供凭证加解密器、密钥环解析与存储凭证字段加密函数及密文标识常量
+ * [POS]: services 的外部站点凭证边界，为数据库字段提供可轮换的版本化 AES-GCM 保护
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 
 const PREFIX = "po18enc:v1";

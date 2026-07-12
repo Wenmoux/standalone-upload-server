@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * [INPUT]: 依赖本地书库扫描器、Upload API 参数、HTTP 服务与嵌入式前端资源
+ * [OUTPUT]: 提供浏览器选择/扫描/上传本地小说目录的独立工具 UI、参数解析和启动入口
+ * [POS]: scripts 的人机上传适配器，复用 upload-local-library 能力而不进入生产 Admin 组合根
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
 const express = require("express");
 const fs = require("fs");
 const path = require("path");

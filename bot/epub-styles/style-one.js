@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node path、江湖纸卷内置头图和生成器提供的转义、段落及资源可用性上下文
+ * [OUTPUT]: 对外提供 style1 江湖纸卷的 CSS、资源声明和制作说明、简介、分卷、章页渲染器
+ * [POS]: epub-styles 的古典纸卷视觉插件，只描述页面语义与装饰，不负责 EPUB 容器装配
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const path = require("path");
 
 const TOP_IMAGE_NAME = "Images/style-one-top.png";
@@ -7,6 +13,12 @@ module.exports = {
     name: "样式一 · 江湖纸卷",
     description: "暖纸底、红黑章头、圆形人物头图、竖排分卷和独立制作说明。",
     css: `@charset "UTF-8";
+/*
+ * [INPUT]: 依赖江湖纸卷 EPUB XHTML 语义类名与兼容 Reader 的内嵌 CSS 能力
+ * [OUTPUT]: 提供 Style1 标题页、制作说明、简介、分卷与正文的统一排版规则
+ * [POS]: ui 的 Style1 规范 CSS，Bot 内嵌镜像与 Admin 预览必须通过测试保持字节一致
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 body{margin:0;padding:0;text-align:justify;font-family:"Songti SC","Noto Serif CJK SC","Source Han Serif SC","STSong","SimSun",serif;background:#f3e6d4;color:#17120e;}
 p{line-height:1.4em;text-align:justify;text-justify:inter-ideograph;text-indent:2em;duokan-text-indent:2em;margin:.7em 0;}
 div{margin:0;padding:0;line-height:1.3;text-align:justify;}

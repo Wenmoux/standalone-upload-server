@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 `/reader-auth/me` Cookie 会话、浏览器时钟与离线进度刷新能力
+ * [OUTPUT]: 对外提供 Reader 会话缓存的标记、更新、清理、读取和有效性探测函数
+ * [POS]: cirno-src/src/utils 的客户端会话事实层，被路由、HTTP 适配器和页面共同消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { flushOfflineProgress } from './reader-offline'
 
 export const READER_SESSION_CACHE_MS = 30000

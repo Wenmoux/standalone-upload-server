@@ -77,6 +77,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue/Router、登录与全局交互组件、Admin API 和 Reader 地址工具
+ * [OUTPUT]: 提供认证门禁、导航外壳、权限上下文、全局提示/确认服务与备份快捷动作
+ * [POS]: admin-ui/src 的应用组合根，协调会话和跨页面能力，领域视图在其下按路由装载
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, provide, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ToastHost from "./components/ToastHost.vue";

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node crypto、注入的书籍章节查询/事务能力与外部 Manifest 数据
+ * [OUTPUT]: 对外提供 Book Manifest 规范化、稳定序列化、SHA-256 签名、校验、导出和幂等导入服务
+ * [POS]: services 的书库可移植协议边界，使跨实例迁移拥有稳定格式、完整性证明和事务语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const crypto = require("crypto");
 
 const MANIFEST_FORMAT = "po18-reader-book";

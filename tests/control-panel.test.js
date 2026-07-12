@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、临时文件系统、docker/control-panel 公开契约与统一限流器
+ * [OUTPUT]: 提供 Setup 配置安全、导入导出、鉴权、状态与版本载荷的回归测试
+ * [POS]: tests 的控制面契约测试，防止配置默认值或脱敏规则在部署链路中退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const fs = require("fs");
 const os = require("os");
@@ -187,6 +193,7 @@ test("setup import parses exported env and maps BOT_TOKEN", async () => {
         assert.equal(importedCount, 8);
         assert.equal(values.PO18_SETUP_TOKEN, "next-token-123456");
         assert.equal(values.TELEGRAM_BOT_TOKEN, "telegram-token");
+        assert.ok(values.PO18_METRICS_TOKEN.length >= 16);
         assert.equal(values.PO18_API_BASE, "http://127.0.0.1:3100");
     });
 });
@@ -241,6 +248,7 @@ test("setup import endpoint writes config and sets next setup token cookie", asy
             const saved = fs.readFileSync(file, "utf8");
             assert.match(saved, /PO18_SETUP_TOKEN="new-token-123456"/);
             assert.match(saved, /PO18_PG_URL="postgres:\/\/user:pass@db:5432\/po18"/);
+            assert.match(saved, /PO18_METRICS_TOKEN="[^"]{16,}"/);
         });
     } finally {
         if (previous === undefined) delete process.env.PO18_SETUP_TOKEN;

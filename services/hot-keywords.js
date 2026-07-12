@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖注入的 admin_config 读写能力和搜索产生的关键词
+ * [OUTPUT]: 对外提供热搜关键词规范化、读取、累积和替换的配置服务工厂
+ * [POS]: services 的热搜状态边界，为 Reader、Bot 与词云提供共享且可管理的关键词事实
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function normalizeHotKeyword(value) {
     return String(value || "").trim().replace(/\s+/g, " ").slice(0, 80);
 }

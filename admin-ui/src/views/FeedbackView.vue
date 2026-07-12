@@ -160,6 +160,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、DataTable/FormModal、Admin/Reader API、格式化工具和当前管理员权限
+ * [OUTPUT]: 提供反馈、热词、求书、众筹与书评举报/申诉的聚合查询和治理动作
+ * [POS]: admin-ui/src/views 的用户反馈治理中心，按权限调用服务端审核状态机
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import FormModal from "../components/FormModal.vue";

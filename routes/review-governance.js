@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Reader/Bot/Admin 三类鉴权与 review-governance 领域服务
+ * [OUTPUT]: 对外提供 书评举报、申诉、个人申诉列表和 Admin 审核决议路由
+ * [POS]: routes 的书评治理协议边界，在同一状态机上隔离读者、Bot 和审核员权限
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 
 function createReviewGovernanceRoutes(options = {}) {

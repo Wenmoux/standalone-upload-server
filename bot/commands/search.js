@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 command-registry 与搜索、热门、词云、随机推荐、详情处理器及其冷却包装器
+ * [OUTPUT]: 对外提供检索发现域 Telegram 命令的集中注册函数
+ * [POS]: bot/commands 的搜索命令装配器，统一声明用户命令、别名与领域处理入口
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function registerSearchCommands(registry, handlers = {}) {
     const {
         withSearchCooldown,

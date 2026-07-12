@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖浏览器 Intl、URL/location 与后台返回的数值、时间、平台数据
+ * [OUTPUT]: 对外提供数值/容量/时间/币种/时长/标签格式化和 Reader 地址推导函数
+ * [POS]: admin-ui/src/utils 的无状态展示适配层，被仪表盘与领域视图共同复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 export function number(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num.toLocaleString("zh-CN") : "0";

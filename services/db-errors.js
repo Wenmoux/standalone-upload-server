@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 PostgreSQL 驱动、网络与启动阶段抛出的错误对象及错误码链
+ * [OUTPUT]: 对外提供数据库不可用分类器和面向用户的稳定提示生成函数
+ * [POS]: services 的数据库故障翻译边界，隔离底层驱动差异并统一启动与 API 错误语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const NETWORK_ERROR_CODES = new Set([
     "ETIMEDOUT",
     "ECONNRESET",

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖章节排序异常、pg-store、确认短语与可选计划文件
+ * [OUTPUT]: 提供通用重复/错序诊断、重排计划和受控事务修复入口
+ * [POS]: scripts 的章节顺序维护编排器，为专用来源/标题策略提供共同安全语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs");
 const path = require("path");
 const { pool, query } = require("../pg-store");

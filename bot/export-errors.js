@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 server API、Telegram 发送和网络异常暴露的状态码、错误码与消息特征
+ * [OUTPUT]: 对外提供稳定导出错误码、错误构造、分类、用户提示和失败摘要格式化能力
+ * [POS]: bot 导出域的错误语义防腐层，使任务运行时不依赖底层异常文案的偶然形态
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const EXPORT_ERROR_CODES = {
     MISSING_BOOK_ID: "EXPORT_MISSING_BOOK_ID",
     NO_CONTENT: "EXPORT_NO_CONTENT",

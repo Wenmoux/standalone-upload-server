@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 sanitize-html 的 HTML/图片安全边界与可注入的繁简转换器
+ * [OUTPUT]: 对外提供图片段落识别、话本 HTML 解析、文本规范化和段落转换函数
+ * [POS]: cirno-src/src/utils 的正文摄取层，把异构缓存内容归一化为安全渲染模型
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { sanitizeHtml, sanitizeImageUrl } from './sanitize-html'
 
 export function isPictureParagraph(text) {

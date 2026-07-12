@@ -1,4 +1,10 @@
-﻿const fs = require("fs/promises");
+/**
+ * [INPUT]: 依赖 bot 内客户端、命令/领域处理器、自动推送取消置顶策略、任务运行时、Telegram polling/health 与环境配置
+ * [OUTPUT]: 提供 Telegram Bot 进程组合入口，启动命令同步、系统推送取消置顶、任务恢复、长轮询和健康服务
+ * [POS]: bot 的唯一组合根，负责依赖注入和进程生命周期；可拆领域逻辑不得继续沉积于此
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+const fs = require("fs/promises");
 const { createWriteStream } = require("fs");
 const { pipeline } = require("stream/promises");
 const os = require("os");
@@ -25,8 +31,9 @@ const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const { EPUB_EXPORT_STYLE_CHOICES, epubStyleSelectionMarkup, normalizeEpubStyleChoice } = require("./epub-style-picker");
 const { createTaskSchedulers } = require("./task-schedulers");
-const { createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
+const { createReviewDraftStore, createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
 const { createTelegramPollingRuntime } = require("./polling-runtime");
+const { createAutomaticPushUnpinHandler } = require("./automatic-push-unpin");
 const { createPo18AccountHandlers } = require("./po18-account-handlers");
 const { createShareHandlers } = require("./share-handlers");
 const { createTaskStatusHandlers } = require("./task-status-handlers");
@@ -87,6 +94,7 @@ const telegramClient = createTelegramClient({
     requestTimeoutMs: TELEGRAM_REQUEST_TIMEOUT
 });
 const { telegram, sendMessage, editMessage, sendDocument, sendPhoto, answerCallback } = telegramClient;
+const maybeUnpinAutomaticPush = createAutomaticPushUnpinHandler({ telegram, logger: console });
 const rateLimiter = createRateLimiter({ maxKeys: Number(process.env.TELEGRAM_RATE_LIMIT_MAX_KEYS || 5000) });
 const { parseSearchQuery, parseBookId } = createSearchQueryParser({ searchLimit: SEARCH_LIMIT });
 const {
@@ -132,6 +140,7 @@ const {
     detailCardText,
     crowdCardText,
     reviewChannelText,
+    reviewPromptActions,
     reviewVoteActions,
     currencyLabel,
     transactionLine,
@@ -186,6 +195,7 @@ if (!TELEGRAM_TOKEN) {
 
 let botUser = null;
 const searchCache = createSearchCache({ maxSize: Number(process.env.TELEGRAM_SEARCH_CACHE_MAX || 200) });
+const reviewDrafts = createReviewDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 1000 });
 const privateExportStarts = new Map();
 let commandRegistry = null;
 let persistentJobsRecovered = false;
@@ -476,10 +486,14 @@ const {
     handleFeedback,
     handleMyFav,
     handleReview,
+    handleReviewCancel,
+    handleReviewDraft,
+    handleReviewStart,
     handleReviews,
     handleReviewVote,
     handleReportReview,
-    handleAppealReview
+    handleAppealReview,
+    reviewDraftContext
 } = createSocialHandlers({
     client,
     crowdVoteCost: CROWD_VOTE_COST,
@@ -497,6 +511,8 @@ const {
     bookReviewsText,
     bookReviewsActions,
     reviewChannelText,
+    reviewDrafts,
+    reviewPromptActions,
     reviewVoteActions
 });
 
@@ -853,6 +869,13 @@ async function sendExport(chat, from, bookId, format, _signal, exportOptions = {
 async function handleMessage(message) {
     const text = message.text || message.caption || "";
     if (!text) return;
+    const reviewDraft = reviewDraftContext(message, text);
+    if (reviewDraft) {
+        const action = /^(?:取消|\/cancel(?:@\w+)?)$/i.test(text.trim())
+            ? "book_review_draft_cancel"
+            : "book_review_publish_guided";
+        return withBotAudit(message, "/review", action, { book_id: reviewDraft.bookId }, () => handleReviewDraft(message, text));
+    }
     if (isGroup(message.chat) && !text.startsWith("/") && !mentionsMe(text)) return;
     const cmd = commandOf(text);
     const args = argsOf(text);
@@ -896,7 +919,7 @@ async function handleCallback(query) {
     if (!message) return answerCallback(query.id);
     const callbackMessage = { chat: message.chat, from: query.from };
     const [action, a, ...rest] = String(query.data || "").split("|");
-    if (!["like", "dislike", "cvote", "sreq", "rvup", "rvdn"].includes(action)) await answerCallback(query.id);
+    if (!["like", "dislike", "cvote", "sreq", "rvup", "rvdn", "reviewcancel"].includes(action)) await answerCallback(query.id);
     if (action === "noop") return;
     if (action === "info") return withBotAudit(callbackMessage, "/info", "info_callback", { book_id: a }, () => withCooldown(callbackMessage, "info", BOT_INFO_COOLDOWN_MS, "详情", () => handleInfo(callbackMessage, a, { chatId: message.chat.id, messageId: message.message_id })));
     if (action === "fav") {
@@ -944,6 +967,15 @@ async function handleCallback(query) {
     if (action === "qhb") return withBotAudit(callbackMessage, "/qhb", "red_packet_claim_callback", { packet_id: a }, () => handleClaimRedPacket({ chat: message.chat, from: query.from }, a));
     if (action === "crowd") return withBotAudit(callbackMessage, "/crowd", "crowd_callback", { book_id: a }, () => handleCrowd({ chat: message.chat, from: query.from }, a, { chatId: message.chat.id, messageId: message.message_id }));
     if (action === "reviews") return withBotAudit(callbackMessage, "/reviews", "book_reviews_callback", { book_id: a }, () => handleReviews({ chat: message.chat, from: query.from }, a, { chatId: message.chat.id, messageId: message.message_id }));
+    if (action === "reviewnew") return withBotAudit(callbackMessage, "/review", "book_review_prompt", { book_id: a }, () => handleReviewStart({ chat: message.chat, from: query.from }, a));
+    if (action === "reviewcancel") {
+        const tip = await withBotAudit(callbackMessage, "/review", "book_review_draft_cancel", { book_id: a }, () => handleReviewCancel(
+            { chat: message.chat, from: query.from },
+            a,
+            { chatId: message.chat.id, messageId: message.message_id }
+        ));
+        return answerCallback(query.id, tip);
+    }
     if (action === "cvote") {
         try {
             const tip = await withBotAudit(callbackMessage, "/crowd", "crowd_vote", { book_id: a }, () => handleCrowdVote(
@@ -986,7 +1018,10 @@ async function handleCallback(query) {
 }
 
 async function handleUpdate(update) {
-    if (update.message) return handleMessage(update.message);
+    if (update.message) {
+        if (await maybeUnpinAutomaticPush(update.message)) return;
+        return handleMessage(update.message);
+    }
     if (update.callback_query) return handleCallback(update.callback_query);
 }
 

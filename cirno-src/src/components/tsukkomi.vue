@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 PerfectScrollbar、章节间贴数据与发布 API
+ * [OUTPUT]: 对外提供 Tsukkomi 间贴浏览/发布弹窗组件
+ * [POS]: Reader components 的章节社区交互边界，封装滚动和请求状态
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="tsukkomi">
     <a-modal

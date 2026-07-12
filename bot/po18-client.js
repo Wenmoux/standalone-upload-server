@@ -1,4 +1,10 @@
-﻿function createPo18Client(deps = {}) {
+/**
+ * [INPUT]: 依赖 Fetch、node-html-parser、PO18 网页与 Cookie 语义及调用方注入的文本清洗能力
+ * [OUTPUT]: 对外提供 PO18 登录字段、Cookie、已购章节和书架 HTML 的请求与解析客户端
+ * [POS]: bot 外部集成的 PO18 网页防腐层，将不稳定页面结构转换为账户和导出流程使用的稳定对象
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+function createPo18Client(deps = {}) {
     const cleanText = deps.cleanText || ((value = "") => String(value || "").replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim());
     const { parse } = require("node-html-parser");
     const fetchImpl = deps.fetchImpl === undefined ? globalThis.fetch : deps.fetchImpl;

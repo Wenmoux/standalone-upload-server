@@ -52,6 +52,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、StatCard、Admin 统计 API 与容量/数值/百分比/时间格式化工具
+ * [OUTPUT]: 提供书库、缓存、用户、反馈和 Bot 关键指标的只读总览
+ * [POS]: admin-ui/src/views 的登陆后默认视图，只聚合服务端统计，不持有领域写操作
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { computed, inject, onMounted, ref } from "vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";

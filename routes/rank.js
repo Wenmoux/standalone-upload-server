@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、rank 服务、Admin 鉴权与可选 system_jobs 追踪器
+ * [OUTPUT]: 对外提供 公共榜单、榜单状态和 Admin 显式刷新路由
+ * [POS]: routes 的排行协议边界，把缓存读取与受控刷新映射为不同权限的 HTTP 接口
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 
 function createRankRoutes(options = {}) {

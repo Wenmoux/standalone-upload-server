@@ -1,13 +1,21 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供Bot 运行模块装配与依赖边界的自动化回归断言
+ * [POS]: tests 的Bot 运行模块装配与依赖边界守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const fs = require("fs/promises");
 const path = require("path");
 const test = require("node:test");
-const { createSearchCache, helpLinesFromCommands } = require("../bot/bot-session");
+const { createReviewDraftStore, createSearchCache, helpLinesFromCommands } = require("../bot/bot-session");
 const { meText, registerText, signSuccessText, startHelpText, walletText } = require("../bot/account-formatters");
 const { botHealthPayload } = require("../bot/health-server");
 const { createTelegramPollingRuntime } = require("../bot/polling-runtime");
+const { automaticPushUnpinTarget, createAutomaticPushUnpinHandler } = require("../bot/automatic-push-unpin");
 const { createSearchQueryParser, parseBookId } = require("../bot/search-query");
 const { createTaskSchedulers } = require("../bot/task-schedulers");
+const { markTelegramSystemPush } = require("../telegram-push-contract");
 
 test("bot entrypoint initializes PO18 account handlers before task schedulers", async () => {
     const source = await fs.readFile(path.join(__dirname, "..", "bot", "telegram-bot.js"), "utf8");
@@ -92,6 +100,34 @@ test("bot search cache evicts old keys and help lines follow command groups", ()
     ]);
 });
 
+test("review draft store isolates users, validates Unicode length and expires bounded state", () => {
+    let currentTime = 1000;
+    const drafts = createReviewDraftStore({
+        ttlMs: 1000,
+        maxSize: 2,
+        now: () => currentTime
+    });
+    drafts.begin({
+        chatId: "group-1",
+        userId: "user-1",
+        bookId: "667518",
+        promptMessageId: 42,
+        rules: { min_length: 3, max_length: 5 }
+    });
+
+    assert.equal(drafts.get({ chatId: "group-1", userId: "user-2" }), null);
+    assert.equal(drafts.get({ chatId: "group-1", userId: "user-1" }).promptMessageId, "42");
+    assert.equal(drafts.validate({ chatId: "group-1", userId: "user-1", content: "好看" }).status, "too_short");
+    assert.equal(drafts.validate({ chatId: "group-1", userId: "user-1", content: "真好看" }).status, "ready");
+    assert.equal(drafts.cancel({ chatId: "group-1", userId: "user-1", bookId: "other" }), false);
+    assert.equal(drafts.complete({ chatId: "group-1", userId: "user-1", bookId: "667518" }), true);
+    assert.equal(drafts.size(), 0);
+
+    drafts.begin({ chatId: "group-1", userId: "user-1", bookId: "667518" });
+    currentTime += 1001;
+    assert.equal(drafts.get({ chatId: "group-1", userId: "user-1" }), null);
+});
+
 test("bot account formatters keep wallet and status copy stable", () => {
     const escapeHtml = (value) => String(value).replace(/</g, "&lt;");
     const scholarText = () => "Lv2";
@@ -161,6 +197,60 @@ test("telegram polling runtime advances offset and reports handler errors", asyn
     ]);
     assert.ok(runtime.state().lastPollOkAt > 0);
     assert.equal(runtime.state().lastPollError, "");
+});
+
+test("automatic push unpin only targets marked automatic forwards", async () => {
+    const calls = [];
+    const warnings = [];
+    const maybeUnpin = createAutomaticPushUnpinHandler({
+        telegram: async (method, payload) => calls.push({ method, payload }),
+        logger: { warn: (message) => warnings.push(message) }
+    });
+    const manualGroupPin = {
+        chat: { id: -1001 },
+        pinned_message: { message_id: 10, text: markTelegramSystemPush("人工消息") }
+    };
+    const humanChannelPost = {
+        chat: { id: -1001 },
+        pinned_message: { message_id: 11, text: "人工频道帖", is_automatic_forward: true }
+    };
+    const systemPush = {
+        chat: { id: -1001 },
+        pinned_message: { message_id: 12, caption: markTelegramSystemPush("系统推送"), is_automatic_forward: true }
+    };
+
+    assert.equal(automaticPushUnpinTarget(manualGroupPin), null);
+    assert.equal(automaticPushUnpinTarget(humanChannelPost), null);
+    assert.deepEqual(automaticPushUnpinTarget(systemPush), { chatId: -1001, messageId: 12 });
+    assert.equal(await maybeUnpin(manualGroupPin), false);
+    assert.equal(await maybeUnpin(humanChannelPost), false);
+    assert.equal(await maybeUnpin(systemPush), true);
+    assert.deepEqual(calls, [{
+        method: "unpinChatMessage",
+        payload: { chat_id: -1001, message_id: 12 }
+    }]);
+    assert.deepEqual(warnings, []);
+});
+
+test("automatic push unpin failures stay internal", async () => {
+    const warnings = [];
+    const maybeUnpin = createAutomaticPushUnpinHandler({
+        telegram: async () => {
+            throw new Error("missing can_pin_messages");
+        },
+        logger: { warn: (message) => warnings.push(message) }
+    });
+    const handled = await maybeUnpin({
+        chat: { id: -1002 },
+        pinned_message: {
+            message_id: 20,
+            text: markTelegramSystemPush("系统推送"),
+            is_automatic_forward: true
+        }
+    });
+
+    assert.equal(handled, true);
+    assert.match(warnings[0], /missing can_pin_messages/);
 });
 
 test("bot task schedulers enqueue export jobs with system job metadata", () => {

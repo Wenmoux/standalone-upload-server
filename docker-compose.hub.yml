@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-po18}
       POSTGRES_USER: ${POSTGRES_USER:-po18}
@@ -15,6 +16,7 @@ services:
 
   server-pg:
     image: wenmoux/reader:v2.0
+    restart: unless-stopped
     command: ["node", "server-pg.js"]
     environment:
       NODE_ENV: production
@@ -25,7 +27,16 @@ services:
       PO18_UPLOAD_ADMIN_USER: ${PO18_UPLOAD_ADMIN_USER:-}
       PO18_UPLOAD_ADMIN_PASSWORD: ${PO18_UPLOAD_ADMIN_PASSWORD:-}
       PO18_UPLOAD_SESSION_SECRET: ${PO18_UPLOAD_SESSION_SECRET:-}
+      PO18_UPLOAD_API_TOKEN: ${PO18_UPLOAD_API_TOKEN:-}
       PO18_BOT_API_TOKEN: ${PO18_BOT_API_TOKEN:-}
+      PO18_METRICS_TOKEN: ${PO18_METRICS_TOKEN:-}
+      PO18_PG_MIGRATION_TIMEOUT_MS: ${PO18_PG_MIGRATION_TIMEOUT_MS:-600000}
+      PO18_CREDENTIAL_ENCRYPTION_KEY: ${PO18_CREDENTIAL_ENCRYPTION_KEY:-}
+      PO18_CREDENTIAL_ENCRYPTION_KEYS: ${PO18_CREDENTIAL_ENCRYPTION_KEYS:-}
+      PO18_CORS_ORIGINS: ${PO18_CORS_ORIGINS:-}
+      PO18_TRUST_PROXY: ${PO18_TRUST_PROXY:-0}
+      READER_HEALTH_URL: http://reader:3200/health/ready
+      BOT_HEALTH_URL: http://bot:3300/health/ready
       PO18_TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     volumes:
@@ -44,6 +55,7 @@ services:
 
   reader:
     image: wenmoux/reader:v2.0
+    restart: unless-stopped
     command: ["node", "cirno-src/reader-server.js"]
     environment:
       NODE_ENV: production
@@ -67,12 +79,13 @@ services:
 
   bot:
     image: wenmoux/reader:v2.0
+    restart: unless-stopped
     command: ["node", "bot/telegram-bot.js"]
     environment:
       NODE_ENV: production
       PO18_CONFIG_FILE: /config/app.env
       PO18_SERVER_URL: http://server-pg:3100
-      PO18_SHARE_API_URL: ${PO18_SHARE_API_URL:-}
+      PO18_SHARE_API_URL: ${PO18_SHARE_API_URL:-http://server-pg:3100}
       PO18_BOT_API_TOKEN: ${PO18_BOT_API_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

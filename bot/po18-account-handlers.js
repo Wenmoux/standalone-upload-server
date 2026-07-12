@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 PgBotClient、PO18 HTTP/HTML 解析能力、Telegram 消息与图片接口及用户注册守卫
+ * [OUTPUT]: 对外提供 PO18 凭据保存、验证码登录、会话状态、登出和已购书架交互处理器
+ * [POS]: bot 的 PO18 账户交互层，编排短期验证码会话并把持久凭据交由服务端加密 API 管理
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 function createPo18AccountHandlers(options = {}) {
     const {
         client,

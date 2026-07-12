@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Admin 权限、PO18 Crawler 服务及配置/控制参数校验
+ * [OUTPUT]: 对外提供 Crawler 配置、状态、启动、暂停、恢复、停止和 Cookie 测试路由
+ * [POS]: routes 的来源抓取控制面，只暴露状态机命令，抓取/持久化逻辑留在 po18-crawler 服务
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 
 function actor(req) {

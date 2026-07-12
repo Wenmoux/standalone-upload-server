@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Reader 组合根提供的章节目录、当前章节和路由跳转能力
+ * [OUTPUT]: 默认导出分卷识别、可读章节计算以及上一章/下一章导航状态机
+ * [POS]: cirno-src/src/mixins 的章节导航切片，被 Reader.vue 唯一组合消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 export default {
   computed: {
     readableChapters() {

@@ -1,4 +1,10 @@
-﻿function createMessageRuntime(deps = {}) {
+/**
+ * [INPUT]: 依赖 server API 客户端、限流器、Telegram 发送/编辑函数、审计接口和错误分类器
+ * [OUTPUT]: 对外提供命令与参数解析、群聊识别、冷却包装、审计包装及长结果降级投递能力
+ * [POS]: bot update 到领域处理器之间的消息运行时，集中执行横切交互策略而不实现领域命令
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+function createMessageRuntime(deps = {}) {
     const {
         client,
         rateLimiter,

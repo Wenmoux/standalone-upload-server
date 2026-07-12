@@ -1,4 +1,10 @@
-﻿function createRemoteStorage(deps = {}) {
+/**
+ * [INPUT]: 依赖 Fetch、PikPak WebDAV 环境配置和 WebDAV Basic Auth/PROPFIND 响应语义
+ * [OUTPUT]: 对外提供 PikPak 配置解析、WebDAV 请求、目录枚举和文件名搜索能力
+ * [POS]: bot 外部存储防腐层，为共享流程隔离 WebDAV 认证、路径编码和目录遍历细节
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+function createRemoteStorage(deps = {}) {
     const fetchImpl = deps.fetchImpl === undefined ? globalThis.fetch : deps.fetchImpl;
 
 function pikpakConfig() {

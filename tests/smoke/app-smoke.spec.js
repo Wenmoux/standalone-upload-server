@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Playwright、已启动应用与浏览器页面
+ * [OUTPUT]: 提供真实浏览器中的健康、Admin 与 Reader 页面烟雾契约的自动化回归断言
+ * [POS]: tests 的真实浏览器中的健康、Admin 与 Reader 页面烟雾契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const { expect, test } = require("@playwright/test");
 
 const BASE_URL = String(process.env.PO18_SMOKE_BASE_URL || "http://127.0.0.1:3100").replace(/\/+$/, "");

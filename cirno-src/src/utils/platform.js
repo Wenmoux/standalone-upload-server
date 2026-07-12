@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖内置平台回退表、浏览器 fetch 与 `/reader-api/platforms` 响应
+ * [OUTPUT]: 对外提供 platformLabel、平台选项快照和可复用的异步配置加载函数
+ * [POS]: cirno-src/src/utils 的平台显示名适配层，为搜索、书库和详情保持一致语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const DEFAULT_PLATFORM_LABELS = {
   po18: 'PO18',
   popo: 'POPO',

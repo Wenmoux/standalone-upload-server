@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Node crypto 及注入的 query、会话/凭证加密能力，处理 Reader/Admin/Telegram 身份与权限数据
+ * [OUTPUT]: 对外提供认证服务工厂、Admin 角色判断、CDK 时长、日期键和 CSV 辅助函数
+ * [POS]: services 的统一认证授权内核，被 Reader、Admin 与内部 API 路由共享以维持一致权限语义
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const defaultCrypto = require("crypto");
 
 function cdkDuration(type) {

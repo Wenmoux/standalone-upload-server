@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖本地章节数据、来源站目录响应、HTTP/Cookie 参数与文件系统
+ * [OUTPUT]: 生成章节顺序差异审计报告，标出缺失、重复和来源顺序偏差而不写数据库
+ * [POS]: scripts 的只读站点对账工具，为后续受控修复提供证据
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs");
 const path = require("path");
 const { pool, query } = require("../pg-store");

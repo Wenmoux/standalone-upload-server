@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、http-proxy/fetch、dist-reader 构建产物、PO18_API_BASE 与监听配置
+ * [OUTPUT]: 对外提供 3200 端口 Reader 静态站点、/reader-auth 和 /reader-api 代理及健康端点
+ * [POS]: cirno-src 的生产静态服务器，只代理 Reader 专用 API，不承接 Upload/Bot/Admin 协议
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 const compression = require("compression");
 const fs = require("fs");

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供迁移顺序、回滚配对和不可变约束的自动化回归断言
+ * [POS]: tests 的迁移顺序、回滚配对和不可变约束守卫，防止实现或部署契约在后续变更中静默退化
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const assert = require("assert/strict");
 const fs = require("fs/promises");
 const path = require("path");
@@ -26,6 +32,15 @@ test("migration files use sortable versioned names", async () => {
         assert.ok(file.name);
     }
     assert.equal(files[0].version, "001_baseline");
+});
+
+test("rollback CLI loads persistent config and its Docker stage includes loader dependencies", async () => {
+    const root = path.join(__dirname, "..");
+    const rollback = await fs.readFile(path.join(root, "scripts", "migrate-rollback.js"), "utf8");
+    const dockerfile = await fs.readFile(path.join(root, "Dockerfile"), "utf8");
+    assert.match(rollback, /loadConfig\(process\.env\.PO18_CONFIG_FILE \|\| "\/config\/app\.env"\)/);
+    assert.ok(rollback.indexOf("loadConfig(") < rollback.indexOf('require("../pg-store")'));
+    assert.match(dockerfile, /COPY docker\/control-panel\.js[^\r\n]*docker\/run-all\.js[^\r\n]*docker\/process-supervisor\.js/);
 });
 
 test("baseline migration owns initial schema and initPg only invokes migrations", async () => {

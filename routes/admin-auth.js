@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖 Express、Admin 鉴权服务、session、密码校验与管理员账户查询/写入能力
+ * [OUTPUT]: 对外提供 createAdminAuthRoutes，挂载登录、退出、当前账号、权限与 owner 受控账户管理接口
+ * [POS]: routes 的 Admin 身份边界，把会话和角色能力转换为 HTTP 语义，账号规则仍由 auth/service 约束
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const express = require("express");
 
 function createAdminAuthRoutes(options = {}) {

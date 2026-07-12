@@ -67,6 +67,12 @@
 </template>
 
 <script setup>
+/**
+ * [INPUT]: 依赖 Vue、Admin API、格式化工具与 App 注入的确认/提示服务
+ * [OUTPUT]: 提供正文纠错待办查询、原文对照及通过/驳回审核页面
+ * [POS]: admin-ui/src/views 的内容治理视图，调用 corrections 状态机而不在前端重写审核规则
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 import { inject, onMounted, ref } from "vue";
 import { api } from "../services/api";
 import { number, time } from "../utils/format";

@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: 依赖目标标题顺序、现有章节记录、pg-store 与显式应用参数
+ * [OUTPUT]: 依据规范化标题匹配生成冲突可见的排序计划，并可事务更新章节顺序
+ * [POS]: scripts 的标题序列修复策略，供缺少稳定来源 ID 的人工维护场景使用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const fs = require("fs");
 const path = require("path");
 const { pool, query } = require("../pg-store");

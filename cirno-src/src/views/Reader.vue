@@ -1,3 +1,9 @@
+<!--
+ * [INPUT]: 依赖 正文组件、纠错/导航/TTS mixins、离线/session/主题/净化工具与章节 API
+ * [OUTPUT]: 对外提供 Reader 正文阅读组合页面
+ * [POS]: Reader views 的阅读组合根，把新增能力下沉到 mixin/component/util 以控制复杂度
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ -->
 <template>
   <div class="book-page" ref="book" :class="{ 'book-page-tsu': showTsukkomi }" :style="readerThemeStyle">
     <div class="content-container" ref="contentContainer" @mouseup="handleCorrectionSelection" @keyup="handleCorrectionSelection">

@@ -1,4 +1,10 @@
-﻿function escapeHtml(value) {
+/**
+ * [INPUT]: 依赖 Node 流事件语义，以及书籍、章节、上传者和缓存响应的跨平台原始对象
+ * [OUTPUT]: 对外提供文本清洗、HTML 转义、流背压、卷章识别、文件命名和共享载荷规范化工具
+ * [POS]: bot 导出与共享流程的纯工具边界，集中消除不同内容源字段形态和 Telegram 文本限制差异
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
 }
 

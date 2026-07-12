@@ -1,7 +1,15 @@
+/**
+ * [INPUT]: 依赖 Node HTTPS、根级系统推送标记契约、config 平台标签、事件查询器与 Telegram Bot API 配置
+ * [OUTPUT]: 对外提供带跨进程标记的 Telegram 推送服务、类型过滤、消息转义、原文链接和日报时间窗口函数
+ * [POS]: services 的 Telegram 通知适配层，把上传事件转为可由 Bot 安全识别的群组推送与日报消息
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
 const https = require("https");
+const { TELEGRAM_SYSTEM_PUSH_MARKER, markTelegramSystemPush } = require("../telegram-push-contract");
 const { DEFAULT_PLATFORM_LABELS, normalizePlatformKey } = require("./config");
 
 const TELEGRAM_CAPTION_LIMIT = 1024;
+const TELEGRAM_CAPTION_CONTENT_LIMIT = TELEGRAM_CAPTION_LIMIT - TELEGRAM_SYSTEM_PUSH_MARKER.length;
 
 const TELEGRAM_PUSH_TYPE_ALIASES = {
     meta: "metadata",
@@ -123,7 +131,7 @@ function metadataCardCaption(event = {}, book = {}, labels = {}) {
     const quoteOpen = "<blockquote expandable>";
     const quoteClose = "</blockquote>";
     const rawDescription = plainText(book?.description || book?.description_html || event.description || "");
-    const descriptionBudget = Math.max(80, TELEGRAM_CAPTION_LIMIT - header.length - quoteOpen.length - quoteClose.length - 1);
+    const descriptionBudget = Math.max(80, TELEGRAM_CAPTION_CONTENT_LIMIT - header.length - quoteOpen.length - quoteClose.length - 1);
     const description = fitEscapedText(rawDescription || "-", descriptionBudget);
     return `${header}\n${quoteOpen}${telegramHtml(description || "-")}${quoteClose}`;
 }
@@ -325,11 +333,11 @@ function createTelegramPushService(options = {}) {
         if (eventType === "chapter") {
             const chapterTitle = event.title || event.chapter_id || "";
             const chapterUrl = originalChapterUrl(event, book);
-            text = [
+            text = markTelegramSystemPush([
                 `章节更新: ${telegramHtml(bookTitle)}`,
                 `章节名: ${telegramHtml(chapterTitle)}`,
                 `章节链接: <a href="${telegramHtml(chapterUrl)}">${telegramHtml(chapterUrl)}</a>`
-            ].join("\n");
+            ].join("\n"));
             await sendJson(telegramApiUrl(token, "sendMessage"), { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true });
         } else {
             const reservation = await reserveMetadataPush(event, book);
@@ -341,7 +349,7 @@ function createTelegramPushService(options = {}) {
                 labelsProvider().catch(() => ({})),
                 Promise.resolve(readerPublicUrlProvider()).catch(() => "")
             ]);
-            const caption = metadataCardCaption(event, book, labels);
+            const caption = markTelegramSystemPush(metadataCardCaption(event, book, labels));
             const replyMarkup = metadataCardMarkup(event, book, readerPublicUrl);
             const coverUrl = httpUrl(book?.cover || event.cover || "", book?.detail_url || event.source || "");
             const basePayload = {
@@ -505,7 +513,7 @@ function createTelegramPushService(options = {}) {
         if (!recipients.length) return { skipped: "missing_recipients" };
         const date = dailyReportDateString();
         const report = await collectDailyReport(date);
-        const text = formatDailyReport(report);
+        const text = markTelegramSystemPush(formatDailyReport(report));
         const results = [];
         for (const chatId of recipients) {
             try {
