@@ -15,6 +15,7 @@ admin-ui/node_modules/
 admin-ui/dist/
 cirno-src/node_modules/
 cirno-src/docs/conversion-scans/
+cirno-src/yarn.lock
 .npm-cache/
 
 .env

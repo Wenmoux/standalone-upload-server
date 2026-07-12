@@ -223,6 +223,14 @@ function dockerFailureSummary(stdout = "", stderr = "") {
     return lines.slice(-40).join("\n").slice(-6000) || "docker build failed without diagnostic output";
 }
 
+function dirtyPathsFromStatus(status = "") {
+    return String(status || "")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => line.replace(/^[ MADRCU?!]{1,2}\s+/, "").trim())
+        .filter(Boolean);
+}
+
 function collectBuildIdentity(options = {}) {
     const root = options.root || projectRoot;
     const env = options.env || process.env;
@@ -234,11 +242,7 @@ function collectBuildIdentity(options = {}) {
     const sourceHash = sourceContentHash(root, trackedFiles);
     const gitRevision = gitValue(gitCommand, ["rev-parse", "HEAD"], root, "unknown", exec);
     const status = gitValue(gitCommand, ["status", "--porcelain", "--untracked-files=all"], root, "", exec);
-    const dirtyFiles = status
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map((line) => line.slice(3).trim())
-        .filter(Boolean);
+    const dirtyFiles = dirtyPathsFromStatus(status);
     const dirty = dirtyFiles.length > 0;
     const buildDate = resolveBuildDate(env, options.now || new Date());
 
@@ -325,6 +329,7 @@ module.exports = {
     compactBuildDate,
     createBuildIdentity,
     dockerFailureSummary,
+    dirtyPathsFromStatus,
     dockerBuildArgs,
     gitCandidates,
     githubCommandEscape,

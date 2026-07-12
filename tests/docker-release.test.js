@@ -6,6 +6,7 @@ const test = require("node:test");
 
 const {
     createBuildIdentity,
+    dirtyPathsFromStatus,
     dockerFailureSummary,
     dockerBuildArgs,
     githubCommandEscape,
@@ -84,6 +85,11 @@ test("main branch builds can require a clean Git worktree with actionable paths"
         buildDate: "2026-07-11T00:00:00.000Z"
     };
     assert.throws(() => createBuildIdentity({ ...base, requireClean: true }), /generated\.json/);
+    assert.deepEqual(dirtyPathsFromStatus("D  cirno-src/yarn.lock\n M tracked.js\n?? new.js"), [
+        "cirno-src/yarn.lock",
+        "tracked.js",
+        "new.js"
+    ]);
 });
 
 test("GitHub Docker failures expose a bounded escaped diagnostic annotation", () => {
