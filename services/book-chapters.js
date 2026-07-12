@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 chapter-title-cleaner 的标题规范化规则和注入的 PostgreSQL query/事务能力
- * [OUTPUT]: 对外提供书籍与章节写入、查询、排序及正文派生能力的领域服务工厂
- * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一书籍章节数据语义
+ * [OUTPUT]: 对外提供书籍与章节写入、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
+ * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一字段类型和书籍章节数据语义
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { cleanChapterTitle } = require("./chapter-title-cleaner");
@@ -169,6 +169,16 @@ function createBookChapterService(options = {}) {
         return tokens.join("\uFF0C");
     }
 
+    function normalizeOptionalTimestamp(...values) {
+        for (const value of values) {
+            if (value === undefined || value === null) continue;
+            if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+            const text = String(value).trim();
+            if (text) return text;
+        }
+        return null;
+    }
+
     function normalizeBook(book = {}) {
         const platform = book.platform || "po18";
         return cleanPgObject({
@@ -188,7 +198,7 @@ function createBookChapterService(options = {}) {
             subscribed_chapters: Number(book.subscribedChapters || book.subscribed_chapters || book.chapterCount || book.totalChapters || 0),
             status: book.status || "unknown",
             latest_chapter_name: book.latestChapterName || book.latest_chapter_name || "",
-            latest_chapter_date: book.latestChapterDate || book.latest_chapter_date || "",
+            latest_chapter_date: normalizeOptionalTimestamp(book.latestChapterDate, book.latest_chapter_date),
             platform,
             favorites_count: Number(book.favoritesCount || book.favorites_count || 0),
             comments_count: Number(book.commentsCount || book.comments_count || 0),
@@ -204,8 +214,8 @@ function createBookChapterService(options = {}) {
                 (platform === "popo" ? `https://www.popo.tw/books/${book.bookId}` : `https://www.po18.tw/books/${book.bookId}/articles`),
             uploader: book.uploader || "unknown_user",
             uploaderId: book.uploaderId || book.uploaderid || "unknown",
-            source_updated_at: book.sourceUpdatedAt || book.source_updated_at || null,
-            catalog_updated_at: book.catalogUpdatedAt || book.catalog_updated_at || null,
+            source_updated_at: normalizeOptionalTimestamp(book.sourceUpdatedAt, book.source_updated_at),
+            catalog_updated_at: normalizeOptionalTimestamp(book.catalogUpdatedAt, book.catalog_updated_at),
             metadata_cached_at: nowSql(),
             updated_at: nowSql()
         });
@@ -251,6 +261,9 @@ function createBookChapterService(options = {}) {
             return `${col(key)} = GREATEST(COALESCE(${target}, 0), COALESCE(${excluded}, 0))`;
         }
         if (key === "updated_at") return `${col(key)} = ${excluded}`;
+        if (["latest_chapter_date", "source_updated_at", "catalog_updated_at", "metadata_cached_at"].includes(key)) {
+            return `${col(key)} = COALESCE(${excluded}, ${target})`;
+        }
         if (key === "status") return `${col(key)} = COALESCE(NULLIF(${excluded}, 'unknown'), ${target}, 'unknown')`;
         if (key === "uploader") return `${col(key)} = COALESCE(NULLIF(${excluded}, 'unknown_user'), ${target}, 'unknown_user')`;
         if (key === "uploaderId") return `${col(key)} = COALESCE(NULLIF(${excluded}, 'unknown'), ${target}, 'unknown')`;

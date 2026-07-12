@@ -560,6 +560,8 @@ X-PO18-Upload-Token: <PO18_UPLOAD_API_TOKEN>
 
 批次响应以逐项落库结果为准：全部成功返回 `200` 与 `success: true`；部分成功返回 `207`、`success: false`、`partial: true`；全部失败返回 `500`、`success: false` 并携带首个 `error`。应用启动迁移尚未提交时，所有业务接口返回 `503`、`code: "SERVICE_STARTING"` 和 `Retry-After`，客户端应等待后重试，不能把收到 JSON 等同于上传成功。
 
+时间字段继续兼容既有油猴结构：`latestChapterDate` 可使用 `YYYY-MM-DD HH:mm:ss`，缺省的 `sourceUpdatedAt` / `catalogUpdatedAt` 可以不传或传空字符串；服务端会将可选空值规范为 SQL `NULL`，不会要求客户端改变上传载荷。
+
 请求：
 
 ```json

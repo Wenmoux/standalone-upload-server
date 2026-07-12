@@ -16,7 +16,7 @@ backup-crypto.js: 备份文件加密边界，使用 AES-256-GCM 流式封装远�
 backup-restore-drill.js: 恢复演练调度器，从本地备份清单选择归档并周期性创建可观测演练任务。
 backups.js: 备份用例编排层，连接 docker 备份原语与 system_jobs，负责创建、上传、校验、恢复和演练载荷。
 body-limits.js: 请求体预算策略，为不同路由安装分级 JSON/raw 解析器，避免全局超大 body。
-book-chapters.js: 书籍与章节持久化核心，统一字段清洗、幂等写入、章节正文派生、目录排序和书籍排序语义。
+book-chapters.js: 书籍与章节持久化核心，统一字段清洗、可选时间类型、幂等写入、章节正文派生、目录排序和书籍排序语义。
 book-maintenance.js: 陈旧书籍维护用例，提供 PO18 清理预览、确认执行与任务记录。
 book-manifest.js: 可移植书籍清单协议，实现规范化、SHA-256 校验、导出、验证和幂等导入。
 book-social.js: 书籍社区领域服务，集中书评、投票、红包与众筹等并发结算和公开视图规则。

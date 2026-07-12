@@ -92,6 +92,37 @@ test("book chapter service upserts book metadata and records event", async () =>
     assert.ok(calls.some((call) => call.notify === "metadata"));
 });
 
+test("book metadata upsert keeps timestamp columns typed and accepts the unchanged qidian payload", async () => {
+    const { service, calls } = makeService({
+        bookColumns: [
+            "book_id",
+            "platform",
+            "title",
+            "latest_chapter_date",
+            "source_updated_at",
+            "catalog_updated_at",
+            "metadata_cached_at",
+            "updated_at"
+        ]
+    });
+
+    await service.upsertBook({
+        bookId: "1047414337",
+        title: "顶流手记",
+        platform: "qidian",
+        latestChapterDate: "2026-07-12 07:10:00",
+        sourceUpdatedAt: "",
+        catalogUpdatedAt: ""
+    });
+
+    const insert = calls.find((call) => /INSERT INTO book_metadata/.test(call.sql || ""));
+    assert.ok(insert);
+    assert.ok(insert.params.includes("2026-07-12 07:10:00"));
+    assert.equal(insert.params.filter((value) => value === null).length, 2);
+    assert.match(insert.sql, /latest_chapter_date = COALESCE\(EXCLUDED\.latest_chapter_date, book_metadata\.latest_chapter_date\)/);
+    assert.doesNotMatch(insert.sql, /NULLIF\(EXCLUDED\.(?:latest_chapter_date|source_updated_at|catalog_updated_at|metadata_cached_at), ''\)/);
+});
+
 test("book chapter service sorts books by cache completeness", () => {
     const { service } = makeService();
 

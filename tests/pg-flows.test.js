@@ -111,7 +111,7 @@ async function seedBotUser(query, { username, telegramId, copper = 0, silver = 0
 }
 
 test("postgres integration covers CDK, red packets and backup jobs", { skip: pgUrl ? false : "set PO18_TEST_PG_URL to run" }, async (t) => {
-    const { initPg, query, pool, runMigrationRollback, runMigrations, listMigrationFiles } = require("../pg-store");
+    const { bookColumns, chapterColumns, initPg, pick, query, pool, runMigrationRollback, runMigrations, listMigrationFiles } = require("../pg-store");
     const { createReaderApiRoutes } = require("../routes/reader-api");
     const { createBotApiRoutes } = require("../routes/bot-api");
     const { createAdminBackupRoutes } = require("../routes/admin-backups");
@@ -127,6 +127,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     const { createCredentialCrypto, encryptStoredPo18Credentials } = require("../services/credential-crypto");
     const { createUserCurrencyService } = require("../services/user-currency");
     const { createBookManifestService } = require("../services/book-manifest");
+    const { createBookChapterService } = require("../services/book-chapters");
     const { createReviewGovernanceService } = require("../services/review-governance");
 
     await t.test("legacy duplicate taxonomy upgrades through the immutable migration 020", async () => {
@@ -176,6 +177,48 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     });
 
     await resetDatabase(query, initPg);
+
+    await t.test("unchanged qidian metadata payload writes typed timestamp columns", async () => {
+        const numericBookFields = new Set([
+            "word_count", "chapter_count", "total_chapters", "subscribed_chapters", "free_chapters", "paid_chapters",
+            "favorites_count", "comments_count", "monthly_popularity", "total_popularity", "weekly_popularity",
+            "readers_count", "daily_popularity", "purchase_count"
+        ]);
+        const service = createBookChapterService({
+            query,
+            pool,
+            pick,
+            bookColumns,
+            chapterColumns,
+            cleanPgText: (value) => typeof value === "string" ? value.replace(/\u0000/g, "") : value,
+            cleanPgValue: (value) => value,
+            cleanPgObject: (value) => value,
+            numericBookFields,
+            booleanChapterFields: new Set(["is_volume"]),
+            safePgInt: (value, fallback = 0) => Number.parseInt(value, 10) || fallback,
+            safePgBool: (value) => Boolean(value),
+            nowSql: () => new Date().toISOString(),
+            recordEvent: async () => null,
+            notifyTelegram: async () => null,
+            logger: { warn: () => {} }
+        });
+        await service.upsertBook({
+            bookId: "1047414337",
+            title: "顶流手记",
+            author: "油炸大金",
+            platform: "qidian",
+            latestChapterDate: "2026-07-12 07:10:00",
+            sourceUpdatedAt: "",
+            catalogUpdatedAt: ""
+        });
+        const stored = await query(
+            `SELECT latest_chapter_date::text latest_chapter_date, source_updated_at, catalog_updated_at
+             FROM book_metadata WHERE book_id = '1047414337' AND platform = 'qidian'`
+        );
+        assert.equal(stored.rows[0].latest_chapter_date, "2026-07-12 07:10:00");
+        assert.equal(stored.rows[0].source_updated_at, null);
+        assert.equal(stored.rows[0].catalog_updated_at, null);
+    });
 
     await t.test("chapter stats stay exact across insert update move and delete", async () => {
         await query("INSERT INTO book_metadata(book_id, platform, title) VALUES ('stats-a', 'qidian', 'A')");
