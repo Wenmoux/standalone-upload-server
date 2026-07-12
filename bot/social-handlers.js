@@ -166,13 +166,15 @@ function createSocialHandlers(options = {}) {
                     `发布将消耗 ${Number(rules.cost_copper ?? 100)} 铜币。`,
                     "回复“取消”也可退出。"
                 ].join("\n"),
-                grouped ? {
-                    reply_markup: {
-                        force_reply: true,
-                        selective: true,
-                        input_field_placeholder: "输入书评内容"
-                    }
-                } : {}
+                grouped
+                    ? {
+                          reply_markup: {
+                              force_reply: true,
+                              selective: true,
+                              input_field_placeholder: "输入书评内容"
+                          }
+                      }
+                    : {}
             );
             reviewDrafts.begin({
                 chatId: message.chat.id,
@@ -224,13 +226,15 @@ function createSocialHandlers(options = {}) {
             const prompt = await sendMessage(
                 message.chat.id,
                 `${problem}\n${grouped ? "请回复这条消息" : "请直接"}重新发送，或发送“取消”退出。`,
-                grouped ? {
-                    reply_markup: {
-                        force_reply: true,
-                        selective: true,
-                        input_field_placeholder: "重新输入书评内容"
-                    }
-                } : {}
+                grouped
+                    ? {
+                          reply_markup: {
+                              force_reply: true,
+                              selective: true,
+                              input_field_placeholder: "重新输入书评内容"
+                          }
+                      }
+                    : {}
             );
             reviewDrafts.begin({
                 ...identity,
