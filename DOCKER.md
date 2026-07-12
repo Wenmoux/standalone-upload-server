@@ -181,7 +181,7 @@ server 在连接数据库后按文件名顺序执行 `db/migrations/*.sql`：
 [pg-migrate] applied 020_taxonomy_and_quality_semantics
 ```
 
-这表示迁移保护正常工作。`020` 包含生成列、taxonomy 回填和索引，大库可能持续数分钟。3100 端口会先提供存活/就绪探测，但在日志出现 `[startup] database initialized` 前，业务接口统一返回带 `Retry-After` 的 `503`，避免请求读写尚未提交的新 Schema。迁移期间不要滚动启动多个副本或反复重启。
+这表示迁移保护正常工作。`020` 包含生成列、taxonomy 回填和索引，大库可能持续数分钟。3100 端口会先提供存活/就绪探测，但在日志出现 `[startup] database initialized` 前，业务接口统一返回带 `Retry-After` 的 `503`，避免请求读写尚未提交的新 Schema。核心初始化失败会每 60 秒受控重试；后台调度器单项失败只禁用自身，不会锁死业务接口。迁移期间不要滚动启动多个副本或反复重启。
 
 迁移备份、状态检查和 rollback 见 [db/MIGRATIONS.md](db/MIGRATIONS.md)。
 

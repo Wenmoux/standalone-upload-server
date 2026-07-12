@@ -144,6 +144,7 @@ const SEARCH_SLOW_QUERY_MS = Number.isFinite(Number(process.env.PO18_SEARCH_SLOW
 const STARTUP_DB_RETRY_MS = Number.isFinite(Number(process.env.PO18_STARTUP_DB_RETRY_MS))
     ? Math.max(1000, Number(process.env.PO18_STARTUP_DB_RETRY_MS))
     : 5000;
+const STARTUP_FAILURE_RETRY_MS = Math.max(60000, STARTUP_DB_RETRY_MS);
 const app = express();
 const startupGate = createStartupGate({ retryAfterSeconds: Math.ceil(STARTUP_DB_RETRY_MS / 1000) });
 app.set("trust proxy", trustProxySetting());
@@ -1162,10 +1163,20 @@ async function bootApplication() {
     const encryptedCredentials = await encryptStoredPo18Credentials(query, credentialCrypto);
     if (encryptedCredentials.updated) console.log(`[startup] encrypted ${encryptedCredentials.updated}/${encryptedCredentials.scanned} PO18 credential rows`);
     await initAdmin();
-    startDailyReportScheduler();
-    rankService.startRefreshScheduler();
-    backupRestoreDrillScheduler.start();
-    await po18CrawlerService.startScheduler();
+}
+
+function startBackgroundSchedulers() {
+    const schedulers = [
+        ["daily-report", () => startDailyReportScheduler()],
+        ["rank-refresh", () => rankService.startRefreshScheduler()],
+        ["backup-restore-drill", () => backupRestoreDrillScheduler.start()],
+        ["po18-crawler", () => po18CrawlerService.startScheduler()]
+    ];
+    for (const [name, start] of schedulers) {
+        Promise.resolve()
+            .then(start)
+            .catch((err) => console.warn(`[startup] optional ${name} scheduler disabled: ${err.message || String(err)}`));
+    }
 }
 
 function bootApplicationWithRetry(attempt = 1) {
@@ -1174,6 +1185,7 @@ function bootApplicationWithRetry(attempt = 1) {
         .then(() => {
             startupGate.markReady();
             console.log("[startup] database initialized");
+            startBackgroundSchedulers();
         })
         .catch((err) => {
             const message = err.message || String(err);
@@ -1184,7 +1196,8 @@ function bootApplicationWithRetry(attempt = 1) {
                 return;
             }
             startupGate.markFailed("Application startup failed; inspect server logs");
-            console.error(`[startup] ${message}`);
+            console.error(`[startup] ${message}; retrying in ${STARTUP_FAILURE_RETRY_MS}ms`);
+            setTimeout(() => bootApplicationWithRetry(attempt + 1), STARTUP_FAILURE_RETRY_MS).unref();
         });
 }
 

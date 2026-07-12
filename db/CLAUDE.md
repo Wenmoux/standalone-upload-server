@@ -19,7 +19,7 @@ db/migrations/*.sql -> scripts/check-schema-drift.js -> schema-snapshot.json
 ```
 
 - `schema_migrations.version` 是完整的文本版本，例如 `020_taxonomy_and_quality_semantics`，不是整数。
-- 新 migration 必须递增命名、补充安全 rollback（可逆时）、更新 Schema snapshot，并通过真实 PostgreSQL 集成测试。
+- 新 migration 必须保持词法递增、补充安全 rollback（可逆时）、更新 Schema snapshot，并通过真实 PostgreSQL 集成测试；已发布迁移的前置数据兼容修复可使用尚未占用且排序在目标之前的同号版本，但必须由测试锁定顺序。
 - 已应用 migration 的 checksum 与镜像内文件不一致时默认拒绝启动；漂移开关只用于应急诊断。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

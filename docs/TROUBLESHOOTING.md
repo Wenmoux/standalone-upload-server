@@ -63,10 +63,11 @@ unsafe production configuration: PO18_METRICS_TOKEN must be configured when the 
 - 超过 `PO18_PG_MIGRATION_TIMEOUT_MS` 后出现 timeout/rollback。
 - server 持续重启，始终没有 `applied 020`。
 - PostgreSQL 磁盘不足、连接中断或锁长期不释放。
+- 出现 `ON CONFLICT DO UPDATE command cannot affect row a second time`：历史标签在规范化后重复，旧版 020 会整笔回滚；升级到包含 020 前置去重迁移与 023 触发器修复的镜像，不要修改 020 checksum。
 
 出现异常时先停止重复副本、检查数据库磁盘/活动连接并备份，再提供从 `applying 020` 开始的完整错误段。
 
-如果迁移期间元信息上传曾返回 `column "source_updated_at" ... does not exist`，而搜索、下载正常，说明请求进入了 020 事务提交前的旧 Schema 窗口：该次元信息实际没有写入，需要等到 `[startup] database initialized` 后重新上传。新版本在此窗口统一返回 `503 SERVICE_STARTING`，不会再误报成功；若初始化完成后仍出现缺列，再核对 `schema_migrations` 与实际表结构，不要直接修改已发布的 020 文件。
+如果迁移期间元信息上传曾返回 `column "source_updated_at" ... does not exist`，而搜索、下载正常，说明请求进入了 020 事务提交前的旧 Schema 窗口：该次元信息实际没有写入，需要等到 `[startup] database initialized` 后重新上传。新版本在此窗口统一返回 `503 SERVICE_STARTING`，不会再误报成功；启动失败会保留明确 phase 并每 60 秒受控重试，外部修复后无需额外人工重启。若初始化完成后仍出现缺列，再核对 `schema_migrations` 与实际表结构，不要直接修改已发布的 020 文件。
 
 ## Bot `startup failed: fetch failed`
 

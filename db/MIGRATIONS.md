@@ -76,15 +76,17 @@ docker exec po18-app sh -lc 'latest=$(ls -1t /config/backups/pre-migration-*.dum
 
 ## 5. 当前迁移链
 
-当前链为 `001_baseline`，随后是 `004_trgm_indexes` 至 `022_review_governance`，共 20 个正向 migration。`002`–`003` 的空档属于历史版本边界，不能通过重命名旧文件填补。
+当前链为 `001_baseline`，随后是 `004_trgm_indexes` 至 `023_taxonomy_conflict_deduplication`，共 22 个正向 migration。`002`–`003` 的空档属于历史版本边界；`019_taxonomy_input_deduplication` 是专门排在 020 前的历史数据兼容修复，不能重命名既有文件改变顺序。
 
 后段迁移的关键语义：
 
 - `018_data_quality_guards`：用 `NOT VALID` 约束保护新写入，不强制全表扫描旧异常；历史数据清理后再逐条 `VALIDATE CONSTRAINT`。
 - `019_job_effect_idempotency`：任务扣费、额度和奖励的 exactly-once 操作账本。
+- `019_taxonomy_input_deduplication`：只归并历史数据中规范值重复的分类/标签，避免 020 回填在同一条语句内重复命中主键。
 - `020_taxonomy_and_quality_semantics`：规范 taxonomy 与时间语义，并将章节序号检查推迟到事务提交。
 - `021_book_manifest_checksums`：为 Manifest 元信息和章节增加校验和。
 - `022_review_governance`：增加书评举报、审核、申诉与有限改票。
+- `023_taxonomy_conflict_deduplication`：让后续元信息写入先去重 taxonomy token，再写入规范化主键。
 
 这些迁移均没有引入 `book_key`，也没有改变现有平台无感知 API 字段。
 
@@ -121,6 +123,7 @@ docker exec po18-app sh -lc 'set -a; . /config/app.env; set +a; psql "$PO18_PG_U
 ```
 
 - 未写入 `schema_migrations`：该 migration 的事务已经回滚。修复磁盘、连接或 SQL 问题后重启，让迁移器重试。
+- 020 报 `ON CONFLICT DO UPDATE command cannot affect row a second time`：历史分类/标签存在大小写或分隔符归一后重复项；部署包含 `019_taxonomy_input_deduplication` 与 `023_taxonomy_conflict_deduplication` 的镜像，不能修改 020 或手工伪造迁移记录。
 - 已记录但 Schema 被之后的人工操作破坏：优先恢复备份或新增补偿 migration，不要直接篡改迁移历史。
 - checksum 不一致：恢复镜像内已发布文件，或发布更高版本 migration；不要把 drift 开关当修复。
 

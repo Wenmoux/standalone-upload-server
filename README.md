@@ -13,7 +13,7 @@ PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平�
 | Docker 镜像 | `wenmoux/reader:v2.0` |
 | Node.js | 20 |
 | 默认并持续验证的数据库 | PostgreSQL 16 |
-| 最新迁移 | `022_review_governance` |
+| 最新迁移 | `023_taxonomy_conflict_deduplication` |
 | 后台/API | `3100` |
 | Reader | `3200` |
 | Bot 健康检查 | `3300`，建议仅容器内部或 localhost 使用 |

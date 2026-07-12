@@ -129,6 +129,52 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     const { createBookManifestService } = require("../services/book-manifest");
     const { createReviewGovernanceService } = require("../services/review-governance");
 
+    await t.test("legacy duplicate taxonomy upgrades through the immutable migration 020", async () => {
+        await query("DROP SCHEMA IF EXISTS public CASCADE");
+        await query("CREATE SCHEMA public");
+        const files = await listMigrationFiles();
+        const bootstrapFiles = files.filter((file) => file.version <= "019_job_effect_idempotency");
+        for (const migration of bootstrapFiles) {
+            await query(await fs.readFile(migration.path, "utf8"));
+        }
+
+        await query(
+            `INSERT INTO book_metadata(book_id, platform, title, category, tags)
+             VALUES ('taxonomy-legacy', 'qidian', 'Legacy', '玄幻, 玄幻', 'Fantasy, fantasy, 热血, 热血')`
+        );
+        const inputRepair = files.find((file) => file.version === "019_taxonomy_input_deduplication");
+        const taxonomyMigration = files.find((file) => file.version === "020_taxonomy_and_quality_semantics");
+        const triggerRepair = files.find((file) => file.version === "023_taxonomy_conflict_deduplication");
+        await query(await fs.readFile(inputRepair.path, "utf8"));
+        await query(await fs.readFile(taxonomyMigration.path, "utf8"));
+
+        const legacy = await query(
+            `SELECT category, tags,
+                    (SELECT COUNT(*)::int FROM book_taxonomy WHERE metadata_id = metadata.id) taxonomy_count
+             FROM book_metadata metadata
+             WHERE book_id = 'taxonomy-legacy'`
+        );
+        assert.deepEqual(legacy.rows[0], {
+            category: "玄幻",
+            tags: "Fantasy, 热血",
+            taxonomy_count: 3
+        });
+
+        await query(await fs.readFile(triggerRepair.path, "utf8"));
+        await query("UPDATE book_metadata SET tags = 'Fantasy, fantasy, 热血, 热血' WHERE book_id = 'taxonomy-legacy'");
+        const future = await query(
+            `SELECT kind, normalized_value
+             FROM book_taxonomy
+             WHERE metadata_id = (SELECT id FROM book_metadata WHERE book_id = 'taxonomy-legacy')
+             ORDER BY kind, normalized_value`
+        );
+        assert.deepEqual(future.rows, [
+            { kind: "category", normalized_value: "玄幻" },
+            { kind: "tag", normalized_value: "fantasy" },
+            { kind: "tag", normalized_value: "热血" }
+        ]);
+    });
+
     await resetDatabase(query, initPg);
 
     await t.test("chapter stats stay exact across insert update move and delete", async () => {

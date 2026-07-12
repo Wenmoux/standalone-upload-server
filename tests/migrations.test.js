@@ -156,6 +156,20 @@ test("job effect migration adds an atomic idempotency ledger for charges and rew
     assert.match(sql, /ALTER TABLE reader_export_usage[\s\S]*operation_key/);
 });
 
+test("taxonomy input repair runs immediately before migration 020 and removes duplicate normalized tokens", async () => {
+    const files = await listMigrationFiles();
+    const versions = files.map((file) => file.version);
+    const repair = "019_taxonomy_input_deduplication";
+    const taxonomy = "020_taxonomy_and_quality_semantics";
+    assert.equal(versions.indexOf(repair) + 1, versions.indexOf(taxonomy));
+
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", `${repair}.sql`), "utf8");
+    assert.match(sql, /WITH ORDINALITY/);
+    assert.match(sql, /GROUP BY metadata_id, kind, normalized_value/);
+    assert.match(sql, /bool_or\(occurrences > 1\)/);
+    assert.match(sql, /WHERE[\s\S]*has_duplicates/);
+});
+
 test("API token migration stores only hashes scopes revocation and usage metadata", async () => {
     const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "014_api_tokens.sql"), "utf8");
     assert.match(sql, /token_hash TEXT NOT NULL UNIQUE/);
@@ -199,6 +213,14 @@ test("taxonomy and quality semantics migration normalizes categories and defers 
     assert.match(sql, /GENERATED ALWAYS AS/);
     assert.match(sql, /CREATE CONSTRAINT TRIGGER trg_chapter_order_nonnegative_deferred/);
     assert.match(sql, /DEFERRABLE INITIALLY DEFERRED/);
+});
+
+test("taxonomy conflict repair deduplicates trigger input before writing its primary key", async () => {
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "023_taxonomy_conflict_deduplication.sql"), "utf8");
+    assert.match(sql, /CREATE OR REPLACE FUNCTION sync_book_taxonomy/);
+    assert.match(sql, /GROUP BY source\.kind, source\.normalized_value/);
+    assert.match(sql, /array_agg\(source\.value ORDER BY source\.source_order\)/);
+    assert.doesNotMatch(sql, /ON CONFLICT DO UPDATE/);
 });
 
 test("book manifest migration adds validated checksums without changing identity keys", async () => {

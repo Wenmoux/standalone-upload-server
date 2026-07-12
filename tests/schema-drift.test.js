@@ -12,8 +12,8 @@ test("committed schema snapshot exactly matches the forward migration chain", ()
     const result = checkSchemaDrift();
     assert.deepEqual(result.errors, []);
     assert.equal(result.ok, true);
-    assert.equal(result.actual.latest, "022_review_governance");
-    assert.equal(result.actual.migration_count, 20);
+    assert.equal(result.actual.latest, "023_taxonomy_conflict_deduplication");
+    assert.equal(result.actual.migration_count, 22);
     assert.equal(result.actual.aggregate_sha256.length, 64);
 });
 

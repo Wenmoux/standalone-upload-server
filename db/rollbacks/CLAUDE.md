@@ -28,6 +28,7 @@
 ## 回退规则
 
 - `001_baseline` 没有 down SQL；需要撤销完整基线时只能恢复备份或销毁明确确认无用的数据库。
+- `019_taxonomy_input_deduplication` 与 `023_taxonomy_conflict_deduplication` 是不可逆的等价数据/函数安全修复，故意没有 down SQL；需要跨越它们回退时恢复预迁移备份。
 - 回滚器按已应用版本倒序执行，并持有与启动迁移相同的 PostgreSQL advisory lock。
 - 缺少对应 down 文件时回滚立即终止，不允许跳过版本继续回退。
 

@@ -82,8 +82,9 @@ Content-Type: application/json
 - `020_taxonomy_and_quality_semantics`
 - `021_book_manifest_checksums`
 - `022_review_governance`
+- `023_taxonomy_conflict_deduplication`
 
-四个迁移均有对应 rollback；未引入 `book_key`，也未更改原有平台无感 API 的请求/响应字段。
+治理迁移均未引入 `book_key`，也未更改原有平台无感 API 的请求/响应字段；taxonomy 去重属于不可逆的等价历史数据清理，失败回退应恢复备份而不是重新制造重复 token。
 
 ## 5. v2.0 管理、安全和可观测性扩展
 

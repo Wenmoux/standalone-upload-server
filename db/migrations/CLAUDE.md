@@ -22,9 +22,11 @@
 - `017_reader_rum.sql`：建立不含正文和凭据的 Reader 性能事件存储。
 - `018_data_quality_guards.sql`：以 `NOT VALID` 等约束保护新写入，同时允许历史异常数据继续升级。
 - `019_job_effect_idempotency.sql`：建立任务副作用账本和 operation key，防止租约重跑重复扣费或发奖。
+- `019_taxonomy_input_deduplication.sql`：在 taxonomy 建表前仅归并同一书籍、同一类型内规范值重复的历史分类/标签，保证后续回填可确定执行。
 - `020_taxonomy_and_quality_semantics.sql`：规范分类/标签与时间语义，并将章节序号检查推迟到事务提交。
 - `021_book_manifest_checksums.sql`：为书籍 Manifest 的元信息和章节补充可验证 SHA-256 摘要。
 - `022_review_governance.sql`：建立书评举报、审核、申诉和有限改票治理模型。
+- `023_taxonomy_conflict_deduplication.sql`：将 taxonomy 同步函数改为先按规范值去重再写入，阻止重复标签触发单语句冲突。
 
 ## 演进规则
 
