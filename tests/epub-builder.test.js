@@ -199,6 +199,7 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.match(packageFile, /po18-epub-style" content="style2"/);
     assert.doesNotMatch(packageFile, /reference type="cover"/);
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 配角竟是我自己<\/text>/);
+    assert.equal(listEpubStyles().find((style) => style.id === "style1")?.name, "江湖纸卷");
     assert.equal(listEpubStyles().find((style) => style.id === "style2")?.name, "老二次元");
 });
 

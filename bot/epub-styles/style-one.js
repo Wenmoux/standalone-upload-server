@@ -10,7 +10,7 @@ const TOP_IMAGE_NAME = "Images/style-one-top.png";
 
 module.exports = {
     id: "style1",
-    name: "样式一 · 江湖纸卷",
+    name: "江湖纸卷",
     description: "暖纸底、红黑章头、圆形人物头图、竖排分卷和独立制作说明。",
     css: `@charset "UTF-8";
 /*

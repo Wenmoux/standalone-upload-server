@@ -9,7 +9,7 @@ const { DEFAULT_STYLE2_CONFIG } = require("./epub-style2-template");
 const EPUB_STYLE_OPTIONS = Object.freeze([
     {
         id: "style1",
-        name: "样式一 · 江湖纸卷",
+        name: "江湖纸卷",
         description: "暖纸底、红黑章头、圆形人物头图、竖排分卷和独立制作说明。"
     },
     {

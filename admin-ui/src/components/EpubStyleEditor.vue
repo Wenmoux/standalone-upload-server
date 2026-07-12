@@ -174,13 +174,13 @@ const previewPages = computed(() => previewPageDefs.map((item) => (item.id === "
 const selectedDescription = computed(() => props.styles.find((item) => item.id === model.value.styleId)?.description || "选择后应用于下一次 EPUB 导出。");
 const previewLabel = computed(() => previewPages.value.find((item) => item.id === previewPage.value)?.label || "");
 const previewTitle = computed(() => {
-  if (isStyle1.value) return "样式 1 预览";
+  if (isStyle1.value) return "江湖纸卷预览";
   if (isStyle2.value) return "老二次元预览";
   return "疏影横斜预览";
 });
 const effectiveCssHint = computed(() => isStyle2.value
   ? "只读预览；内置基础 CSS 与追加 CSS 已合并，保存后用于下一次 EPUB 导出。"
-  : `只读预览；内容与${isStyle3.value ? "疏影横斜" : "样式一"}内置样式包 CSS 保持一致。`);
+  : `只读预览；内容与${isStyle3.value ? "疏影横斜" : "江湖纸卷"}内置样式包 CSS 保持一致。`);
 const previewHint = computed(() => {
   if (previewPage.value === "volume") return "这里只展示分卷版式；导出时仅在章节数据包含真实分卷时生成。";
   if (previewPage.value === "colophon" && !model.value.includeColophon) return "制作说明已关闭，导出时不会生成此页。";

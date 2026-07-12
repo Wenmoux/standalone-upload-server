@@ -5,7 +5,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const EPUB_EXPORT_STYLE_CHOICES = Object.freeze([
-    { id: "style1", label: "样式 1 · 江湖纸卷" },
+    { id: "style1", label: "江湖纸卷" },
     { id: "style2", label: "老二次元" },
     { id: "style3", label: "疏影横斜" }
 ]);

@@ -455,7 +455,7 @@
                 @change="e => setReaderSetting('chapterHeaderPreset', e.target.value)"
               >
                 <a-radio-button value="crane">仙鹤</a-radio-button>
-                <a-radio-button value="style1">样式一</a-radio-button>
+                <a-radio-button value="style1">江湖纸卷</a-radio-button>
               </a-radio-group>
               <div class="tts-param-grid">
                 <label class="setting-label">

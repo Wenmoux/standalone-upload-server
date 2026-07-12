@@ -105,7 +105,7 @@ TXT/EPUB 导出先从 `/reader-api/books/:bookId/chapters?includeContent=1` 分�
 - Bot 重启后会认领未完成任务并恢复执行。
 - `/tasks`、`/task` 和 `/canceljob` 提供查询与取消入口。
 
-EPUB 导出按钮只提供“样式 1 · 江湖纸卷”“老二次元”“疏影横斜”三种选择；`crane` 仍在生成器中注册，用于旧配置兼容，但不作为 Bot 直选按钮。样式结构与扩展契约见 [EPUB 内置样式](./epub-styles/README.md)。
+EPUB 导出按钮只提供“江湖纸卷”“老二次元”“疏影横斜”三种选择；`crane` 仍在生成器中注册，用于旧配置兼容，但不作为 Bot 直选按钮。样式结构与扩展契约见 [EPUB 内置样式](./epub-styles/README.md)。
 
 ## 维护边界
 

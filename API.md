@@ -1020,7 +1020,7 @@ GET  /admin-api/backup/diagnostics
         "showTopImage": true
     },
     "epubStyles": [
-        { "id": "style1", "name": "样式一 · 江湖纸卷" },
+        { "id": "style1", "name": "江湖纸卷" },
         { "id": "crane", "name": "仙鹤章头" }
     ]
 }
