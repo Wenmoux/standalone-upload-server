@@ -12,7 +12,12 @@ const {
     sourceContentHash
 } = require("../scripts/docker-build");
 const { pushFailureSummary, selectPushTags } = require("../scripts/docker-push");
-const { createImageManifest, createReleaseManifest, parseManifestDigest } = require("../scripts/docker-release-manifest");
+const {
+    createImageManifest,
+    createReleaseManifest,
+    inspectRemoteDigest,
+    parseManifestDigest
+} = require("../scripts/docker-release-manifest");
 const { REQUIRED_CONTEXT_FILES, ignored, walk } = require("../scripts/check-build-context");
 const { pgFailureSummary } = require("../scripts/run-pg-integration");
 const { smokeApplicationEnvironment, smokeFailureSummary } = require("../scripts/docker-smoke");
@@ -64,6 +69,21 @@ test("formal builds reject dirty or unverifiable Git state", () => {
     };
     assert.throws(() => createBuildIdentity({ ...base, dirty: true, gitAvailable: true }), /worktree is dirty/);
     assert.throws(() => createBuildIdentity({ ...base, dirty: false, gitAvailable: false }), /verification are required/);
+});
+
+test("main branch builds can require a clean Git worktree with actionable paths", () => {
+    const base = {
+        packageVersion: "2.0.0",
+        imageTag: "example/reader:v2.0",
+        sourceHash: HASH,
+        release: false,
+        dirty: true,
+        dirtyFiles: ["generated.json"],
+        gitAvailable: true,
+        gitRevision: "1234567890abcdef",
+        buildDate: "2026-07-11T00:00:00.000Z"
+    };
+    assert.throws(() => createBuildIdentity({ ...base, requireClean: true }), /generated\.json/);
 });
 
 test("GitHub Docker failures expose a bounded escaped diagnostic annotation", () => {
@@ -153,6 +173,25 @@ test("release manifest binds source identity to a registry digest", () => {
     assert.equal(parseManifestDigest(JSON.stringify({ digest })), digest);
 });
 
+test("registry digest inspection retries propagation and parses the top-level descriptor", () => {
+    const digest = "sha256:" + "d".repeat(64);
+    let calls = 0;
+    const waits = [];
+    const resolved = inspectRemoteDigest(
+        "example/reader:sha-source",
+        (_command, args) => {
+            calls += 1;
+            assert.deepEqual(args.slice(-2), ["--format", "{{.Manifest}}"]);
+            if (calls < 3) return { status: 1, stdout: "", stderr: "manifest unknown" };
+            return { status: 0, stdout: `Name: example/reader:sha-source\nDigest: ${digest}\n`, stderr: "" };
+        },
+        { attempts: 3, delayMs: 5, sleepImpl: (milliseconds) => waits.push(milliseconds) }
+    );
+    assert.equal(resolved, digest);
+    assert.equal(calls, 3);
+    assert.deepEqual(waits, [5, 5]);
+});
+
 test("main branch publish manifest binds a clean development build without claiming semver", () => {
     const digest = "sha256:" + "c".repeat(64);
     const manifest = createImageManifest(
@@ -179,6 +218,7 @@ test("GitHub workflow publishes main pushes and keeps tag releases conditional",
     assert.match(workflow, /branches:\s*\n\s*- main/);
     assert.match(workflow, /workflow_dispatch:/);
     assert.match(workflow, /PO18_RELEASE: \$\{\{ github\.ref_type == 'tag'/);
+    assert.match(workflow, /PO18_REQUIRE_CLEAN: "1"/);
     assert.match(workflow, /Push source tag and moving channel tag/);
     assert.match(workflow, /if: github\.ref_type == 'tag'/);
     assert.match(workflow, /actions\/checkout@v7/);

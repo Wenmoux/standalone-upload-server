@@ -1,6 +1,7 @@
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { githubCommandEscape } = require("./docker-build");
 
 const projectRoot = path.join(__dirname, "..");
 
@@ -23,15 +24,31 @@ function parseManifestDigest(raw) {
     return match[0];
 }
 
-function inspectRemoteDigest(tag, spawn = spawnSync) {
-    const result = spawn("docker", ["buildx", "imagetools", "inspect", tag, "--format", "{{json .Manifest}}"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"]
-    });
-    if ((result.status || 0) !== 0) {
-        throw new Error(String(result.stderr || result.stdout || `unable to inspect ${tag}`).trim());
+function sleepSync(milliseconds) {
+    if (milliseconds <= 0) return;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function inspectRemoteDigest(tag, spawn = spawnSync, options = {}) {
+    const attempts = Math.max(1, Number(options.attempts || 10));
+    const delayMs = Math.max(0, Number(options.delayMs ?? 2000));
+    const wait = options.sleepImpl || sleepSync;
+    let lastError = new Error(`unable to inspect ${tag}`);
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        const result = spawn("docker", ["buildx", "imagetools", "inspect", tag, "--format", "{{.Manifest}}"], {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"]
+        });
+        const status = result.status === null ? 1 : result.status || 0;
+        try {
+            if (status !== 0) throw new Error(String(result.stderr || result.stdout || `unable to inspect ${tag}`).trim());
+            return parseManifestDigest(result.stdout);
+        } catch (error) {
+            lastError = error;
+        }
+        if (attempt < attempts) wait(delayMs);
     }
-    return parseManifestDigest(result.stdout);
+    throw new Error(`registry digest was unavailable after ${attempts} attempts: ${lastError.message || String(lastError)}`);
 }
 
 function createImageManifest(metadata, digest, options = {}) {
@@ -92,7 +109,11 @@ function main() {
     try {
         run();
     } catch (error) {
-        console.error(`[docker-release] ${error.message || String(error)}`);
+        const message = error.message || String(error);
+        console.error(`[docker-release] ${message}`);
+        if (String(process.env.GITHUB_ACTIONS || "").toLowerCase() === "true") {
+            console.error(`::error title=Registry digest resolution failed::${githubCommandEscape(message)}`);
+        }
         process.exitCode = 1;
     }
 }
@@ -106,5 +127,6 @@ module.exports = {
     imageRepository,
     inspectRemoteDigest,
     parseManifestDigest,
-    run
+    run,
+    sleepSync
 };

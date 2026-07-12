@@ -122,6 +122,10 @@ function createBuildIdentity(options) {
     const gitRevision = String(options.gitRevision || "unknown");
 
     if (!/^[a-f0-9]{64}$/i.test(sourceHash)) throw new Error("source hash must be a SHA-256 hex digest");
+    if (options.requireClean === true && dirty) {
+        const files = Array.isArray(options.dirtyFiles) ? options.dirtyFiles.filter(Boolean).slice(0, 20) : [];
+        throw new Error(`clean build refused: Git worktree is dirty${files.length ? ` (${files.join(", ")})` : ""}`);
+    }
     if (release && dirty) throw new Error("formal release refused: Git worktree is dirty");
     if (release && (!options.gitAvailable || gitRevision === "unknown")) {
         throw new Error("formal release refused: Git revision and clean-worktree verification are required");
@@ -159,6 +163,7 @@ function createBuildIdentity(options) {
         gitRevision,
         sourceHash,
         dirty,
+        dirtyFiles: Array.isArray(options.dirtyFiles) ? options.dirtyFiles : [],
         release
     };
 }
@@ -228,7 +233,13 @@ function collectBuildIdentity(options = {}) {
         .filter(Boolean);
     const sourceHash = sourceContentHash(root, trackedFiles);
     const gitRevision = gitValue(gitCommand, ["rev-parse", "HEAD"], root, "unknown", exec);
-    const dirty = Boolean(gitValue(gitCommand, ["status", "--porcelain", "--untracked-files=all"], root, "", exec));
+    const status = gitValue(gitCommand, ["status", "--porcelain", "--untracked-files=all"], root, "", exec);
+    const dirtyFiles = status
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => line.slice(3).trim())
+        .filter(Boolean);
+    const dirty = dirtyFiles.length > 0;
     const buildDate = resolveBuildDate(env, options.now || new Date());
 
     return createBuildIdentity({
@@ -239,7 +250,9 @@ function collectBuildIdentity(options = {}) {
         gitRevision,
         gitAvailable: Boolean(gitCommand),
         dirty,
+        dirtyFiles,
         sourceHash,
+        requireClean: parseBoolean(env.PO18_REQUIRE_CLEAN),
         release: parseBoolean(env.PO18_RELEASE || env.PO18_FORMAL_RELEASE),
         revisionOverride: env.PO18_BUILD_REVISION,
         appVersionOverride: env.PO18_APP_VERSION
@@ -259,6 +272,7 @@ function runBuild(options = {}) {
     console.log(`[docker-build] revision=${identity.revision}`);
     console.log(`[docker-build] source_hash=${identity.sourceHash}`);
     console.log(`[docker-build] dirty=${identity.dirty}`);
+    if (identity.dirtyFiles.length) console.log(`[docker-build] dirty_files=${identity.dirtyFiles.join(", ")}`);
     console.log(`[docker-build] formal_release=${identity.release}`);
 
     const captureForActions = String(env.GITHUB_ACTIONS || "").toLowerCase() === "true";
@@ -292,7 +306,11 @@ function main() {
     try {
         process.exitCode = runBuild();
     } catch (error) {
-        console.error(`[docker-build] ${error.message || String(error)}`);
+        const message = error.message || String(error);
+        console.error(`[docker-build] ${message}`);
+        if (String(process.env.GITHUB_ACTIONS || "").toLowerCase() === "true") {
+            console.error(`::error title=Docker build identity failed::${githubCommandEscape(message)}`);
+        }
         process.exitCode = 1;
     }
 }

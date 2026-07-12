@@ -6,6 +6,9 @@ config/
 tmp/
 test-results/
 .docker-build.json
+.po18-build.json
+release-manifest.json
+sbom.spdx.json
 
 node_modules/
 admin-ui/node_modules/

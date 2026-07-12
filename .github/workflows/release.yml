@@ -23,6 +23,7 @@ jobs:
         env:
             PO18_IMAGE_TAG: wenmoux/reader:v2.0
             PO18_RELEASE: ${{ github.ref_type == 'tag' && '1' || '0' }}
+            PO18_REQUIRE_CLEAN: "1"
         steps:
             - uses: actions/checkout@v7
               with:
