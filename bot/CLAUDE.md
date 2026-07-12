@@ -33,7 +33,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `search-platforms.js`: 定义支持的平台后缀、默认平台和展示名称，保持命令与回调参数一致。
 `search-query.js`: 解析搜索词、标签、平台后缀与书号，集中处理用户输入边界。
 `share-handlers.js`: 编排单书/书架共享、上传进度与奖励结算，通过幂等任务避免重复奖励。
-`social-handlers.js`: 实现收藏列表、红包、众筹、私聊普通输入/群聊 ForceReply 收集且取消时清理回复目标的书评发布、举报和申诉交互层。
+`social-handlers.js`: 实现收藏列表、红包、众筹、私聊普通输入/群聊手动回复收集且取消时清理提示的书评发布、举报和申诉交互层；禁止 ForceReply 遗留客户端回复状态。
 `task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、重试、恢复、取消和审计。
 `task-schedulers.js`: 定义导出、书架同步、共享和全员通知任务的持久类型、幂等键、互斥键与恢复工厂。
 `task-status-handlers.js`: 提供 `/tasks`、`/task`、`/canceljob` 的状态查询与权限边界。

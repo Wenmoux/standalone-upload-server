@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 PgBotClient、注册守卫、短期书评草稿、书籍/众筹/书评 UI 构造器和 Telegram 消息编辑/删除接口
- * [OUTPUT]: 对外提供收藏、反馈、红包、众筹、可退出回复态的引导式书评发布、投票、举报与申诉交互处理器
- * [POS]: bot 社交治理域的交互编排层，把群聊定向回复和私聊普通输入映射为服务端受审计的领域 API 调用
+ * [OUTPUT]: 对外提供收藏、反馈、红包、众筹、不触发 ForceReply 的引导式书评发布、投票、举报与申诉交互处理器
+ * [POS]: bot 社交治理域的交互编排层，把群聊手动定向回复和私聊普通输入映射为服务端受审计的领域 API 调用
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createSocialHandlers(options = {}) {
@@ -162,19 +162,11 @@ function createSocialHandlers(options = {}) {
                 [
                     `<b>写书评 · ${escapeHtml(title)}</b>`,
                     `书号：<code>${escapeHtml(bookId)}</code>`,
-                    `${grouped ? "请回复这条消息" : "请直接发送"}书评内容（${Number(rules.min_length || 6)}-${Number(rules.max_length || 1200)} 字）。`,
+                    `${grouped ? "请手动回复这条消息并发送" : "请直接发送"}书评内容（${Number(rules.min_length || 6)}-${Number(rules.max_length || 1200)} 字）。`,
                     `发布将消耗 ${Number(rules.cost_copper ?? 100)} 铜币。`,
                     "回复“取消”也可退出。"
                 ].join("\n"),
-                grouped
-                    ? {
-                          reply_markup: {
-                              force_reply: true,
-                              selective: true,
-                              input_field_placeholder: "输入书评内容"
-                          }
-                      }
-                    : {}
+                {}
             );
             reviewDrafts.begin({
                 chatId: message.chat.id,
@@ -225,16 +217,8 @@ function createSocialHandlers(options = {}) {
             const grouped = message.chat.type === "group" || message.chat.type === "supergroup";
             const prompt = await sendMessage(
                 message.chat.id,
-                `${problem}\n${grouped ? "请回复这条消息" : "请直接"}重新发送，或发送“取消”退出。`,
-                grouped
-                    ? {
-                          reply_markup: {
-                              force_reply: true,
-                              selective: true,
-                              input_field_placeholder: "重新输入书评内容"
-                          }
-                      }
-                    : {}
+                `${problem}\n${grouped ? "请手动回复这条消息" : "请直接"}重新发送，或发送“取消”退出。`,
+                {}
             );
             reviewDrafts.begin({
                 ...identity,

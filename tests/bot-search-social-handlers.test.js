@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
  * [OUTPUT]: 提供搜索、私聊/群聊书评输入与取消清理交互契约的自动化回归断言
- * [POS]: tests 的搜索与社交命令处理器交互契约守卫，防止 ForceReply 和草稿状态在取消后残留
+ * [POS]: tests 的搜索与社交命令处理器交互契约守卫，禁止 ForceReply 并防止草稿状态在取消后残留
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const test = require("node:test");
@@ -130,13 +130,13 @@ function reviewFixture(overrides = {}) {
     return { handlers, reviewDrafts, sent, edited, deleted, published };
 }
 
-test("guided review flow only accepts the author's ForceReply in groups and publishes valid content", async () => {
+test("guided review flow never forces a reply and only accepts the author's manual reply in groups", async () => {
     const fixture = reviewFixture();
     const author = { id: 88, username: "reader" };
     const chat = { id: -100, type: "supergroup" };
     await fixture.handlers.handleReviewStart({ chat, from: author }, "667518");
 
-    assert.equal(fixture.sent[0].extra.reply_markup.force_reply, true);
+    assert.equal(fixture.sent[0].extra.reply_markup, undefined);
     assert.equal(fixture.sent[1].extra.reply_markup.inline_keyboard[0][0].callback_data, "reviewcancel|667518");
     assert.equal(fixture.handlers.reviewDraftContext({ chat, from: author }, "普通群聊"), null);
     assert.equal(fixture.handlers.reviewDraftContext({ chat, from: { id: 99 } }, "这不是我的草稿"), null);
