@@ -22,6 +22,7 @@ test("config helpers normalize labels and pricing", () => {
     );
     assert.equal(pricing.epub.styleId, "style1");
     assert.equal(pricing.epubStyles.find((style) => style.id === "style2")?.name, "老二次元");
+    assert.equal(pricing.epubStyles.find((style) => style.id === "style3")?.name, "疏影横斜");
     assert.ok(pricing.epubStyles.some((style) => style.id === "crane"));
     const style2 = exportPricingPayload({
         epub: {
@@ -33,6 +34,7 @@ test("config helpers normalize labels and pricing", () => {
     assert.equal(style2.style2.customCss, "body{color:red}");
     assert.doesNotMatch(style2.style2.fontFamily, /;/);
     assert.equal(Object.hasOwn(style2.style2, "volumeTitle"), false);
+    assert.equal(exportPricingPayload({ epub: { styleId: "style3" } }).epub.styleId, "style3");
     assert.deepEqual(exportPricingPayload({ dailyQuotaByLevel: { 3: "2", 2: "1", bad: 9 } }).dailyQuotaByLevel, { 2: 1, 3: 2 });
 });
 

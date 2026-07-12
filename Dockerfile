@@ -40,7 +40,7 @@ COPY admin-ui/package*.json ./
 RUN npm ci && npm cache clean --force
 COPY admin-ui ./
 COPY ui /build/ui
-COPY bot/epub-styles/assets/jianghu-top.png /build/bot/epub-styles/assets/jianghu-top.png
+COPY bot/epub-styles/assets /build/bot/epub-styles/assets
 RUN npm run build
 
 FROM ${NODE_ALPINE_IMAGE} AS server-pg
@@ -109,6 +109,7 @@ COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY bot ./bot
+COPY services ./services
 COPY assets ./assets
 COPY docker/status-check.js ./docker/status-check.js
 EXPOSE 3300

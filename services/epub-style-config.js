@@ -12,6 +12,11 @@ const EPUB_STYLE_OPTIONS = Object.freeze([
         description: "1:1 复刻参考 EPUB 的插画标题页、制作说明、书籍信息、分卷图和正文章头。"
     },
     {
+        id: "style3",
+        name: "疏影横斜",
+        description: "暖白留白、淡墨梅影、宋体标题与居中章序的文艺简约排版。"
+    },
+    {
         id: "crane",
         name: "仙鹤章头",
         description: "原有仙鹤头图与深色圆角标题条。"

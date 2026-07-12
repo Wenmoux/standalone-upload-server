@@ -4,6 +4,7 @@ const path = require("path");
 const test = require("node:test");
 const { createEpubBuilder } = require("../bot/epub-builder");
 const styleOne = require("../bot/epub-styles/style-one");
+const styleThree = require("../bot/epub-styles/style-three");
 
 function contentOf(files, name) {
     return files.find((file) => file.name === name)?.content.toString("utf8") || "";
@@ -12,6 +13,24 @@ function contentOf(files, name) {
 test("style1 admin preview CSS stays identical to the EPUB style", () => {
     const previewCss = fs.readFileSync(path.join(__dirname, "..", "ui", "epub-style1.css"), "utf8").trim();
     assert.equal(previewCss, styleOne.css.trim());
+});
+
+test("style3 admin preview CSS stays identical to the EPUB style", () => {
+    const previewCss = fs.readFileSync(path.join(__dirname, "..", "ui", "epub-style3.css"), "utf8").trim();
+    assert.equal(previewCss, styleThree.css.trim());
+});
+
+test("style3 volume keeps dynamic text when the decorative SVG is unavailable", () => {
+    const page = styleThree.renderVolume({
+        header: { number: "第二部", name: "妮娜" },
+        volumeNo: 2,
+        hasAsset: () => false
+    });
+    assert.match(page, /卷次 · 02/);
+    assert.match(page, /class="style3-volume-number">第二部/);
+    assert.match(page, /class="style3-volume-name">妮娜/);
+    assert.match(page, /style3-art-fallback/);
+    assert.doesNotMatch(page, /<img/);
 });
 
 test("style1 EPUB builds cover matter, intro, volume and chapter templates", async () => {
@@ -175,6 +194,75 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.doesNotMatch(packageFile, /reference type="cover"/);
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 配角竟是我自己<\/text>/);
     assert.equal(listEpubStyles().find((style) => style.id === "style2")?.name, "老二次元");
+});
+
+test("style3 EPUB builds literary cover matter, real volumes and nested chapters", async () => {
+    const coverBytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=",
+        "base64"
+    );
+    const { makeEpubFiles, listEpubStyles } = createEpubBuilder({
+        fetchImpl: async () => ({
+            ok: true,
+            headers: { get: () => "image/png" },
+            arrayBuffer: async () => coverBytes
+        }),
+        yieldToEventLoop: async () => {}
+    });
+    const files = await makeEpubFiles(
+        {
+            book_id: "b-style3",
+            title: "家弑服务",
+            author: "弗丽达·麦克法登",
+            description: "门后藏着秘密。\n真相正沿着沉默的走廊逼近。",
+            cover: "https://example.test/cover.png"
+        },
+        [
+            { chapter_id: "v1", title: "第一部 米莉", type: "volume" },
+            { chapter_id: "c1", title: "第1章 新工作", text: "第1章　新工作\n门铃响了两次。" }
+        ],
+        {
+            epub: {
+                styleId: "style3",
+                includeColophon: true,
+                colophonTitle: "制作说明",
+                colophonText: "本书由 PO18 Reader 自动排版。",
+                introTitle: "内容简介"
+            }
+        }
+    );
+
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/cover.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/colophon.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/intro.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/chapter_0001.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-plum-shadow.svg"));
+
+    const css = contentOf(files, "OEBPS/Styles/main.css");
+    const colophon = contentOf(files, "OEBPS/Text/colophon.xhtml");
+    const intro = contentOf(files, "OEBPS/Text/intro.xhtml");
+    const volume = contentOf(files, "OEBPS/Text/volume_0001.xhtml");
+    const chapter = contentOf(files, "OEBPS/Text/chapter_0001.xhtml");
+    const packageFile = contentOf(files, "OEBPS/content.opf");
+    const toc = contentOf(files, "OEBPS/toc.ncx");
+
+    assert.match(css, /\.style3-volume-title/);
+    assert.match(colophon, /class="style3-colophon-box"/);
+    assert.match(colophon, /疏影横斜/);
+    assert.match(intro, /class="style3-intro-title">内容简介/);
+    assert.match(intro, /《家弑服务》 · 弗丽达·麦克法登/);
+    assert.match(volume, /class="style3-volume-number">第一部/);
+    assert.match(volume, /class="style3-volume-name">米莉/);
+    assert.match(volume, /style3-plum-shadow\.svg/);
+    assert.match(chapter, /class="style3-chapter-number">第1章/);
+    assert.match(chapter, /class="style3-chapter-title">新工作/);
+    assert.doesNotMatch(chapter, /<p>第1章[\s　]*新工作<\/p>/);
+    assert.match(chapter, /<p>门铃响了两次。<\/p>/);
+    assert.match(packageFile, /po18-epub-style" content="style3"/);
+    assert.match(packageFile, /href="Images\/style3-plum-shadow\.svg" media-type="image\/svg\+xml"/);
+    assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 新工作<\/text>/);
+    assert.equal(listEpubStyles().find((style) => style.id === "style3")?.name, "疏影横斜");
 });
 
 test("style2 EPUB does not add a volume page when chapter data has no volume row", async () => {

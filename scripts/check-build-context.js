@@ -11,7 +11,9 @@ const REQUIRED_CONTEXT_FILES = Object.freeze([
     "cirno-src/public/pwa-icon-512.png",
     "ui/design-tokens.css",
     "ui/epub-style1.css",
-    "bot/epub-styles/assets/jianghu-top.png"
+    "ui/epub-style3.css",
+    "bot/epub-styles/assets/jianghu-top.png",
+    "bot/epub-styles/assets/style3-plum-shadow.svg"
 ]);
 
 function posix(relativePath) {

@@ -16,7 +16,7 @@
 
         <div class="tag-row epub-switches">
           <label class="check-row"><input v-model="model.includeColophon" type="checkbox" /><span>生成制作说明页</span></label>
-          <label v-if="!isStyle2" class="check-row"><input v-model="model.showTopImage" type="checkbox" /><span>显示样式头图</span></label>
+          <label v-if="isStyle1" class="check-row"><input v-model="model.showTopImage" type="checkbox" /><span>显示样式头图</span></label>
         </div>
 
         <label v-if="!isStyle2 && model.includeColophon" class="field">
@@ -107,7 +107,9 @@
 <script setup>
 import { computed, inject, onMounted, ref, watch } from "vue";
 import style1TopImage from "../../../bot/epub-styles/assets/jianghu-top.png";
+import style3PlumShadow from "../../../bot/epub-styles/assets/style3-plum-shadow.svg";
 import style1Css from "../../../ui/epub-style1.css?raw";
+import style3Css from "../../../ui/epub-style3.css?raw";
 import { api } from "../services/api";
 
 const model = defineModel({ type: Object, required: true });
@@ -160,14 +162,19 @@ watch(() => model.value, ensureStyle2, { immediate: true });
 const style2 = computed(() => model.value.style2);
 const isStyle1 = computed(() => model.value.styleId === "style1");
 const isStyle2 = computed(() => model.value.styleId === "style2");
-const hasPreview = computed(() => isStyle1.value || isStyle2.value);
-const previewPages = computed(() => previewPageDefs.map((item) => (item.id === "title" && isStyle1.value ? { ...item, label: "封面" } : item)));
+const isStyle3 = computed(() => model.value.styleId === "style3");
+const hasPreview = computed(() => isStyle1.value || isStyle2.value || isStyle3.value);
+const previewPages = computed(() => previewPageDefs.map((item) => (item.id === "title" && (isStyle1.value || isStyle3.value) ? { ...item, label: "封面" } : item)));
 const selectedDescription = computed(() => props.styles.find((item) => item.id === model.value.styleId)?.description || "选择后应用于下一次 EPUB 导出。");
 const previewLabel = computed(() => previewPages.value.find((item) => item.id === previewPage.value)?.label || "");
-const previewTitle = computed(() => (isStyle1.value ? "样式 1 预览" : "老二次元预览"));
+const previewTitle = computed(() => {
+  if (isStyle1.value) return "样式 1 预览";
+  if (isStyle2.value) return "老二次元预览";
+  return "疏影横斜预览";
+});
 const effectiveCssHint = computed(() => isStyle2.value
   ? "只读预览；内置基础 CSS 与追加 CSS 已合并，保存后用于下一次 EPUB 导出。"
-  : "只读预览；内容与样式一内置样式包 CSS 保持一致。");
+  : `只读预览；内容与${isStyle3.value ? "疏影横斜" : "样式一"}内置样式包 CSS 保持一致。`);
 const previewHint = computed(() => {
   if (previewPage.value === "volume") return "这里只展示分卷版式；导出时仅在章节数据包含真实分卷时生成。";
   if (previewPage.value === "colophon" && !model.value.includeColophon) return "制作说明已关闭，导出时不会生成此页。";
@@ -236,7 +243,21 @@ function resolveStyle2Css(assetUrlForSlot) {
 
 const style2EffectiveCss = computed(() => resolveStyle2Css((slot) => style2EpubAssetUrls[slot] || ""));
 const style2PreviewCss = computed(() => `${resolveStyle2Css(assetUrl)}\nhtml,body{min-height:100%;}`.replace(/<\/style/gi, "<\\/style"));
-const effectiveCss = computed(() => (isStyle1.value ? style1Css.trim() : style2EffectiveCss.value));
+const style3PreviewCss = `${style3Css}
+html,body{min-height:100%;}
+body.style3-cover-preview{box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:1.5em;background:#f2efe9;}
+.style3-cover-card{position:relative;box-sizing:border-box;width:100%;min-height:90%;overflow:hidden;padding:3em 1.5em 2em;border:1px solid #d9d4cd;background:#fcfbf7;text-align:left;box-shadow:0 14px 30px rgba(71,66,60,.12);}
+.style3-cover-branch{width:112%;max-width:none;margin:-2em -18% 2.2em 5%;opacity:.72;}
+.style3-cover-kicker{margin:0;color:#8c8780;font:500 .66em/1.4 "PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.26em;text-indent:0;duokan-text-indent:0;text-align:left;}
+.style3-cover-card h1{max-width:8em;margin:.9em 0 .65em;color:#252321;font-size:1.72em;font-weight:600;line-height:1.52;letter-spacing:.1em;text-align:left;}
+.style3-cover-author{margin:0;color:#6f6962;font-size:.82em;letter-spacing:.08em;text-indent:0;duokan-text-indent:0;text-align:left;}
+.style3-cover-note{position:absolute;right:1.7em;bottom:1.8em;color:#99938b;font-size:.66em;line-height:1.5;text-align:right;}
+`.replace(/<\/style/gi, "<\\/style");
+const effectiveCss = computed(() => {
+  if (isStyle1.value) return style1Css.trim();
+  if (isStyle3.value) return style3Css.trim();
+  return style2EffectiveCss.value;
+});
 
 const style1PreviewBody = computed(() => {
   const title = "原来，她们才是主角";
@@ -293,8 +314,39 @@ const style2PreviewBody = computed(() => {
   return `<body><div class="top"><div class="logo"><img class="logo" alt="chapter" src="${assetUrl("chapter-1")}"/></div><h2 class="head"><span class="num">第1章</span><br/><b>配角竟是我自己</b></h2><p>马车伴随着清脆的声音，沿着街道缓缓前行。</p><p>窗外细雨飘落，湿润的地面映着灯火，故事从这里开始。</p><p>他抬起头，终于意识到自己正站在命运改变的路口。</p></div></body>`;
 });
 
-const previewCss = computed(() => (isStyle1.value ? style1PreviewCss : style2PreviewCss.value));
-const previewBody = computed(() => (isStyle1.value ? style1PreviewBody.value : style2PreviewBody.value));
+const style3PreviewBody = computed(() => {
+  const title = "原来，她们才是主角";
+  const author = "ccc";
+  const branch = (className) => `<img alt="" class="style3-art ${className}" src="${style3PlumShadow}"/>`;
+  if (previewPage.value === "title") {
+    return `<body class="style3-cover-preview"><div class="style3-cover-card">${branch("style3-cover-branch")}<p class="style3-cover-kicker">PO18 READER</p><h1>${title}</h1><p class="style3-cover-author">${author} · 著</p><small class="style3-cover-note">正式导出时<br/>使用当前书籍封面</small></div></body>`;
+  }
+  if (previewPage.value === "colophon") {
+    if (!model.value.includeColophon) {
+      return `<body class="style3-colophon-page"><div class="style3-colophon-box"><p class="style3-eyebrow">PO18 READER</p><h1 class="style3-colophon-title">制作说明未生成</h1><div class="style3-colophon-rule"></div><p class="style3-colophon-text">当前已关闭“生成制作说明页”。</p><p class="style3-colophon-mark">疏影横斜</p></div>${branch("style3-colophon-branch")}</body>`;
+    }
+    const text = model.value.colophonText || "本书由 PO18 Reader 根据本地缓存内容生成。\n\n仅供个人阅读与备份，请支持正版。";
+    return `<body class="style3-colophon-page"><div class="style3-colophon-box"><p class="style3-eyebrow">PO18 READER</p><h1 class="style3-colophon-title">${escapeHtml(model.value.colophonTitle)}</h1><div class="style3-colophon-rule"></div>${previewParagraphs(text, "style3-colophon-text")}<p class="style3-colophon-mark">疏影横斜</p></div>${branch("style3-colophon-branch")}</body>`;
+  }
+  if (previewPage.value === "intro") {
+    return `<body class="style3-intro-page">${branch("style3-intro-branch")}<p class="style3-eyebrow">一卷清读</p><h1 class="style3-intro-title">${escapeHtml(model.value.introTitle)}</h1><p class="style3-intro-book">《${title}》 · ${author}</p><div class="style3-intro-rule"></div>${previewParagraphs("牧知安穿越到了仙侠世界，成为了一名注定要被主角当作踏脚石的配角。\n\n围绕在身边的人们都有自己的故事，而命运也正悄然改变。", "style3-intro-text")}</body>`;
+  }
+  if (previewPage.value === "volume") {
+    return `<body class="style3-volume-page"><div class="style3-volume-copy"><p class="style3-volume-index">卷次 · 01</p><h1 class="style3-volume-title"><span class="style3-volume-number">第一卷</span><span class="style3-volume-name">少年游</span></h1><div class="style3-volume-rule"></div></div>${branch("style3-volume-branch")}</body>`;
+  }
+  return `<body class="style3-chapter-page"><div class="style3-chapter-lead"><p class="style3-chapter-number">第1章</p><h2 class="style3-chapter-title">配角竟是我自己</h2><div class="style3-chapter-rule"><span class="style3-chapter-dot">·</span></div></div>${previewParagraphs("马车伴随着清脆的声音，沿着街道缓缓前行。\n\n窗外细雨飘落，湿润的地面映着灯火，故事从这里开始。\n\n他抬起头，终于意识到自己正站在命运改变的路口。")}</body>`;
+});
+
+const previewCss = computed(() => {
+  if (isStyle1.value) return style1PreviewCss;
+  if (isStyle3.value) return style3PreviewCss;
+  return style2PreviewCss.value;
+});
+const previewBody = computed(() => {
+  if (isStyle1.value) return style1PreviewBody.value;
+  if (isStyle3.value) return style3PreviewBody.value;
+  return style2PreviewBody.value;
+});
 
 const previewDocument = computed(() => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${previewCss.value}</style></head>${previewBody.value}</html>`);
 
