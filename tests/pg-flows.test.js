@@ -536,7 +536,8 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             claimed_amount: 2
         });
         const balances = await query(
-            "SELECT telegram_id, copper_coins FROM reader_users WHERE telegram_id IS NOT NULL ORDER BY telegram_id"
+            "SELECT telegram_id, copper_coins FROM reader_users WHERE telegram_id=ANY($1::text[]) ORDER BY telegram_id",
+            [["100", "101", "102"]]
         );
         assert.deepEqual(
             balances.rows.map((row) => [row.telegram_id, Number(row.copper_coins)]),
