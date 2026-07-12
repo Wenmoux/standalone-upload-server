@@ -17,13 +17,14 @@ function createTaskSchedulers(deps = {}) {
         handleShareBookshelf
     } = deps;
 
-    function exportJob(chat, from, bookId, format) {
+    function exportJob(chat, from, bookId, format, exportOptions = {}) {
         const chatId = typeof chat === "object" ? chat.id : chat;
         const id = String(bookId || "").trim();
         if (!id) return null;
+        const epubStyleId = format === "epub" ? String(exportOptions.epubStyleId || "").trim() : "";
         const label = `${format.toUpperCase()} 导出`;
         return {
-            name: `export:${format}:${from.id}:${id}`,
+            name: `export:${format}:${from.id}:${id}${epubStyleId ? `:${epubStyleId}` : ""}`,
             label,
             chatId,
             bookId: id,
@@ -35,12 +36,13 @@ function createTaskSchedulers(deps = {}) {
                 chat_id: String(chatId || ""),
                 book_id: id,
                 format,
-                group_chat: typeof chat === "object" && isGroup(chat)
+                group_chat: typeof chat === "object" && isGroup(chat),
+                ...(epubStyleId ? { epub_style_id: epubStyleId } : {})
             },
-            idempotencyKey: `bot:export:${format}:${from.id}:${id}`,
+            idempotencyKey: `bot:export:${format}:${from.id}:${id}${epubStyleId ? `:${epubStyleId}` : ""}`,
             maxAttempts: 3,
             lockKey: `export:${from.id}`,
-            task: (signal) => sendExport(chat, from, id, format, signal)
+            task: (signal) => sendExport(chat, from, id, format, signal, { epubStyleId })
         };
     }
 
@@ -102,8 +104,8 @@ function createTaskSchedulers(deps = {}) {
         };
     }
 
-    function scheduleExport(chat, from, bookId, format) {
-        const job = exportJob(chat, from, bookId, format);
+    function scheduleExport(chat, from, bookId, format, exportOptions = {}) {
+        const job = exportJob(chat, from, bookId, format, exportOptions);
         if (!job) return sendMessage(typeof chat === "object" ? chat.id : chat, `用法：/export${format} 书号`);
         return botTaskQueue.enqueue(job);
     }
@@ -129,7 +131,9 @@ function createTaskSchedulers(deps = {}) {
         const message = { from, chat };
         let job = null;
         if (row.type === "bot_export_txt" || row.type === "bot_export_epub") {
-            job = exportJob(chat, from, input.book_id, input.format || row.type.replace("bot_export_", ""));
+            job = exportJob(chat, from, input.book_id, input.format || row.type.replace("bot_export_", ""), {
+                epubStyleId: input.epub_style_id || ""
+            });
         } else if (row.type === "bot_po18_bookshelf_sync") {
             job = bookshelfJob(message);
         } else if (row.type === "bot_share_upload") {

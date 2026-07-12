@@ -924,6 +924,22 @@ Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters?includ
 
 Bot 导出正文时默认每页请求 `100` 章，可通过 `PO18_BOT_EXPORT_PAGE_SIZE` 在 `20-500` 范围内调整。
 
+新增 EPUB 样式二后台接口：
+
+```http
+GET    /admin-api/config/export/style2-template
+GET    /admin-api/config/export/style2-assets
+GET    /admin-api/config/export/style2-assets/:slot
+PUT    /admin-api/config/export/style2-assets/:slot
+DELETE /admin-api/config/export/style2-assets/:slot
+```
+
+- `GET style2-assets` 返回资源位、内置/自定义状态、字节数、当前尺寸和推荐尺寸。
+- `PUT` 请求体直接发送 JPEG、PNG、GIF 或 WebP，单图最大 `20 MB`。
+- `DELETE` 删除 `/config/epub-style2/:slot.asset` 并恢复镜像内置图。
+- `bot_epub_style_config.style2` 保存副标题、版本文本、来源文本、版权文本、阅读提示、字体族、默认分卷标题和追加 CSS。
+- Telegram 回调 `epubstyle|style1|bookId` / `epubstyle|style2|bookId` 在用户选择后创建 EPUB 导出任务。
+
 ### 2026-05-03
 
 `GET /reader-api/books/:bookId/chapters` 增加可选查询参数：

@@ -165,6 +165,7 @@ test("telegram polling runtime advances offset and reports handler errors", asyn
 
 test("bot task schedulers enqueue export jobs with system job metadata", () => {
     const jobs = [];
+    const exports = [];
     const schedulers = createTaskSchedulers({
         botTaskQueue: {
             enqueue(job) {
@@ -174,7 +175,7 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         },
         sendMessage: () => {},
         isGroup: (chat) => chat.type === "group",
-        sendExport: async () => {},
+        sendExport: async (...args) => { exports.push(args); },
         handleMyBookshelf: async () => {},
         handleShare: async () => {},
         handleShareBookshelf: async () => {}
@@ -189,10 +190,16 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         format: "txt",
         group_chat: true
     });
+    assert.equal(schedulers.scheduleExport({ id: "c1", type: "group" }, { id: 42 }, "b1", "epub", { epubStyleId: "style2" }), true);
+    assert.equal(jobs[1].systemJobInput.epub_style_id, "style2");
+    assert.match(jobs[1].idempotencyKey, /style2$/);
+    jobs[1].task(null);
+    assert.equal(exports[0][5].epubStyleId, "style2");
+
     assert.equal(schedulers.scheduleShareBookshelf({ chat: { id: "c2" }, from: { id: 99 } }), true);
-    assert.equal(jobs[1].systemJobType, "bot_po18_bookshelf_share");
-    assert.equal(jobs[1].lockKey, "sharebookshelf:99");
-    assert.deepEqual(jobs[1].systemJobInput, {
+    assert.equal(jobs[2].systemJobType, "bot_po18_bookshelf_share");
+    assert.equal(jobs[2].lockKey, "sharebookshelf:99");
+    assert.deepEqual(jobs[2].systemJobInput, {
         telegram_id: "99",
         chat_id: "c2"
     });

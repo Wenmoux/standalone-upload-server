@@ -309,6 +309,7 @@ test("admin config routes read and update telegram, platform and export settings
         telegram_chat_id: "chat-1"
     };
     const writes = [];
+    const style2AssetCalls = [];
     const router = createAdminConfigRoutes({
         requireAdmin: adminOnly,
         configGet: async (key) => stored[key] || "",
@@ -340,6 +341,30 @@ test("admin config routes read and update telegram, platform and export settings
             paidChapterSilverCost: Number(value.paidChapterSilverCost || 0),
             epub: value.epub
         }),
+        epubStyle2Assets: {
+            listAssets: async () => [
+                {
+                    slot: "title-background",
+                    label: "标题页背景",
+                    width: 687,
+                    height: 1415,
+                    recommendedWidth: 687,
+                    recommendedHeight: 1415
+                }
+            ],
+            sendAsset: async (slot, res) => {
+                style2AssetCalls.push({ action: "send", slot });
+                res.type("png").send(Buffer.from("image"));
+            },
+            uploadAsset: async (slot) => {
+                style2AssetCalls.push({ action: "upload", slot });
+                return { slot, custom: true, width: 100, height: 200 };
+            },
+            restoreAsset: async (slot) => {
+                style2AssetCalls.push({ action: "restore", slot });
+                return { slot, custom: false };
+            }
+        },
         sendDailyReport: async () => ({ sent: 1 }),
         postJson: async () => "{}"
     });
@@ -372,6 +397,39 @@ test("admin config routes read and update telegram, platform and export settings
         const exportBody = await exportConfig.json();
         assert.equal(exportBody.unlockCost, 11);
 
+        const style2Template = await fetch(`${base}/admin-api/config/export/style2-template`, {
+            headers: { "X-Test-Admin": "1" }
+        });
+        const style2TemplateBody = await style2Template.json();
+        assert.match(style2TemplateBody.baseCss, /__STYLE2_FONT__/);
+        assert.equal(typeof style2TemplateBody.defaults.fontFamily, "string");
+
+        const style2Assets = await fetch(`${base}/admin-api/config/export/style2-assets`, {
+            headers: { "X-Test-Admin": "1" }
+        });
+        const style2AssetsBody = await style2Assets.json();
+        assert.equal(style2AssetsBody.rows[0].recommendedWidth, 687);
+        assert.equal(style2AssetsBody.rows[0].recommendedHeight, 1415);
+
+        const style2Asset = await fetch(`${base}/admin-api/config/export/style2-assets/title-background`, {
+            headers: { "X-Test-Admin": "1" }
+        });
+        assert.equal(style2Asset.status, 200);
+        assert.equal(await style2Asset.text(), "image");
+
+        const style2Upload = await fetch(`${base}/admin-api/config/export/style2-assets/title-background`, {
+            method: "PUT",
+            headers: { "Content-Type": "image/png", "X-Test-Admin": "1" },
+            body: Buffer.from("image")
+        });
+        assert.equal((await style2Upload.json()).asset.custom, true);
+
+        const style2Restore = await fetch(`${base}/admin-api/config/export/style2-assets/title-background`, {
+            method: "DELETE",
+            headers: { "X-Test-Admin": "1" }
+        });
+        assert.equal((await style2Restore.json()).asset.custom, false);
+
         const daily = await fetch(`${base}/admin-api/config/telegram/daily-report/test`, {
             method: "POST",
             headers: { "X-Test-Admin": "1" }
@@ -383,6 +441,11 @@ test("admin config routes read and update telegram, platform and export settings
     assert.ok(writes.some((item) => item.key === "platform_labels" && item.value === '{"po18":"PO18"}'));
     assert.ok(writes.some((item) => item.key === "bot_export_unlock_cost" && item.value === "11"));
     assert.ok(writes.some((item) => item.key === "bot_epub_style_config" && item.value === '{"styleId":"crane"}'));
+    assert.deepEqual(style2AssetCalls, [
+        { action: "send", slot: "title-background" },
+        { action: "upload", slot: "title-background" },
+        { action: "restore", slot: "title-background" }
+    ]);
 });
 
 test("admin crawler routes expose config and control endpoints", async () => {

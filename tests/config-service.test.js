@@ -21,7 +21,17 @@ test("config helpers normalize labels and pricing", () => {
         }
     );
     assert.equal(pricing.epub.styleId, "style1");
+    assert.ok(pricing.epubStyles.some((style) => style.id === "style2"));
     assert.ok(pricing.epubStyles.some((style) => style.id === "crane"));
+    const style2 = exportPricingPayload({
+        epub: {
+            styleId: "style2",
+            style2: { customCss: "@import url(x); body{color:red}", fontFamily: "Songti SC; color:red" }
+        }
+    }).epub;
+    assert.equal(style2.styleId, "style2");
+    assert.equal(style2.style2.customCss, "body{color:red}");
+    assert.doesNotMatch(style2.style2.fontFamily, /;/);
     assert.deepEqual(exportPricingPayload({ dailyQuotaByLevel: { 3: "2", 2: "1", bad: 9 } }).dailyQuotaByLevel, { 2: 1, 3: 2 });
 });
 

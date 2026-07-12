@@ -146,32 +146,10 @@
         <div class="section-head" style="margin-top: 24px">
           <div>
             <p class="section-title">EPUB 内置样式</p>
-            <p class="section-desc">选择新导出的默认样式；已有 EPUB 文件不会被修改。</p>
+            <p class="section-desc">配置默认样式、样式 2 模板与持久化图片资源。</p>
           </div>
         </div>
-        <div class="split">
-          <label class="field">
-            <span>默认样式</span>
-            <select v-model="pricing.epub.styleId">
-              <option v-for="style in pricing.epubStyles" :key="style.id" :value="style.id">{{ style.name }}</option>
-            </select>
-          </label>
-          <label class="field"><span>简介页标题</span><input v-model.trim="pricing.epub.introTitle" maxlength="80" /></label>
-          <label class="field"><span>制作说明标题</span><input v-model.trim="pricing.epub.colophonTitle" maxlength="80" /></label>
-        </div>
-        <p class="section-desc" style="margin-top: 8px">{{ selectedEpubStyleDescription }}</p>
-        <div class="tag-row" style="margin: 12px 0">
-          <label class="check-row"><input v-model="pricing.epub.includeColophon" type="checkbox" /><span>生成制作说明页</span></label>
-          <label class="check-row"><input v-model="pricing.epub.showTopImage" type="checkbox" /><span>显示样式头图</span></label>
-        </div>
-        <label v-show="pricing.epub.includeColophon" class="field">
-          <span>制作说明正文</span>
-          <textarea v-model.trim="pricing.epub.colophonText" rows="5" maxlength="4000"></textarea>
-        </label>
-        <div class="button-row" style="margin-top: 14px">
-          <button type="button" @click="savePricing">保存导出配置</button>
-          <button class="secondary" type="button" @click="loadPricing">刷新</button>
-        </div>
+        <EpubStyleEditor v-model="pricing.epub" :styles="pricing.epubStyles" @save="savePricing" @refresh="loadPricing" />
       </div>
     </section>
 
@@ -221,6 +199,7 @@
 
 <script setup>
 import { computed, inject, onMounted, reactive, ref } from "vue";
+import EpubStyleEditor from "../components/EpubStyleEditor.vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";
 import { number } from "../utils/format";
@@ -254,14 +233,11 @@ const pricing = reactive({
     colophonTitle: "制作说明",
     colophonText: "",
     introTitle: "作品简介",
-    showTopImage: true
+    showTopImage: true,
+    style2: {}
   }
 });
 const dailyQuotaText = ref('{"1":1,"2":1,"3":2}');
-const selectedEpubStyleDescription = computed(() => {
-  const selected = pricing.epubStyles.find((item) => item.id === pricing.epub.styleId);
-  return selected?.description || "选择后应用于下一次 EPUB 导出。";
-});
 const tokenSourceText = computed(() => {
   if (status.value.loginTokenSource === "env") return "来自环境变量";
   if (status.value.loginTokenSource === "admin_config") return "来自后台保存";

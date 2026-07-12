@@ -23,6 +23,7 @@ const { createBotTaskRuntime } = require("./task-runtime");
 const { startBotHealthServer } = require("./health-server");
 const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
+const { EPUB_EXPORT_STYLE_CHOICES, epubStyleSelectionMarkup, normalizeEpubStyleChoice } = require("./epub-style-picker");
 const { createTaskSchedulers } = require("./task-schedulers");
 const { createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
 const { createTelegramPollingRuntime } = require("./polling-runtime");
@@ -273,7 +274,7 @@ function getCommandRegistry() {
         handlePo18Logout,
         scheduleMyBookshelf
     });
-    registerExportCommands(registry, { withExportCooldown, scheduleExport });
+    registerExportCommands(registry, { withExportCooldown, scheduleExport, requestEpubStyle });
     commandRegistry = registry;
     return registry;
 }
@@ -315,7 +316,7 @@ function cleanupPrivateExportStarts() {
     }
 }
 
-function rememberPrivateExportStart(from = {}, chat = {}, bookId = "", format = "txt") {
+function rememberPrivateExportStart(from = {}, chat = {}, bookId = "", format = "txt", exportOptions = {}) {
     cleanupPrivateExportStarts();
     const key = `ex_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     privateExportStarts.set(key, {
@@ -323,6 +324,7 @@ function rememberPrivateExportStart(from = {}, chat = {}, bookId = "", format = 
         chatId: String(typeof chat === "object" ? chat.id : chat || ""),
         bookId: String(bookId || "").trim(),
         format: String(format || "txt").trim(),
+        epubStyleId: normalizeEpubStyleChoice(exportOptions.epubStyleId),
         createdAt: Date.now()
     });
     return key;
@@ -353,6 +355,17 @@ async function canSendPrivateMessage(userId) {
     }
 }
 
+async function requestEpubStyle(chat, _from, bookId) {
+    const chatId = typeof chat === "object" ? chat.id : chat;
+    const id = String(bookId || "").trim();
+    if (!id) return sendMessage(chatId, "用法：/exportepub 书号");
+    return sendMessage(chatId, [
+        "请选择 EPUB 生成样式：",
+        `<code>${escapeHtml(id)}</code>`,
+        "选择后才会开始生成和计算导出费用。"
+    ].join("\n"), { reply_markup: epubStyleSelectionMarkup(id, callback) });
+}
+
 
 
 async function ensureRegistered(user) {
@@ -370,9 +383,12 @@ async function handleStart(message, payload) {
         await sendMessage(message.chat.id, [
             "私聊已授权，开始继续刚才的导出。",
             `书号：<code>${escapeHtml(pendingExport.bookId)}</code>`,
-            `格式：${escapeHtml(pendingExport.format.toUpperCase())}`
-        ].join("\n")).catch(() => {});
-        return scheduleExport(message.chat, message.from, pendingExport.bookId, pendingExport.format);
+            `格式：${escapeHtml(pendingExport.format.toUpperCase())}`,
+            pendingExport.epubStyleId ? `样式：${escapeHtml(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === pendingExport.epubStyleId)?.label || pendingExport.epubStyleId)}` : ""
+        ].filter(Boolean).join("\n")).catch(() => {});
+        return scheduleExport(message.chat, message.from, pendingExport.bookId, pendingExport.format, {
+            epubStyleId: pendingExport.epubStyleId
+        });
     }
     await deliverLongGroupResult(message, startHelpText({
         user,
@@ -641,7 +657,7 @@ async function handlePikpak(message, args) {
     return deliverLongGroupResult(message, lines.join("\n"), {}, { title: "PikPak 目录" });
 }
 
-async function sendExport(chat, from, bookId, format) {
+async function sendExport(chat, from, bookId, format, _signal, exportOptions = {}) {
     const chatId = typeof chat === "object" ? chat.id : chat;
     const groupExport = typeof chat === "object" && isGroup(chat);
     const id = String(bookId || "").trim();
@@ -657,7 +673,7 @@ async function sendExport(chat, from, bookId, format) {
     const canUseDailyExport = !!freeExport.available;
     const canUseExtraExport = !!freeExport.extra_book_already_used || Number(freeExport.extra_remaining || 0) > 0;
     if (groupExport && !(await canSendPrivateMessage(from.id))) {
-        const payload = rememberPrivateExportStart(from, chat, id, format);
+        const payload = rememberPrivateExportStart(from, chat, id, format, exportOptions);
         const failure = formatExportFailure(asExportError("EXPORT_PRIVATE_CHAT_REQUIRED", "Forbidden: bot can't initiate conversation with a user"));
         await sendMessage(chatId, [
             failure.message,
@@ -667,10 +683,15 @@ async function sendExport(chat, from, bookId, format) {
         ].join("\n"), { reply_markup: privateExportStartMarkup(payload) });
         return;
     }
-    const progress = await sendMessage(chatId, `正在生成 ${format.toUpperCase()}：<code>${escapeHtml(id)}</code>`);
+    const epubStyleId = normalizeEpubStyleChoice(exportOptions.epubStyleId);
+    const epubStyleLabel = EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === epubStyleId)?.label || "";
+    const progress = await sendMessage(chatId, `正在生成 ${format.toUpperCase()}${epubStyleLabel ? `（${escapeHtml(epubStyleLabel)}）` : ""}：<code>${escapeHtml(id)}</code>`);
     let result = null;
     try {
-        result = await buildExport(bookData.book, format, from, { epub: pricingData.pricing?.epub || pricingData.epub || {} });
+        const savedEpubConfig = pricingData.pricing?.epub || pricingData.epub || {};
+        result = await buildExport(bookData.book, format, from, {
+            epub: epubStyleId ? { ...savedEpubConfig, styleId: epubStyleId } : savedEpubConfig
+        });
         const quote = exportQuote(result, pricing);
         const paidBook = Number(quote.paidChapters || 0) > 0;
         const user = permission.user || {};
@@ -776,7 +797,7 @@ async function sendExport(chat, from, bookId, format) {
                     const exportErr = asExportError("EXPORT_PRIVATE_CHAT_REQUIRED", err.message || "private chat required", err);
                     exportErr.userNotified = true;
                     const failure = formatExportFailure(exportErr);
-                    const payload = rememberPrivateExportStart(from, chat, id, format);
+                    const payload = rememberPrivateExportStart(from, chat, id, format, exportOptions);
                     await editMessage(chatId, progress.message_id, [
                         failure.message,
                         `错误码：${failure.code}`,
@@ -868,7 +889,17 @@ async function handleCallback(query) {
         });
     }
     if (action === "txt") return withBotAudit(callbackMessage, "/exporttxt", "export_txt_callback", { book_id: a }, () => withCooldown(callbackMessage, "export", BOT_EXPORT_COOLDOWN_MS, "导出", () => scheduleExport(message.chat, query.from, a, "txt")));
-    if (action === "epub") return withBotAudit(callbackMessage, "/exportepub", "export_epub_callback", { book_id: a }, () => withCooldown(callbackMessage, "export", BOT_EXPORT_COOLDOWN_MS, "导出", () => scheduleExport(message.chat, query.from, a, "epub")));
+    if (action === "epub") return withBotAudit(callbackMessage, "/exportepub", "export_epub_style_prompt", { book_id: a }, () => requestEpubStyle(message.chat, query.from, a));
+    if (action === "epubstyle") {
+        const styleId = normalizeEpubStyleChoice(a);
+        const bookId = String(rest[0] || "").trim();
+        if (!styleId || !bookId) return sendMessage(message.chat.id, "EPUB 样式或书号无效，请重新选择。");
+        return withBotAudit(callbackMessage, "/exportepub", "export_epub_callback", { book_id: bookId, style_id: styleId }, () =>
+            withCooldown(callbackMessage, "export", BOT_EXPORT_COOLDOWN_MS, "导出", () =>
+                scheduleExport(message.chat, query.from, bookId, "epub", { epubStyleId: styleId })
+            )
+        );
+    }
     if (action === "unlock") {
         return withBotAudit(callbackMessage, "/exporttxt", "export_unlock", { book_id: a }, async () => {
             await ensureRegistered(query.from);

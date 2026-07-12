@@ -1,4 +1,5 @@
 const express = require("express");
+const { DEFAULT_STYLE2_CONFIG, STYLE2_BASE_CSS } = require("../services/epub-style2-template");
 
 function createAdminConfigRoutes(options = {}) {
     const router = express.Router();
@@ -16,6 +17,7 @@ function createAdminConfigRoutes(options = {}) {
     const cleanPlatformKey = options.cleanPlatformKey || ((value) => String(value || "").trim());
     const exportPricingConfig = options.exportPricingConfig || (async () => ({}));
     const exportPricingPayload = options.exportPricingPayload || ((value) => value || {});
+    const epubStyle2Assets = options.epubStyle2Assets;
     const sendDailyReport = options.sendDailyReport || (async () => ({ skipped: "not_configured" }));
     const postJson = options.postJson || (async () => {});
 
@@ -135,6 +137,48 @@ function createAdminConfigRoutes(options = {}) {
             if (nextConfig.epub) writes.push(configSet("bot_epub_style_config", JSON.stringify(nextConfig.epub)));
             await Promise.all(writes);
             res.json({ success: true, ...nextConfig });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/admin-api/config/export/style2-assets", requireAdmin, async (req, res, next) => {
+        try {
+            if (!epubStyle2Assets) return res.status(503).json({ error: "EPUB 样式图片服务未启用" });
+            res.json({ rows: await epubStyle2Assets.listAssets() });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/admin-api/config/export/style2-template", requireAdmin, async (req, res) => {
+        res.json({ baseCss: STYLE2_BASE_CSS, defaults: DEFAULT_STYLE2_CONFIG });
+    });
+
+    router.get("/admin-api/config/export/style2-assets/:slot", requireAdmin, async (req, res, next) => {
+        try {
+            if (!epubStyle2Assets) return res.status(503).json({ error: "EPUB 样式图片服务未启用" });
+            await epubStyle2Assets.sendAsset(req.params.slot, res);
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.put("/admin-api/config/export/style2-assets/:slot", requireAdmin, async (req, res, next) => {
+        try {
+            if (!epubStyle2Assets) return res.status(503).json({ error: "EPUB 样式图片服务未启用" });
+            const asset = await epubStyle2Assets.uploadAsset(req.params.slot, req);
+            res.json({ success: true, asset });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.delete("/admin-api/config/export/style2-assets/:slot", requireAdmin, async (req, res, next) => {
+        try {
+            if (!epubStyle2Assets) return res.status(503).json({ error: "EPUB 样式图片服务未启用" });
+            const asset = await epubStyle2Assets.restoreAsset(req.params.slot);
+            res.json({ success: true, asset });
         } catch (err) {
             next(err);
         }

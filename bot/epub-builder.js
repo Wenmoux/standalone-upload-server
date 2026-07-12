@@ -29,6 +29,7 @@ function createEpubBuilder(deps = {}) {
         const descriptionHtml = String(book.description_html || book.description || "").trim();
         const descriptionText = cleanText(descriptionHtml) || "暂无简介";
         const { style, config } = resolveEpubStyle(options.epub || options);
+        const styleCss = typeof style.css === "function" ? style.css(config) : style.css;
         const loadedAssets = loadStyleAssets(style, config, options);
         const assetNames = new Set(loadedAssets.map((asset) => asset.name));
         const manifest = [
@@ -45,7 +46,7 @@ function createEpubBuilder(deps = {}) {
                     '<?xml version="1.0" encoding="utf-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
                 )
             },
-            { name: "OEBPS/Styles/main.css", content: Buffer.from(`${style.css}\n${COVER_PAGE_CSS}`) }
+            { name: "OEBPS/Styles/main.css", content: Buffer.from(`${styleCss}\n${COVER_PAGE_CSS}`) }
         ];
 
         for (const asset of loadedAssets) {
@@ -54,39 +55,65 @@ function createEpubBuilder(deps = {}) {
         }
 
         let pageOrder = 0;
-        function addPage({ id, href, pageTitle, body, navTitle = "", linear = true, documentOptions = {} }) {
+        function addPage({ id, href, pageTitle, body, navTitle = "", navParent = null, linear = true, documentOptions = {} }) {
             const itemId = cleanId(id);
             manifest.push(`<item id="${itemId}" href="${href}" media-type="application/xhtml+xml"/>`);
             spine.push(`<itemref idref="${itemId}"${linear ? "" : ' linear="no"'}/>`);
             files.push({ name: `OEBPS/${href}`, content: Buffer.from(xhtmlDocument(pageTitle, body, documentOptions)) });
             if (navTitle) {
                 pageOrder += 1;
-                navPoints.push({ order: pageOrder, title: navTitle, href });
+                const navPoint = { order: pageOrder, title: navTitle, href, children: [] };
+                if (navParent) navParent.children.push(navPoint);
+                else navPoints.push(navPoint);
+                return navPoint;
+            }
+            return null;
+        }
+
+        let coverName = "";
+        let coverPageAdded = false;
+        const cover = await fetchCoverFile(book.cover || book.cover_url || book.coverUrl);
+        if (cover) {
+            coverName = `Images/cover${cover.ext}`;
+            files.push({ name: `OEBPS/${coverName}`, content: cover.bytes });
+            manifest.push(`<item id="cover-image" href="${coverName}" media-type="${cover.mime}"/>`);
+            if (!style.skipVisibleCoverPage) {
+                addPage({
+                    id: "cover-page",
+                    href: "Text/cover.xhtml",
+                    pageTitle: rawTitle,
+                    body: `<body class="cover-page"><div class="cover"><svg class="cover-svg" xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 ${cover.width || 1200} ${cover.height || 1600}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink"><image width="${cover.width || 1200}" height="${cover.height || 1600}" preserveAspectRatio="xMidYMid meet" xlink:href="../${coverName}"/></svg></div></body>`,
+                    linear: true,
+                    documentOptions: { cover: true }
+                });
+                coverPageAdded = true;
             }
         }
 
-        const cover = await fetchCoverFile(book.cover || book.cover_url || book.coverUrl);
-        if (cover) {
-            const coverName = `Images/cover${cover.ext}`;
-            files.push({ name: `OEBPS/${coverName}`, content: cover.bytes });
-            manifest.push(`<item id="cover-image" href="${coverName}" media-type="${cover.mime}"/>`);
+        const paragraphRenderer = Object.assign((value, className = "") => textToParagraphs(value, className), { escape: escapeHtml });
+        const chapterCount = chapters.filter((chapter) => !isVolumeChapter(chapter)).length;
+        const pageContext = {
+            book,
+            config,
+            rawTitle,
+            rawAuthor,
+            descriptionText,
+            coverName,
+            chapterCount,
+            paragraphs: paragraphRenderer,
+            hasAsset: (name) => assetNames.has(name),
+            assetHref: (name) => `../${name}`
+        };
+
+        if (typeof style.renderTitlePage === "function") {
             addPage({
-                id: "cover-page",
-                href: "Text/cover.xhtml",
+                id: "title-page",
+                href: "Text/title.xhtml",
                 pageTitle: rawTitle,
-                body: `<body class="cover-page"><div class="cover"><svg class="cover-svg" xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 ${cover.width || 1200} ${cover.height || 1600}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink"><image width="${cover.width || 1200}" height="${cover.height || 1600}" preserveAspectRatio="xMidYMid meet" xlink:href="../${coverName}"/></svg></div></body>`,
-                linear: true,
-                documentOptions: { cover: true }
+                navTitle: style.titlePageNavTitle || rawTitle,
+                body: style.renderTitlePage(pageContext)
             });
         }
-
-        const paragraphRenderer = Object.assign((value, className = "") => textToParagraphs(value, className), { escape: escapeHtml });
-        const pageContext = {
-            config,
-            descriptionText,
-            paragraphs: paragraphRenderer,
-            hasAsset: (name) => assetNames.has(name)
-        };
 
         if (config.includeColophon && typeof style.renderColophon === "function") {
             addPage({
@@ -108,18 +135,35 @@ function createEpubBuilder(deps = {}) {
 
         let chapterNo = 0;
         let volumeNo = 0;
+        let currentVolumeNav = null;
+        if (style.implicitVolumePage && chapters.length && !isVolumeChapter(chapters[0])) {
+            volumeNo = 1;
+            const implicitTitle = config.style2?.volumeTitle || "正文";
+            currentVolumeNav = addPage({
+                id: "volume-1",
+                href: `Text/volume_${padNumber(volumeNo)}.xhtml`,
+                pageTitle: implicitTitle,
+                navTitle: implicitTitle,
+                body: style.renderVolume({
+                    ...pageContext,
+                    header: { number: "", name: escapeXml(implicitTitle) },
+                    title: escapeXml(implicitTitle),
+                    volumeNo
+                })
+            });
+        }
         for (let index = 0; index < chapters.length; index += 1) {
             const chapter = chapters[index];
             const rawChapterTitle = chapter.title || chapter.chapter_title || chapter.chapter_id || `第${index + 1}章`;
             if (isVolumeChapter(chapter)) {
                 volumeNo += 1;
                 const header = escapedHeader(splitHeading(rawChapterTitle, volumeNo, VOLUME_LABEL_REGEX, "卷"));
-                addPage({
+                currentVolumeNav = addPage({
                     id: `volume-${volumeNo}`,
                     href: `Text/volume_${padNumber(volumeNo)}.xhtml`,
                     pageTitle: rawChapterTitle,
                     navTitle: rawChapterTitle,
-                    body: style.renderVolume({ ...pageContext, header, title: escapeXml(rawChapterTitle) })
+                    body: style.renderVolume({ ...pageContext, header, title: escapeXml(rawChapterTitle), volumeNo })
                 });
             } else {
                 chapterNo += 1;
@@ -129,9 +173,11 @@ function createEpubBuilder(deps = {}) {
                     href: `Text/chapter_${padNumber(chapterNo)}.xhtml`,
                     pageTitle: rawChapterTitle,
                     navTitle: rawChapterTitle,
+                    navParent: style.nestedVolumeToc ? currentVolumeNav : null,
                     body: style.renderChapter({
                         ...pageContext,
                         header,
+                        chapterNo,
                         bodyHtml: textToParagraphs(chapterPlainText(chapter))
                     })
                 });
@@ -142,12 +188,12 @@ function createEpubBuilder(deps = {}) {
         files.push({
             name: "OEBPS/toc.ncx",
             content: Buffer.from(
-                `<?xml version="1.0" encoding="utf-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="po18-${escapeXml(book.book_id)}"/></head><docTitle><text>${title}</text></docTitle><navMap>${navPoints.map((item) => `<navPoint id="navPoint-${item.order}" playOrder="${item.order}"><navLabel><text>${escapeXml(item.title)}</text></navLabel><content src="${item.href}"/></navPoint>`).join("")}</navMap></ncx>`
+                `<?xml version="1.0" encoding="utf-8"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="po18-${escapeXml(book.book_id)}"/></head><docTitle><text>${title}</text></docTitle><navMap>${navPoints.map(renderNavPoint).join("")}</navMap></ncx>`
             )
         });
 
         const coverMeta = cover ? '<meta name="cover" content="cover-image"/>' : "";
-        const coverGuide = cover ? '<guide><reference type="cover" title="Cover" href="Text/cover.xhtml"/></guide>' : "";
+        const coverGuide = coverPageAdded ? '<guide><reference type="cover" title="Cover" href="Text/cover.xhtml"/></guide>' : "";
         files.push({
             name: "OEBPS/content.opf",
             content: Buffer.from(
@@ -173,7 +219,7 @@ function createEpubBuilder(deps = {}) {
                 }
             }
             const buffer = normalizeBuffer(content);
-            if (buffer) result.push({ ...asset, content: buffer });
+            if (buffer) result.push({ ...asset, mediaType: detectImageMediaType(buffer) || asset.mediaType, content: buffer });
         }
         return result;
     }
@@ -274,6 +320,11 @@ function escapedHeader(header) {
     return { number: escapeXml(header.number), name: escapeXml(header.name) };
 }
 
+function renderNavPoint(item) {
+    const children = Array.isArray(item.children) ? item.children.map(renderNavPoint).join("") : "";
+    return `<navPoint id="navPoint-${item.order}" playOrder="${item.order}"><navLabel><text>${escapeXml(item.title)}</text></navLabel><content src="${item.href}"/>${children}</navPoint>`;
+}
+
 function xhtmlDocument(title, body, options = {}) {
     const cover = options.cover === true;
     const htmlClass = cover ? ' class="cover-document"' : "";
@@ -315,6 +366,15 @@ function imageDimensions(bytes, isPng) {
         }
     }
     return {};
+}
+
+function detectImageMediaType(bytes) {
+    if (!Buffer.isBuffer(bytes) || !bytes.length) return "";
+    if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+    if (bytes.length >= 6 && ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"))) return "image/gif";
+    if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+    return "";
 }
 
 function padNumber(value) {

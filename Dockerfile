@@ -47,6 +47,7 @@ COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY pg-store.js server-pg.js ./
 COPY services ./services
+COPY assets ./assets
 COPY routes ./routes
 COPY db ./db
 COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
@@ -75,6 +76,7 @@ COPY --from=root-deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY bot ./bot
+COPY assets ./assets
 COPY docker/status-check.js ./docker/status-check.js
 EXPOSE 3300
 CMD ["node", "bot/telegram-bot.js"]
@@ -130,6 +132,7 @@ COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY pg-store.js server-pg.js ./
 COPY services ./services
+COPY assets ./assets
 COPY routes ./routes
 COPY db ./db
 COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/

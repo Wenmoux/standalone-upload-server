@@ -90,3 +90,92 @@ test("crane EPUB style remains available", async () => {
     assert.match(chapter, /class="chapter-header-number">第184章/);
     assert.match(chapter, /class="chapter-header-name">回国/);
 });
+
+test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", async () => {
+    const coverBytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=",
+        "base64"
+    );
+    const { makeEpubFiles, listEpubStyles } = createEpubBuilder({
+        fetchImpl: async () => ({
+            ok: true,
+            headers: { get: () => "image/png" },
+            arrayBuffer: async () => coverBytes
+        }),
+        yieldToEventLoop: async () => {}
+    });
+    const files = await makeEpubFiles(
+        {
+            book_id: "b3",
+            title: "原来，她们才是主角",
+            author: "ccc",
+            description: "第一段\n第二段",
+            cover: "https://example.test/cover.png",
+            platform: "ciweimao",
+            category: "仙侠武侠",
+            word_count: 3243000,
+            status: "已完结"
+        },
+        [
+            { chapter_id: "v1", title: "第一卷 正文", type: "volume" },
+            { chapter_id: "c1", title: "第1章 配角竟是我自己", text: "正文一\n正文二" }
+        ],
+        {
+            epub: {
+                styleId: "style2",
+                includeColophon: true,
+                colophonTitle: "制作说明",
+                introTitle: "内容简介",
+                style2: {
+                    subtitle: "内部群版",
+                    versionText: "版本 v2",
+                    customCss: ".head{letter-spacing:0;}"
+                }
+            }
+        }
+    );
+
+    assert.ok(!files.some((file) => file.name === "OEBPS/Text/cover.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/title.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/colophon.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/intro.xhtml"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style2-title-background.jpg"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style2-chapter-1.jpg"));
+
+    const css = contentOf(files, "OEBPS/Styles/main.css");
+    const title = contentOf(files, "OEBPS/Text/title.xhtml");
+    const colophon = contentOf(files, "OEBPS/Text/colophon.xhtml");
+    const intro = contentOf(files, "OEBPS/Text/intro.xhtml");
+    const volume = contentOf(files, "OEBPS/Text/volume_0001.xhtml");
+    const chapter = contentOf(files, "OEBPS/Text/chapter_0001.xhtml");
+    const packageFile = contentOf(files, "OEBPS/content.opf");
+    const toc = contentOf(files, "OEBPS/toc.ncx");
+
+    assert.match(css, /style2-title-background\.jpg/);
+    assert.match(css, /\.head\{letter-spacing:0;\}/);
+    assert.match(title, /body class="ver"/);
+    assert.match(title, /内部群版/);
+    assert.match(colophon, /body class="bg"/);
+    assert.match(colophon, /版本 v2/);
+    assert.match(intro, /body class="babala"/);
+    assert.match(intro, /Images\/cover\.png/);
+    assert.match(intro, /324\.3万字/);
+    assert.match(volume, /style2-volume-1\.jpg/);
+    assert.match(chapter, /style2-chapter-1\.jpg/);
+    assert.match(chapter, /class="num">第1章/);
+    assert.match(packageFile, /po18-epub-style" content="style2"/);
+    assert.doesNotMatch(packageFile, /reference type="cover"/);
+    assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 配角竟是我自己<\/text>/);
+    assert.ok(listEpubStyles().some((style) => style.id === "style2"));
+});
+
+test("style2 EPUB adds an implicit main volume when chapter data has no volume row", async () => {
+    const { makeEpubFiles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
+    const files = await makeEpubFiles(
+        { book_id: "b4", title: "无分卷书", author: "作者", description: "简介" },
+        [{ chapter_id: "c1", title: "第一章 开始", text: "正文" }],
+        { epub: { styleId: "style2", includeColophon: false, style2: { volumeTitle: "正文" } } }
+    );
+    assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
+    assert.match(contentOf(files, "OEBPS/Text/volume_0001.xhtml"), />正文<\/h1>/);
+});

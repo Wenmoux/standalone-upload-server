@@ -1,8 +1,15 @@
+const { DEFAULT_STYLE2_CONFIG } = require("./epub-style2-template");
+
 const EPUB_STYLE_OPTIONS = Object.freeze([
     {
         id: "style1",
         name: "样式一 · 江湖纸卷",
         description: "暖纸底、红黑章头、圆形人物头图、竖排分卷和独立制作说明。"
+    },
+    {
+        id: "style2",
+        name: "样式二 · 原书复刻",
+        description: "1:1 复刻参考 EPUB 的插画标题页、制作说明、书籍信息、分卷图和正文章头。"
     },
     {
         id: "crane",
@@ -36,6 +43,39 @@ function booleanValue(value, fallback) {
     return !!value;
 }
 
+function cleanFontFamily(value, fallback = DEFAULT_STYLE2_CONFIG.fontFamily) {
+    const text = String(value ?? "")
+        .replace(/[^\w\u3400-\u9fff\s,"'\-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    return (text || fallback).slice(0, 320);
+}
+
+function cleanCss(value, maxLength = 30000) {
+    return String(value ?? "")
+        .replace(/<\/?(?:style|script)\b[^>]*>/gi, "")
+        .replace(/@import\s+[^;]+;?/gi, "")
+        .replace(/url\s*\([^)]*\)/gi, "")
+        .replace(/expression\s*\([^)]*\)/gi, "")
+        .replace(/[<>]/g, "")
+        .trim()
+        .slice(0, maxLength);
+}
+
+function normalizeStyle2Config(value = {}) {
+    const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    return {
+        subtitle: cleanText(input.subtitle, 80, DEFAULT_STYLE2_CONFIG.subtitle),
+        versionText: cleanText(input.versionText ?? input.version_text, 160, DEFAULT_STYLE2_CONFIG.versionText),
+        sourceText: cleanText(input.sourceText ?? input.source_text, 2000, DEFAULT_STYLE2_CONFIG.sourceText),
+        copyrightText: cleanText(input.copyrightText ?? input.copyright_text, 2000, DEFAULT_STYLE2_CONFIG.copyrightText),
+        readingTip: cleanText(input.readingTip ?? input.reading_tip, 1000, DEFAULT_STYLE2_CONFIG.readingTip),
+        volumeTitle: cleanText(input.volumeTitle ?? input.volume_title, 80, DEFAULT_STYLE2_CONFIG.volumeTitle),
+        fontFamily: cleanFontFamily(input.fontFamily ?? input.font_family, DEFAULT_STYLE2_CONFIG.fontFamily),
+        customCss: cleanCss(input.customCss ?? input.custom_css)
+    };
+}
+
 function normalizeEpubExportConfig(value = {}) {
     const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const requestedStyle = String(input.styleId ?? input.style_id ?? input.style ?? DEFAULT_EPUB_EXPORT_CONFIG.styleId).trim();
@@ -45,7 +85,8 @@ function normalizeEpubExportConfig(value = {}) {
         colophonTitle: cleanText(input.colophonTitle ?? input.colophon_title, 80, DEFAULT_EPUB_EXPORT_CONFIG.colophonTitle),
         colophonText: cleanText(input.colophonText ?? input.colophon_text, 4000, DEFAULT_EPUB_EXPORT_CONFIG.colophonText),
         introTitle: cleanText(input.introTitle ?? input.intro_title, 80, DEFAULT_EPUB_EXPORT_CONFIG.introTitle),
-        showTopImage: booleanValue(input.showTopImage ?? input.show_top_image, DEFAULT_EPUB_EXPORT_CONFIG.showTopImage)
+        showTopImage: booleanValue(input.showTopImage ?? input.show_top_image, DEFAULT_EPUB_EXPORT_CONFIG.showTopImage),
+        style2: normalizeStyle2Config(input.style2 || input.style_two || {})
     };
 }
 
@@ -60,7 +101,10 @@ function parseEpubExportConfig(value = "") {
 
 module.exports = {
     DEFAULT_EPUB_EXPORT_CONFIG,
+    DEFAULT_STYLE2_CONFIG,
     EPUB_STYLE_OPTIONS,
+    cleanCss,
     normalizeEpubExportConfig,
+    normalizeStyle2Config,
     parseEpubExportConfig
 };

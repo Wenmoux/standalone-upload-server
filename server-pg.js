@@ -50,6 +50,7 @@ const { createReaderRumService } = require("./services/reader-rum");
 const { createUserCurrencyService } = require("./services/user-currency");
 const { createBookChapterService } = require("./services/book-chapters");
 const { createConfigService } = require("./services/config");
+const { createEpubStyle2AssetService } = require("./services/epub-style2-assets");
 const { createBotSettingsService } = require("./services/bot-settings");
 const { createErrorResponseNormalizer } = require("./services/error-response");
 const { dbUnavailableMessage, isPgUnavailableError: isPgConnectionError } = require("./services/db-errors");
@@ -176,6 +177,7 @@ const configService = createConfigService({
     query,
     cleanPgText
 });
+const epubStyle2Assets = createEpubStyle2AssetService({ configFile: CONFIG_FILE });
 const {
     cleanPlatformKey,
     configGet,
@@ -482,6 +484,7 @@ const adminConfigRoutes = createAdminConfigRoutes({
     cleanPlatformKey,
     exportPricingConfig,
     exportPricingPayload,
+    epubStyle2Assets,
     sendDailyReport,
     postJson
 });

@@ -1,5 +1,5 @@
 function registerExportCommands(registry, handlers = {}) {
-    const { withExportCooldown, scheduleExport } = handlers;
+    const { withExportCooldown, scheduleExport, requestEpubStyle } = handlers;
 
     registry.register({
         command: "/exporttxt",
@@ -11,7 +11,7 @@ function registerExportCommands(registry, handlers = {}) {
         command: "/exportepub",
         description: "导出 EPUB",
         action: "export_epub",
-        handler: ({ message, args }) => withExportCooldown(message, "导出", () => scheduleExport(message.chat, message.from, args, "epub"))
+        handler: ({ message, args }) => requestEpubStyle(message.chat, message.from, args)
     });
 }
 
