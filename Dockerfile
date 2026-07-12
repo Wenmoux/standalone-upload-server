@@ -40,6 +40,7 @@ COPY admin-ui/package*.json ./
 RUN npm ci && npm cache clean --force
 COPY admin-ui ./
 COPY ui /build/ui
+COPY bot/epub-styles/assets/jianghu-top.png /build/bot/epub-styles/assets/jianghu-top.png
 RUN npm run build
 
 FROM ${NODE_ALPINE_IMAGE} AS server-pg

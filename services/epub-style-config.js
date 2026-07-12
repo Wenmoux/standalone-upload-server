@@ -70,7 +70,6 @@ function normalizeStyle2Config(value = {}) {
         sourceText: cleanText(input.sourceText ?? input.source_text, 2000, DEFAULT_STYLE2_CONFIG.sourceText),
         copyrightText: cleanText(input.copyrightText ?? input.copyright_text, 2000, DEFAULT_STYLE2_CONFIG.copyrightText),
         readingTip: cleanText(input.readingTip ?? input.reading_tip, 1000, DEFAULT_STYLE2_CONFIG.readingTip),
-        volumeTitle: cleanText(input.volumeTitle ?? input.volume_title, 80, DEFAULT_STYLE2_CONFIG.volumeTitle),
         fontFamily: cleanFontFamily(input.fontFamily ?? input.font_family, DEFAULT_STYLE2_CONFIG.fontFamily),
         customCss: cleanCss(input.customCss ?? input.custom_css)
     };

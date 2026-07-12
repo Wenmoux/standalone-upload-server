@@ -1,6 +1,6 @@
 <template>
   <div class="epub-style-editor">
-    <div class="epub-workspace" :class="{ 'has-preview': isStyle2 }">
+    <div class="epub-workspace" :class="{ 'has-preview': hasPreview }">
       <div class="epub-settings">
         <div class="split">
           <label class="field">
@@ -28,7 +28,6 @@
           <div class="style2-fields">
             <label class="field"><span>标题页副标题</span><input v-model.trim="style2.subtitle" maxlength="80" /></label>
             <label class="field"><span>版本文本</span><input v-model.trim="style2.versionText" maxlength="160" /></label>
-            <label class="field"><span>默认分卷标题</span><input v-model.trim="style2.volumeTitle" maxlength="80" /></label>
             <label class="field field-span"><span>字体族</span><input v-model.trim="style2.fontFamily" maxlength="320" /></label>
             <label class="field field-span"><span>制作来源文本</span><textarea v-model.trim="style2.sourceText" rows="3" maxlength="2000"></textarea></label>
             <label class="field field-span"><span>版权文本</span><textarea v-model.trim="style2.copyrightText" rows="3" maxlength="2000"></textarea></label>
@@ -37,17 +36,24 @@
           </div>
         </template>
 
+        <label v-if="hasPreview" class="field effective-css-field">
+          <span>完整样式 CSS</span>
+          <textarea :value="effectiveCss" rows="14" readonly spellcheck="false"></textarea>
+          <small>{{ effectiveCssHint }}</small>
+        </label>
+
         <div class="button-row epub-actions">
           <button type="button" @click="$emit('save')">保存导出配置</button>
           <button class="secondary" type="button" @click="$emit('refresh')">刷新配置</button>
         </div>
       </div>
 
-      <aside v-if="isStyle2" class="epub-preview-panel">
+      <aside v-if="hasPreview" class="epub-preview-panel">
         <div class="preview-head">
           <div>
-            <strong>样式 2 预览</strong>
+            <strong>{{ previewTitle }}</strong>
             <small>{{ previewLabel }}</small>
+            <small v-if="previewHint" class="preview-hint">{{ previewHint }}</small>
           </div>
           <div class="preview-tabs" role="tablist" aria-label="预览页面">
             <button
@@ -60,7 +66,7 @@
           </div>
         </div>
         <div class="preview-device">
-          <iframe title="EPUB 样式 2 预览" sandbox="allow-same-origin" :srcdoc="previewDocument"></iframe>
+          <iframe :title="previewTitle" sandbox="allow-same-origin" :srcdoc="previewDocument"></iframe>
         </div>
       </aside>
     </div>
@@ -100,6 +106,8 @@
 
 <script setup>
 import { computed, inject, onMounted, ref, watch } from "vue";
+import style1TopImage from "../../../bot/epub-styles/assets/jianghu-top.png";
+import style1Css from "../../../ui/epub-style1.css?raw";
 import { api } from "../services/api";
 
 const model = defineModel({ type: Object, required: true });
@@ -113,7 +121,7 @@ const templateDefaults = ref({});
 const assetVersion = ref(Date.now());
 const uploadingSlot = ref("");
 const previewPage = ref("title");
-const previewPages = [
+const previewPageDefs = [
   { id: "title", label: "标题" },
   { id: "colophon", label: "说明" },
   { id: "intro", label: "简介" },
@@ -127,10 +135,20 @@ const fallbackStyle2 = {
   sourceText: "本书由 PO18 Reader 根据本地缓存内容生成，封面使用书籍元信息中的图片，页面结构与内置样式保持一致。",
   copyrightText: "本书仅供个人阅读、备份与排版学习，请勿用于商业用途。请支持正版。",
   readingTip: "为获得最佳阅读效果，建议关闭阅读器自带排版增强，并允许 EPUB 使用内嵌样式。",
-  volumeTitle: "正文",
   fontFamily: '"DK-SONGTI","Songti SC","STSong","SimSun","Noto Serif CJK SC",serif',
   customCss: ""
 };
+
+const style2EpubAssetUrls = {
+  "title-background": "../Images/style2-title-background.jpg",
+  "colophon-background": "../Images/style2-colophon-background.jpg",
+  "intro-background": "../Images/style2-intro-background.jpg"
+};
+const previewEmbeddedAssetSlots = new Set([
+  "title-background",
+  "colophon-background",
+  "intro-background"
+]);
 
 function ensureStyle2() {
   const defaults = { ...fallbackStyle2, ...(templateDefaults.value || {}) };
@@ -140,9 +158,21 @@ function ensureStyle2() {
 watch(() => model.value, ensureStyle2, { immediate: true });
 
 const style2 = computed(() => model.value.style2);
+const isStyle1 = computed(() => model.value.styleId === "style1");
 const isStyle2 = computed(() => model.value.styleId === "style2");
+const hasPreview = computed(() => isStyle1.value || isStyle2.value);
+const previewPages = computed(() => previewPageDefs.map((item) => (item.id === "title" && isStyle1.value ? { ...item, label: "封面" } : item)));
 const selectedDescription = computed(() => props.styles.find((item) => item.id === model.value.styleId)?.description || "选择后应用于下一次 EPUB 导出。");
-const previewLabel = computed(() => previewPages.find((item) => item.id === previewPage.value)?.label || "");
+const previewLabel = computed(() => previewPages.value.find((item) => item.id === previewPage.value)?.label || "");
+const previewTitle = computed(() => `${isStyle1.value ? "样式 1" : "样式 2"} 预览`);
+const effectiveCssHint = computed(() => isStyle2.value
+  ? "只读预览；内置基础 CSS 与追加 CSS 已合并，保存后用于下一次 EPUB 导出。"
+  : "只读预览；内容与样式一内置样式包 CSS 保持一致。");
+const previewHint = computed(() => {
+  if (previewPage.value === "volume") return "这里只展示分卷版式；导出时仅在章节数据包含真实分卷时生成。";
+  if (previewPage.value === "colophon" && !model.value.includeColophon) return "制作说明已关闭，导出时不会生成此页。";
+  return "";
+});
 
 function escapeHtml(value = "") {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
@@ -167,6 +197,7 @@ function assetBySlot(slot) {
 }
 
 function assetSrc(asset) {
+  if (asset?.previewUrl) return asset.previewUrl;
   if (!asset?.url) return "";
   return `${asset.url}?v=${assetVersion.value}`;
 }
@@ -175,16 +206,71 @@ function assetUrl(slot) {
   return assetSrc(assetBySlot(slot));
 }
 
-const previewCss = computed(() => {
+function previewParagraphs(value, className = "") {
+  return String(value || "")
+    .split(/\n\s*\n|\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => `<p${className ? ` class="${className}"` : ""}>${escapeHtml(item)}</p>`)
+    .join("");
+}
+
+const style1PreviewCss = `${style1Css}
+html,body{min-height:100%;}
+body.style1-cover-preview{display:flex;align-items:center;justify-content:center;padding:1.4em;background:radial-gradient(circle at 25% 18%,#fff8eb 0,#ead2b3 42%,#c9996f 100%);}
+.style1-cover-card{box-sizing:border-box;width:100%;min-height:88%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2em 1.2em;border:1px solid rgba(112,52,24,.38);background:rgba(255,249,237,.72);box-shadow:0 14px 30px rgba(91,48,24,.2);text-align:center;}
+.style1-cover-seal{padding:.28em .65em;border:1px solid #a80000;color:#a80000;font:700 .72em/1.2 "PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.14em;}
+.style1-cover-card h1{max-width:8em;margin:2.1em auto .8em;color:#6f1712;font-size:1.7em;line-height:1.55;text-align:center;}
+.style1-cover-author{color:#3e2a1d;text-indent:0;duokan-text-indent:0;text-align:center;}
+.style1-cover-note{margin-top:auto;color:#795f4d;font-size:.72em;line-height:1.45;text-align:center;}
+`.replace(/<\/style/gi, "<\\/style");
+
+function resolveStyle2Css(assetUrlForSlot) {
   const css = String(baseCss.value || "")
     .replaceAll("__STYLE2_FONT__", safeFontFamily(style2.value.fontFamily))
-    .replaceAll("__STYLE2_TITLE_BACKGROUND__", `"${assetUrl("title-background")}"`)
-    .replaceAll("__STYLE2_COLOPHON_BACKGROUND__", `"${assetUrl("colophon-background")}"`)
-    .replaceAll("__STYLE2_INTRO_BACKGROUND__", `"${assetUrl("intro-background")}"`);
-  return `${css}\n${safeCustomCss(style2.value.customCss)}`.replace(/<\/style/gi, "<\\/style");
+    .replaceAll("__STYLE2_TITLE_BACKGROUND__", `"${assetUrlForSlot("title-background")}"`)
+    .replaceAll("__STYLE2_COLOPHON_BACKGROUND__", `"${assetUrlForSlot("colophon-background")}"`)
+    .replaceAll("__STYLE2_INTRO_BACKGROUND__", `"${assetUrlForSlot("intro-background")}"`);
+  return `${css}\n${safeCustomCss(style2.value.customCss)}`.trim();
+}
+
+const style2EffectiveCss = computed(() => resolveStyle2Css((slot) => style2EpubAssetUrls[slot] || ""));
+const style2PreviewCss = computed(() => `${resolveStyle2Css(assetUrl)}\nhtml,body{min-height:100%;}`.replace(/<\/style/gi, "<\\/style"));
+const effectiveCss = computed(() => (isStyle1.value ? style1Css.trim() : style2EffectiveCss.value));
+
+const style1PreviewBody = computed(() => {
+  const title = "原来，她们才是主角";
+  const author = "ccc";
+  const art = model.value.showTopImage
+    ? `<div class="top-img-box"><img alt="江湖纸卷人物头图" class="top-img" src="${style1TopImage}"/></div>`
+    : "";
+  if (previewPage.value === "title") {
+    return `<body class="style1-cover-preview"><div class="style1-cover-card"><span class="style1-cover-seal">PO18 READER</span><h1>${title}</h1><p class="style1-cover-author">${author} · 著</p><small class="style1-cover-note">正式导出时使用当前书籍封面</small></div></body>`;
+  }
+  if (previewPage.value === "colophon") {
+    if (!model.value.includeColophon) {
+      return `<body><div class="design-box"><h1 class="design-title">制作说明未生成</h1><p class="design-content"><span class="design-icon">◆</span>当前已关闭“生成制作说明页”。</p></div></body>`;
+    }
+    const blocks = String(model.value.colophonText || "本书由 PO18 Reader 根据本地缓存内容生成。\n\n仅供个人阅读与备份，请支持正版。")
+      .split(/\n\s*\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const content = blocks
+      .map((item, index) => `<p class="design-content"><span class="design-icon">${index ? "●" : "◆"}</span>${escapeHtml(item)}</p>`)
+      .join('<hr class="design-line"/>');
+    return `<body><div class="design-box"><h1 class="design-title">${escapeHtml(model.value.colophonTitle)}</h1>${content}</div></body>`;
+  }
+  if (previewPage.value === "intro") {
+    return `<body><h1 class="introduction-title">${escapeHtml(model.value.introTitle)}</h1>${previewParagraphs("牧知安穿越到了仙侠世界，成为了一名注定要被主角当作踏脚石的配角。\n\n围绕在身边的人们都有自己的故事，而命运也正悄然改变。", "intro-text")}</body>`;
+  }
+  if (previewPage.value === "volume") {
+    const verticalTitle = Array.from("少年游").map((char) => escapeHtml(char)).join("<br/>");
+    return `<body>${art}<h1 class="volume-sequence-number">第一卷</h1><p class="volume-title">${verticalTitle}</p></body>`;
+  }
+  return `<body>${art}<h2 class="chapter-title"><span class="chapter-sequence-number">第1章</span><br/>配角竟是我自己</h2>${previewParagraphs("马车伴随着清脆的声音，沿着街道缓缓前行。\n\n窗外细雨飘落，湿润的地面映着灯火，故事从这里开始。\n\n他抬起头，终于意识到自己正站在命运改变的路口。")}</body>`;
 });
 
-const previewBody = computed(() => {
+const style2PreviewBody = computed(() => {
   const title = "原来，她们才是主角";
   const author = "ccc";
   const note = assetUrl("note");
@@ -193,16 +279,22 @@ const previewBody = computed(() => {
     return `<body class="ver"><h3 class="booktitle">${title}</h3><p class="booksubtitle">${escapeHtml(style2.value.subtitle)}</p><p class="bookauthor">${author}<span style="color:#e70014;">著</span></p><div class="chubanshe"><img class="chubanshe" alt="publisher" src="${assetUrl("publisher")}"/></div></body>`;
   }
   if (previewPage.value === "colophon") {
+    if (!model.value.includeColophon) {
+      return `<body class="bg"><div class="ff"><h3 class="ff-title"><u>制作说明未生成</u></h3><p class="ff-text">当前已关闭“生成制作说明页”。</p></div></body>`;
+    }
     return `<body class="bg"><div class="ff"><h3 class="ff-title"><u>${escapeHtml(model.value.colophonTitle)}${marker}</u></h3><p class="cc-pot"><b>${title}</b></p><p class="ff-pot">${author}◎著</p><p class="ff-pot">${escapeHtml(style2.value.versionText)}</p><p class="xx"></p><p class="ff-text">${escapeHtml(style2.value.sourceText)}</p><p class="ff-text">${escapeHtml(style2.value.copyrightText)}</p><p class="xx"></p><p class="ff-duokan">${escapeHtml(style2.value.readingTip)}</p></div></body>`;
   }
   if (previewPage.value === "intro") {
     return `<body class="babala"><div class="frame"><div class="cover"><img class="cover" alt="cover" src="${assetUrl("volume-1")}"/></div><h3 class="title">${title}${marker}</h3><p class="author">${author}◎著</p><p class="XD"></p></div><div class="frame2"><table class="block"><tbody><tr><td class="p2">刺猬猫小说</td><td class="p2">仙侠武侠</td></tr><tr><td class="p1">658章</td><td class="p1">324.3万字</td></tr><tr><td class="p2">章节</td><td class="p2">已完结</td></tr></tbody></table><p class="XD"></p><p class="RP">${escapeHtml(model.value.introTitle)}</p><p class="PL">牧知安穿越到了仙侠世界，成为了一名注定要被主角当作踏脚石的配角。</p><p class="PL">围绕在身边的人们都有自己的故事，而命运也正悄然改变。</p></div></body>`;
   }
   if (previewPage.value === "volume") {
-    return `<body><div class="volume-cover"><div class="images image-single"><img class="volume-art" alt="volume" src="${assetUrl("volume-1")}"/></div><div class="img-name-1"><h1>${escapeHtml(style2.value.volumeTitle)}</h1></div></div></body>`;
+    return `<body><div class="volume-cover"><div class="images image-single"><img class="volume-art" alt="volume" src="${assetUrl("volume-1")}"/></div><div class="img-name-1"><h1>少年游</h1></div></div></body>`;
   }
   return `<body><div class="top"><div class="logo"><img class="logo" alt="chapter" src="${assetUrl("chapter-1")}"/></div><h2 class="head"><span class="num">第1章</span><br/><b>配角竟是我自己</b></h2><p>马车伴随着清脆的声音，沿着街道缓缓前行。</p><p>窗外细雨飘落，湿润的地面映着灯火，故事从这里开始。</p><p>他抬起头，终于意识到自己正站在命运改变的路口。</p></div></body>`;
 });
+
+const previewCss = computed(() => (isStyle1.value ? style1PreviewCss : style2PreviewCss.value));
+const previewBody = computed(() => (isStyle1.value ? style1PreviewBody.value : style2PreviewBody.value));
 
 const previewDocument = computed(() => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${previewCss.value}</style></head>${previewBody.value}</html>`);
 
@@ -215,8 +307,28 @@ async function loadTemplate() {
 
 async function loadAssets() {
   const data = await api("/admin-api/config/export/style2-assets");
-  assets.value = data.rows || [];
   assetVersion.value = Date.now();
+  assets.value = await Promise.all((data.rows || []).map(loadPreviewAsset));
+}
+
+function blobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function loadPreviewAsset(asset) {
+  if (!asset?.url || !previewEmbeddedAssetSlots.has(asset.slot)) return asset;
+  try {
+    const response = await fetch(`${asset.url}?v=${assetVersion.value}`, { credentials: "include", cache: "no-store" });
+    if (!response.ok) return asset;
+    return { ...asset, previewUrl: await blobAsDataUrl(await response.blob()) };
+  } catch {
+    return asset;
+  }
 }
 
 async function uploadAsset(asset, event) {
@@ -268,9 +380,23 @@ function dimensionMismatch(asset) {
   return Math.abs(current - recommended) / recommended > 0.03;
 }
 
+async function loadStyle2Resources() {
+  const tasks = [];
+  if (!baseCss.value) tasks.push(loadTemplate());
+  if (!assets.value.length) tasks.push(loadAssets());
+  await Promise.all(tasks);
+}
+
+function loadStyle2ResourcesWithToast() {
+  loadStyle2Resources().catch((err) => toast(err.message || String(err)));
+}
+
 onMounted(() => {
-  loadTemplate().catch((err) => toast(err.message || String(err)));
-  loadAssets().catch((err) => toast(err.message || String(err)));
+  if (isStyle2.value) loadStyle2ResourcesWithToast();
+});
+
+watch(isStyle2, (active) => {
+  if (active) loadStyle2ResourcesWithToast();
 });
 </script>
 
@@ -283,11 +409,15 @@ onMounted(() => {
 .epub-switches { margin: 12px 0; }
 .style2-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 16px; }
 .field-span { grid-column: 1 / -1; }
+.effective-css-field { margin-top: 16px; }
+.effective-css-field textarea { min-height: 250px; font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; font-size: 12px; line-height: 1.55; white-space: pre; tab-size: 2; }
+.effective-css-field small { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .epub-actions { margin-top: 14px; }
 .epub-preview-panel { position: sticky; top: 86px; min-width: 0; border-left: 1px solid var(--line); padding-left: 18px; }
 .preview-head { display: grid; gap: 10px; margin-bottom: 12px; }
 .preview-head strong, .asset-section-head strong { display: block; color: var(--text); font-size: 14px; }
 .preview-head small, .asset-section-head small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.preview-head .preview-hint { color: #9a5d16; line-height: 1.4; }
 .preview-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .preview-tabs button { min-width: 0; min-height: 32px; padding: 0 7px; border: 1px solid #d7e0ea; background: #fff; color: #526579; box-shadow: none; font-size: 12px; }
 .preview-tabs button.active { border-color: var(--primary); background: #e8f8f4; color: var(--primary); }

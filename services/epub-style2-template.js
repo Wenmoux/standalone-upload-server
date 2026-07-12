@@ -22,7 +22,6 @@ const DEFAULT_STYLE2_CONFIG = Object.freeze({
     sourceText: "本书由 PO18 Reader 根据本地缓存内容生成，封面使用书籍元信息中的图片，页面结构与内置样式保持一致。",
     copyrightText: "本书仅供个人阅读、备份与排版学习，请勿用于商业用途。请支持正版，任何修改、加工与传播行为由使用者自行负责。",
     readingTip: "为获得最佳阅读效果，建议关闭阅读器自带排版增强，并允许 EPUB 使用内嵌样式。",
-    volumeTitle: "正文",
     fontFamily: '"DK-SONGTI","Songti SC","STSong","SimSun","Noto Serif CJK SC",serif',
     customCss: ""
 });
@@ -52,8 +51,8 @@ p.ff-pot{font-family:"DK-HEITI","Microsoft YaHei",sans-serif;color:#000;font-siz
 p.ff-text{margin-top:1em;font-family:"DK-HEITI","Microsoft YaHei",sans-serif;font-size:65%;color:#fff;text-indent:0;duokan-text-indent:0;text-shadow:1px 1px rgba(0,0,0,.24);}
 p.ff-duokan{font-family:"DK-HEITI","Microsoft YaHei",sans-serif;font-size:50%;text-indent:0;text-align:left;duokan-text-indent:0;padding-bottom:15px;color:#ff2525;}
 .duokan-footnote img{width:1.5em;vertical-align:middle;}
-.babala{background:#fff no-repeat center;background-size:cover;background-attachment:fixed;background-repeat:no-repeat;background-position:top center;background-image:url(__STYLE2_INTRO_BACKGROUND__);}
-div.frame{padding:.5em 15px 15px;margin:3em 5px 1em;border-top:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:15px 15px 0 0;}
+.babala{background:#253142 no-repeat center;background-size:cover;background-attachment:fixed;background-repeat:no-repeat;background-position:top center;background-image:url(__STYLE2_INTRO_BACKGROUND__);}
+div.frame{padding:.5em 15px 15px;margin:3em 5px 1em;border-top:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:15px 15px 0 0;background:rgba(12,23,37,.28);text-shadow:0 1px 2px rgba(0,0,0,.78);}
 div.cover{text-align:center;margin:0 auto;padding-top:1em;text-indent:0;duokan-text-indent:0;}
 img.cover{margin:0;width:60px;max-height:92px;object-fit:cover;border:1px solid #fff;box-shadow:4px 4px 5px #a49d9d;}
 h3.title{margin:.7em auto .4em;font-family:"FangSong","DK-SONGTI",serif;font-size:.8em;text-indent:0;text-align:center;color:#ffc500;line-height:100%;font-weight:bold;}
@@ -61,9 +60,9 @@ p.author{margin:.5em 0;color:#fff;font-size:.7em;text-align:center;font-family:"
 .p1{font-family:"FangSong",sans-serif;font-size:100%;font-weight:bold;text-align:center;color:#f23e5b;}
 .p2{font-family:"FangSong",sans-serif;font-size:57%;text-align:center;text-indent:0;color:#fff;}
 .XD{border-top-style:solid;border-color:#000;border-width:1px;margin:1em 0 .5em auto;}
-.RP{margin:.5em 0;text-indent:2em;duokan-text-indent:5em 2em;font-family:"FangSong",sans-serif;font-size:50%;font-weight:bold;color:#fff;}
-.PL{font-family:"KaiTi",sans-serif;font-size:30%;color:#fff;}
-div.frame2{padding:2.5em 10px 1em;margin:-3em 5px auto;border-bottom:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:0 0 15px 15px;}
+.RP{margin:.5em 0;text-indent:2em;duokan-text-indent:5em 2em;font-family:"FangSong",sans-serif;font-size:50%;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9);}
+.PL{font-family:"KaiTi",sans-serif;font-size:30%;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9);}
+div.frame2{padding:2.5em 10px 1em;margin:-3em 5px auto;border-bottom:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:0 0 15px 15px;background:rgba(12,23,37,.4);}
 table.block{margin-bottom:.5em;width:100%;text-align:center;}
 .volume-cover{margin:0;padding:0;text-indent:0;text-align:center;}
 .image-single{text-indent:0;border:0;display:block;line-height:1;margin:1em 0;padding:0;text-decoration:none;width:100%;}
@@ -155,13 +154,13 @@ function renderStyle2Intro(context) {
 }
 
 function renderStyle2Volume(context) {
-    const { config, header, volumeNo } = context;
+    const { header, volumeNo } = context;
     const slot = volumeNo % 2 === 0 ? "volume-2" : "volume-1";
     const definition = STYLE2_ASSET_BY_SLOT.get(slot);
     const image = context.hasAsset(definition.name)
         ? `<div class="images image-single"><img alt="" class="volume-art" src="${assetHref(context, definition.name)}"/></div>`
         : "";
-    return `<body><div class="volume-cover">${image}<div class="img-name-1"><h1>${header.name || config.style2.volumeTitle}</h1></div></div></body>`;
+    return `<body><div class="volume-cover">${image}<div class="img-name-1"><h1>${header.name}</h1></div></div></body>`;
 }
 
 function renderStyle2Chapter(context) {

@@ -26,12 +26,13 @@ test("config helpers normalize labels and pricing", () => {
     const style2 = exportPricingPayload({
         epub: {
             styleId: "style2",
-            style2: { customCss: "@import url(x); body{color:red}", fontFamily: "Songti SC; color:red" }
+            style2: { customCss: "@import url(x); body{color:red}", fontFamily: "Songti SC; color:red", volumeTitle: "正文" }
         }
     }).epub;
     assert.equal(style2.styleId, "style2");
     assert.equal(style2.style2.customCss, "body{color:red}");
     assert.doesNotMatch(style2.style2.fontFamily, /;/);
+    assert.equal(Object.hasOwn(style2.style2, "volumeTitle"), false);
     assert.deepEqual(exportPricingPayload({ dailyQuotaByLevel: { 3: "2", 2: "1", bad: 9 } }).dailyQuotaByLevel, { 2: 1, 3: 2 });
 });
 

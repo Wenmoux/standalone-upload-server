@@ -1,10 +1,18 @@
 const assert = require("assert/strict");
+const fs = require("fs");
+const path = require("path");
 const test = require("node:test");
 const { createEpubBuilder } = require("../bot/epub-builder");
+const styleOne = require("../bot/epub-styles/style-one");
 
 function contentOf(files, name) {
     return files.find((file) => file.name === name)?.content.toString("utf8") || "";
 }
+
+test("style1 admin preview CSS stays identical to the EPUB style", () => {
+    const previewCss = fs.readFileSync(path.join(__dirname, "..", "ui", "epub-style1.css"), "utf8").trim();
+    assert.equal(previewCss, styleOne.css.trim());
+});
 
 test("style1 EPUB builds cover matter, intro, volume and chapter templates", async () => {
     const coverBytes = Buffer.from(
@@ -169,13 +177,29 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.ok(listEpubStyles().some((style) => style.id === "style2"));
 });
 
-test("style2 EPUB adds an implicit main volume when chapter data has no volume row", async () => {
+test("style2 EPUB does not add a volume page when chapter data has no volume row", async () => {
     const { makeEpubFiles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
     const files = await makeEpubFiles(
         { book_id: "b4", title: "无分卷书", author: "作者", description: "简介" },
         [{ chapter_id: "c1", title: "第一章 开始", text: "正文" }],
-        { epub: { styleId: "style2", includeColophon: false, style2: { volumeTitle: "正文" } } }
+        { epub: { styleId: "style2", includeColophon: false } }
     );
-    assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
-    assert.match(contentOf(files, "OEBPS/Text/volume_0001.xhtml"), />正文<\/h1>/);
+    assert.ok(!files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
+    const toc = contentOf(files, "OEBPS/toc.ncx");
+    assert.match(toc, /<navLabel><text>第一章 开始<\/text><\/navLabel><content src="Text\/chapter_0001\.xhtml"\/>/);
+    assert.doesNotMatch(toc, />正文<\/text>/);
+});
+
+test("style2 EPUB ignores an empty volume marker instead of inventing a title", async () => {
+    const { makeEpubFiles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
+    const files = await makeEpubFiles(
+        { book_id: "b5", title: "空分卷标记", author: "作者", description: "简介" },
+        [
+            { chapter_id: "volume-placeholder", title: "  ", type: "volume" },
+            { chapter_id: "c1", title: "第一章 开始", text: "正文" }
+        ],
+        { epub: { styleId: "style2", includeColophon: false } }
+    );
+    assert.ok(!files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
+    assert.doesNotMatch(contentOf(files, "OEBPS/toc.ncx"), /volume-placeholder|>正文<\/text>/);
 });

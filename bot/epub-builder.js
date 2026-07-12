@@ -136,36 +136,22 @@ function createEpubBuilder(deps = {}) {
         let chapterNo = 0;
         let volumeNo = 0;
         let currentVolumeNav = null;
-        if (style.implicitVolumePage && chapters.length && !isVolumeChapter(chapters[0])) {
-            volumeNo = 1;
-            const implicitTitle = config.style2?.volumeTitle || "正文";
-            currentVolumeNav = addPage({
-                id: "volume-1",
-                href: `Text/volume_${padNumber(volumeNo)}.xhtml`,
-                pageTitle: implicitTitle,
-                navTitle: implicitTitle,
-                body: style.renderVolume({
-                    ...pageContext,
-                    header: { number: "", name: escapeXml(implicitTitle) },
-                    title: escapeXml(implicitTitle),
-                    volumeNo
-                })
-            });
-        }
         for (let index = 0; index < chapters.length; index += 1) {
             const chapter = chapters[index];
-            const rawChapterTitle = chapter.title || chapter.chapter_title || chapter.chapter_id || `第${index + 1}章`;
             if (isVolumeChapter(chapter)) {
+                const rawVolumeTitle = String(chapter.title || chapter.chapter_title || "").trim();
+                if (!rawVolumeTitle) continue;
                 volumeNo += 1;
-                const header = escapedHeader(splitHeading(rawChapterTitle, volumeNo, VOLUME_LABEL_REGEX, "卷"));
+                const header = escapedHeader(splitHeading(rawVolumeTitle, volumeNo, VOLUME_LABEL_REGEX, "卷"));
                 currentVolumeNav = addPage({
                     id: `volume-${volumeNo}`,
                     href: `Text/volume_${padNumber(volumeNo)}.xhtml`,
-                    pageTitle: rawChapterTitle,
-                    navTitle: rawChapterTitle,
-                    body: style.renderVolume({ ...pageContext, header, title: escapeXml(rawChapterTitle), volumeNo })
+                    pageTitle: rawVolumeTitle,
+                    navTitle: rawVolumeTitle,
+                    body: style.renderVolume({ ...pageContext, header, title: escapeXml(rawVolumeTitle), volumeNo })
                 });
             } else {
+                const rawChapterTitle = chapter.title || chapter.chapter_title || chapter.chapter_id || `第${index + 1}章`;
                 chapterNo += 1;
                 const header = escapedHeader(splitHeading(rawChapterTitle, chapterNo, CHAPTER_LABEL_REGEX, "章"));
                 addPage({

@@ -9,7 +9,9 @@ const REQUIRED_CONTEXT_FILES = Object.freeze([
     "cirno-src/public/manifest.webmanifest",
     "cirno-src/public/pwa-icon-192.png",
     "cirno-src/public/pwa-icon-512.png",
-    "ui/design-tokens.css"
+    "ui/design-tokens.css",
+    "ui/epub-style1.css",
+    "bot/epub-styles/assets/jianghu-top.png"
 ]);
 
 function posix(relativePath) {

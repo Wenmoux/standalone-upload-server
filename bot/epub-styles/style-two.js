@@ -15,7 +15,6 @@ module.exports = {
     description: "1:1 复刻参考 EPUB 的插画标题页、制作说明、书籍信息、分卷图和正文章头。",
     skipVisibleCoverPage: true,
     titlePageNavTitle: "版权声明",
-    implicitVolumePage: true,
     nestedVolumeToc: true,
     css: buildStyle2Css,
     assets: STYLE2_ASSET_DEFINITIONS.map((asset) => ({

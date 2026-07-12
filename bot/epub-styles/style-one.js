@@ -57,7 +57,7 @@ div{margin:0;padding:0;line-height:1.3;text-align:justify;}
         const verticalTitle = Array.from(header.name.replace(/\s+/g, ""))
             .map((char) => paragraphs.escape(char))
             .join("<br/>");
-        return `<body>${art}<h1 class="volume-sequence-number">${header.number}</h1><p class="volume-title">${verticalTitle || "正文"}</p></body>`;
+        return `<body>${art}<h1 class="volume-sequence-number">${header.number}</h1><p class="volume-title">${verticalTitle}</p></body>`;
     },
     renderChapter({ header, bodyHtml, hasAsset, config }) {
         const art =
