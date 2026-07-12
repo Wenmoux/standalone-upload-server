@@ -132,4 +132,9 @@ test("GitHub workflow publishes main pushes and keeps tag releases conditional",
     assert.match(workflow, /docker\/setup-buildx-action@v4/);
     assert.match(workflow, /docker\/login-action@v4/);
     assert.match(workflow, /Repository secret DOCKERHUB_TOKEN is required/);
+    assert.doesNotMatch(workflow, /npm run admin:build/);
+    assert.match(workflow, /PO18_TEST_APP_IMAGE: \$\{\{ steps\.build\.outputs\.immutable_tag \}\}/);
+    assert.ok(
+        workflow.indexOf("Build clean source-identified image") < workflow.indexOf("PostgreSQL integration and search plan benchmark")
+    );
 });
