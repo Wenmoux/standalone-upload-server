@@ -88,6 +88,8 @@ docker exec po18-app sh -lc 'latest=$(ls -1t /config/backups/pre-migration-*.dum
 - `022_review_governance`：增加书评举报、审核、申诉与有限改票。
 - `023_taxonomy_conflict_deduplication`：让后续元信息写入先去重 taxonomy token，再写入规范化主键。
 
+`019_taxonomy_input_deduplication` 的等价历史数据归并不可逆，因此没有 down SQL；023 的 down SQL 只恢复旧同步函数，回滚后重复 token 写入风险会重新出现。
+
 这些迁移均没有引入 `book_key`，也没有改变现有平台无感知 API 字段。
 
 ## 6. 人工回滚
