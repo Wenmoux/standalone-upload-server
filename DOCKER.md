@@ -193,6 +193,12 @@ The Docker build and git ignore rules exclude local runtime data, including `.en
 
 ## Release
 
+推送 `main` 后，`.github/workflows/release.yml` 会在 GitHub Actions 中执行测试、真实 PostgreSQL、搜索计划基准、前端构建和镜像冒烟，然后推送不可变 `revision/source-hash` 标签并更新 Docker Hub 的 `wenmoux/reader:v2.0`，最后按 registry digest 再冒烟。本机不需要安装 Docker。
+
+工作流需要在 GitHub 仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`。GitHub HTTPS 推送令牌只用于 Git 命令行认证，不要写入远端 URL、仓库文件或工作流。
+
+推送与 `package.json` 完全对应的 tag（例如 `v2.0.0`）时，工作流进入正式发布模式。正式发布同时产生不可变 semver 与 `revision/source-hash` 标签，生成 SBOM、Cosign 签名和 attestation；`v2.0` 仍是兼容移动标签。
+
 PowerShell:
 
 ```powershell
@@ -204,3 +210,61 @@ Linux/macOS:
 ```bash
 sh scripts/release-docker.sh
 ```
+
+分支推送和正式发布的证据均写入 `.docker-build.json` 和 `release-manifest.json`，其中 `formal_release` 可区分两种模式。可单独生成 registry digest 绑定：
+
+```bash
+npm run docker:release-manifest
+```
+
+### Restore drill and monitoring
+
+恢复演练默认启用，每 168 小时选择最新 PostgreSQL 备份恢复到临时数据库。可在 `/config/app.env` 调整：
+
+```env
+PO18_BACKUP_RESTORE_DRILL_ENABLED=1
+PO18_BACKUP_RESTORE_DRILL_INTERVAL_HOURS=168
+PO18_BACKUP_RESTORE_DRILL_INITIAL_DELAY_MS=900000
+```
+
+后台“系统/备份”可以立即触发演练。Prometheus 告警样例位于 `monitoring/prometheus-alerts.yml`。如果 `/metrics` 监听非 loopback 地址，生产环境必须配置 `PO18_METRICS_TOKEN`。
+
+### Resource and governance limits
+
+```env
+PO18_BODY_LIMIT_AUTH=32kb
+PO18_BODY_LIMIT_LOOKUP=256kb
+PO18_BODY_LIMIT_TTS=64kb
+PO18_BODY_LIMIT_METADATA=768kb
+PO18_BODY_LIMIT_CHAPTER=12mb
+PO18_BODY_LIMIT_MANIFEST=24mb
+PO18_BODY_LIMIT_DEFAULT=2mb
+
+PO18_PG_POOL_MAX=10
+PO18_PG_QUERY_TIMEOUT_MS=30000
+PO18_PG_SLOW_QUERY_MS=1000
+
+PO18_REVIEW_REPORT_THRESHOLD=3
+PO18_REVIEW_REPORT_DAILY_LIMIT=5
+PO18_BOOK_REVIEW_HOURLY_LIMIT=3
+PO18_BOOK_REVIEW_DAILY_LIMIT=10
+PO18_BOOK_REVIEW_VOTE_HOURLY_LIMIT=30
+PO18_BOOK_REVIEW_VOTE_DAILY_LIMIT=100
+PO18_BOOK_REVIEW_VOTE_MAX_CHANGES=1
+```
+
+搜索计划回归需要临时 PostgreSQL，默认构造 5 万条数据并运行 5 次：
+
+```bash
+PO18_TEST_PG_URL=postgres://... npm run benchmark:search -- --output tmp/search-benchmark-result.json
+```
+
+预算固定在 `benchmarks/search-plan-baseline.json`；结果包含 `EXPLAIN (ANALYZE, BUFFERS)` 节点、p50/p95 和 buffer 摘要。
+
+Setup 的“导出配置”默认下载 `app.safe.env`，会剔除密码、Token、Cookie、数据库 URL、访问密钥和加密密钥。确需迁移完整敏感配置时，只能在已认证 Setup 会话中显式请求：
+
+```text
+/backup?include_secrets=1&confirm=EXPORT_SECRETS
+```
+
+完整文件名为 `app.secrets.env`，响应明确标记 `X-PO18-Contains-Secrets: true`；请立即使用加密存储并限制访问。

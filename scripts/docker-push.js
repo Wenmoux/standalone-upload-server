@@ -2,33 +2,51 @@ const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-function readBuildMetadata() {
+const DEFAULT_IMAGE = "wenmoux/reader:v2.0";
+
+function readBuildMetadata(file = path.join(__dirname, "..", ".docker-build.json")) {
     try {
-        return JSON.parse(fs.readFileSync(path.join(__dirname, "..", ".docker-build.json"), "utf8"));
+        return JSON.parse(fs.readFileSync(file, "utf8"));
     } catch {
         return {};
     }
 }
 
-function push(tag) {
+function selectPushTags(metadata = {}, envImage = "") {
+    const metadataTags = Array.isArray(metadata.tags) ? metadata.tags.filter(Boolean) : [];
+    const fallback = metadata.imageTag || envImage || DEFAULT_IMAGE;
+    return Array.from(new Set([...metadataTags, envImage || fallback].filter(Boolean)));
+}
+
+function push(tag, spawn = spawnSync) {
     console.log(`[docker-push] pushing ${tag}`);
-    const result = spawnSync("docker", ["push", tag], {
-        stdio: "inherit"
-    });
-    if ((result.status || 0) !== 0) {
-        process.exit(result.status || 1);
+    const result = spawn("docker", ["push", tag], { stdio: "inherit" });
+    if ((result.status || 0) !== 0) throw new Error(`docker push failed for ${tag}`);
+}
+
+function runPush(options = {}) {
+    const metadata = options.metadata || readBuildMetadata(options.metadataFile);
+    const tags = selectPushTags(metadata, options.envImage ?? process.env.PO18_IMAGE_TAG);
+    console.log(`[docker-push] tags=${tags.join(", ")}`);
+    for (const tag of tags) push(tag, options.spawnSyncImpl || spawnSync);
+    return tags;
+}
+
+function main() {
+    try {
+        runPush();
+    } catch (error) {
+        console.error(`[docker-push] ${error.message || String(error)}`);
+        process.exitCode = 1;
     }
 }
 
-const metadata = readBuildMetadata();
-const defaultImage = "wenmoux/reader:v2.0";
-const envImage = process.env.PO18_IMAGE_TAG;
-const tags = envImage
-    ? [envImage]
-    : (Array.isArray(metadata.tags) && metadata.tags.length ? metadata.tags : [metadata.imageTag || defaultImage]);
-const uniqueTags = Array.from(new Set(tags));
+if (require.main === module) main();
 
-console.log(`[docker-push] tags=${uniqueTags.join(", ")}`);
-for (const tag of uniqueTags) {
-    push(tag);
-}
+module.exports = {
+    DEFAULT_IMAGE,
+    push,
+    readBuildMetadata,
+    runPush,
+    selectPushTags
+};

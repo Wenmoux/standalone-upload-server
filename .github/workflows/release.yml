@@ -1,0 +1,142 @@
+name: Docker publish
+
+on:
+    push:
+        branches:
+            - main
+        tags:
+            - "v*"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    id-token: write
+
+concurrency:
+    group: docker-publish-${{ github.ref }}
+    cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        timeout-minutes: 60
+        env:
+            PO18_IMAGE_TAG: wenmoux/reader:v2.0
+            PO18_RELEASE: ${{ github.ref_type == 'tag' && '1' || '0' }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+                  cache-dependency-path: |
+                      package-lock.json
+                      admin-ui/package-lock.json
+                      cirno-src/package-lock.json
+            - uses: docker/setup-buildx-action@v3
+            - uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+            - uses: sigstore/cosign-installer@v4.1.2
+              if: github.ref_type == 'tag'
+
+            - name: Validate publish identity
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+                    VERSION="$(node -p "require('./package.json').version")"
+                    test "${GITHUB_REF_NAME}" = "v${VERSION}"
+                    SEMVER_TAG="wenmoux/reader:v${VERSION}"
+                    if docker buildx imagetools inspect "${SEMVER_TAG}" >/dev/null 2>&1; then
+                      echo "Immutable tag already exists: ${SEMVER_TAG}" >&2
+                      exit 1
+                    fi
+                  else
+                    test "${GITHUB_REF_NAME}" = "main"
+                  fi
+                  echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "${GITHUB_ENV}"
+
+            - name: Install and verify
+              run: |
+                  npm ci
+                  npm --prefix admin-ui ci
+                  npm --prefix cirno-src ci
+                  npm run check:utf8
+                  npm run check:schema
+                  npm run lint
+                  npm run format:check
+                  npm run test:coverage
+                  npm audit --omit=dev
+                  npm --prefix admin-ui audit --omit=dev
+                  npm --prefix cirno-src audit --omit=dev
+                  npm run admin:build
+                  npm --prefix cirno-src run build:standalone
+                  npm run check:context
+                  npm run test:pg
+
+            - name: Build clean source-identified image
+              id: build
+              run: npm run docker:build
+
+            - name: Smoke-test locally built immutable tag
+              env:
+                  PO18_TEST_APP_IMAGE: ${{ steps.build.outputs.immutable_tag }}
+              run: npm run test:docker-smoke
+
+            - name: Generate SPDX SBOM
+              if: github.ref_type == 'tag'
+              uses: anchore/sbom-action@v0
+              with:
+                  image: ${{ steps.build.outputs.immutable_tag }}
+                  format: spdx-json
+                  output-file: sbom.spdx.json
+                  upload-artifact: false
+
+            - name: Push source tag and moving channel tag
+              run: npm run docker:push
+
+            - name: Resolve registry digest
+              id: manifest
+              run: npm run docker:release-manifest
+
+            - name: Pull and smoke-test by digest
+              env:
+                  PO18_TEST_APP_IMAGE: ${{ steps.manifest.outputs.digest_reference }}
+                  PO18_EXPECTED_IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}
+              run: |
+                  docker pull "${PO18_TEST_APP_IMAGE}"
+                  npm run test:docker-smoke
+
+            - name: Sign image and attach attestations
+              if: github.ref_type == 'tag'
+              env:
+                  DIGEST_REFERENCE: ${{ steps.manifest.outputs.digest_reference }}
+              run: |
+                  cosign sign --yes "${DIGEST_REFERENCE}"
+                  cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${DIGEST_REFERENCE}"
+                  cosign attest --yes --type https://po18-reader.dev/attestations/build-identity/v1 --predicate .docker-build.json "${DIGEST_REFERENCE}"
+
+            - name: Verify keyless signature
+              if: github.ref_type == 'tag'
+              env:
+                  DIGEST_REFERENCE: ${{ steps.manifest.outputs.digest_reference }}
+              run: |
+                  cosign verify \
+                    --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+                    --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                    "${DIGEST_REFERENCE}"
+
+            - name: Preserve release evidence
+              uses: actions/upload-artifact@v4
+              with:
+                  name: po18-reader-${{ github.ref_name }}-publish-evidence
+                  if-no-files-found: error
+                  path: |
+                      .docker-build.json
+                      release-manifest.json
+                      sbom.spdx.json
+                      tmp/search-benchmark-result.json

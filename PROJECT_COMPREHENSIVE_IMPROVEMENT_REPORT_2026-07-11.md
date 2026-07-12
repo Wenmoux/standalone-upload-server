@@ -4,6 +4,29 @@
 > 评估对象：单镜像部署、PostgreSQL 后端、Reader、Admin/Setup、Telegram Bot、PO18 Crawler、Legado 书源及运维工具
 > 评估原则：以当前工作区代码为准；兼顾自用部署与开放给多用户后的安全、性能和维护成本。
 
+## 0. 2026-07-12 实施复核
+
+本报告提出的整改已继续实施。按用户确认的边界，只保留以下两项未实施：
+
+1. `book_key` 统一身份迁移、子表外键回填及跨平台同号数据隔离。
+2. Reader、Bot、Crawler、Admin 全端切换到平台感知 API；现有接口未删除、重命名或破坏兼容性。
+
+除上述两项外，本报告的 P0/P1 整改和 P2 功能均已形成代码、迁移、管理入口或自动门禁。身份迁移前新增的 Manifest 会主动检测跨平台同 `book_id` 冲突并返回 `BOOK_ID_COLLISION_REQUIRES_BOOK_KEY`，不会静默选取其中一本。
+
+| 范围 | 复核结果 | 主要证据 |
+| --- | --- | --- |
+| 凭据、会话、CORS、CSRF、TTS SSRF、限流 | 已实现 | PostgreSQL Session、AES-256-GCM 信封加密、生产配置拒绝、目标网络校验、分路由 Body/限流 |
+| 可复现发布 | 已实现 | clean release、不可变 semver/source 标签、源码 hash、digest 冒烟、SBOM、Cosign 签名/证明工作流 |
+| 章节统计、搜索、分类与 Schema | 已实现 | statement-level 增量统计、cursor/fast search、taxonomy 表、5 万行 EXPLAIN 基准、迁移快照漂移门禁 |
+| API、Token、追踪与审计 | 已实现 | Ajv 高成本接口契约、OpenAPI 请求/响应 Schema、统一 `code/request_id`、Scope Token、追加式审计 |
+| Reader | 已实现 | 主入口 gzip 46.11 KiB、虚拟目录、Session 合并、PWA、按账号隔离离线正文与进度补传、封面失败占位 |
+| Admin、Setup、排行榜 | 已实现 | Vue Router、RBAC、统一二次确认/脏表单保护、共享静态设计令牌、安全配置导出、Setup Token Cookie、榜单周期/样本/定义元数据 |
+| Bot、任务与 Crawler | 已实现 | 持久租约/心跳/重试/取消、扣费与奖励幂等账本、命令注册表、来源熔断/动态退避/分类错误与分位数 |
+| Docker、备份与监控 | 已实现 | 固定基础镜像 digest、子进程监管、流式加密远端备份、临时库恢复演练、Prometheus 指标和告警规则 |
+| P2 功能 | 已实现 | 缺书闭环、来源/质量中心、Bot 任务卡片、书评治理、PWA 离线、校验和 Manifest 增量恢复 |
+
+本轮验证：Node 全量及覆盖率门禁共 308 项，其中 307 通过、0 失败，1 项真实 PostgreSQL 入口因本机未配置 `PO18_TEST_PG_URL` 跳过；覆盖率 statements/lines 71.38%、branches 52.52%、functions 75.37%；Admin 与 Reader 生产构建通过；UTF-8、Schema 漂移、ESLint、Prettier 和 Docker context 门禁通过。真实 PostgreSQL、搜索 EXPLAIN 与 digest Docker smoke 已进入 `main` 推送触发的 GitHub 发布工作流，由远端 Docker 环境执行并更新 Docker Hub `wenmoux/reader:v2.0`。
+
 ## 1. 执行摘要
 
 项目已经不是简单的上传服务，而是一套功能较完整的自托管阅读平台：包含跨站元信息和章节缓存、阅读器、后台、初始化向导、Bot、爬虫、排行榜、备份恢复、健康检查、指标和 Docker 单镜像部署。以个人或小规模可信用户使用衡量，功能完整度和部署便利性较高。

@@ -2,7 +2,7 @@ const assert = require("assert/strict");
 const http = require("http");
 const test = require("node:test");
 const express = require("express");
-const { createReaderApiRoutes } = require("../routes/reader-api");
+const { createReaderApiRoutes, decodeSearchCursor, encodeSearchCursor } = require("../routes/reader-api");
 
 async function withApp(router, fn) {
     const app = express();
@@ -325,14 +325,14 @@ test("reader search combines author tag and platform filters", async () => {
     });
 
     assert.equal(calls.length, 2);
-    assert.deepEqual(calls[0].params, ["%Alpha%", "%AlphaTag%", "po18", 1]);
+    assert.deepEqual(calls[0].params, ["%Alpha%", "alphatag", "po18", 1]);
     assert.match(calls[0].sql, /m\.author ILIKE \$1/);
-    assert.match(calls[0].sql, /\(m\.tags ILIKE \$2 OR m\.category ILIKE \$2\)/);
+    assert.match(calls[0].sql, /tag_taxonomy\.normalized_value = \$2/);
     assert.match(calls[0].sql, /m\.platform = \$3/);
     assert.match(calls[0].sql, /COALESCE\(cc\.cache_count, 0\) >= \$4/);
-    assert.deepEqual(calls[1].params, ["%Alpha%", "%AlphaTag%", "po18", 1, 5, 5]);
+    assert.deepEqual(calls[1].params, ["%Alpha%", "alphatag", "po18", 1, 5, 5]);
     assert.match(calls[1].sql, /m\.author ILIKE \$1/);
-    assert.match(calls[1].sql, /\(m\.tags ILIKE \$2 OR m\.category ILIKE \$2\)/);
+    assert.match(calls[1].sql, /tag_taxonomy\.normalized_value = \$2/);
     assert.match(calls[1].sql, /m\.platform = \$3/);
     assert.match(calls[1].sql, /COALESCE\(cc\.cache_count, 0\) >= \$4/);
 });
@@ -355,8 +355,8 @@ test("reader search filters exact category tokens", async () => {
     });
 
     assert.deepEqual(calls[0].params, ["都市", 1]);
-    assert.match(calls[0].sql, /regexp_split_to_table\(COALESCE\(m\.category, ''\), '\[,，、\/\|·\]\+'\)/);
-    assert.match(calls[0].sql, /LOWER\(BTRIM\(category_token\)\) = LOWER\(\$1\)/);
+    assert.match(calls[0].sql, /FROM book_taxonomy category_taxonomy/);
+    assert.match(calls[0].sql, /category_taxonomy\.normalized_value = \$1/);
     assert.deepEqual(calls[1].params, ["都市", 1, 5, 0]);
 });
 
@@ -392,4 +392,43 @@ test("reader search fast mode skips exact count and fetches one extra row", asyn
     assert.doesNotMatch(calls[0].sql, /COUNT/);
     assert.match(calls[0].sql, /COALESCE\(cc\.cache_count, 0\) >= \$2/);
     assert.deepEqual(calls[0].params, ["%Alpha%", 1, 4, 3]);
+});
+
+test("reader search cursor uses keyset pagination without OFFSET", async () => {
+    const calls = [];
+    const router = createReaderApiRoutes(baseDeps({
+        query: async (sql, params = []) => {
+            calls.push({ sql, params });
+            return {
+                rows: [
+                    { id: 8, book_id: "b8", title: "Eight", updated_at: "2026-07-11T08:00:00.000Z", cache_count: 1 },
+                    { id: 7, book_id: "b7", title: "Seven", updated_at: "2026-07-11T07:00:00.000Z", cache_count: 1 }
+                ]
+            };
+        }
+    }));
+    const cursor = encodeSearchCursor("updated_desc", { id: 9, updated_at: "2026-07-11T09:00:00.000Z" });
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/reader-api/search?sort=updated_desc&limit=1&cursor=${encodeURIComponent(cursor)}`);
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.rows.length, 1);
+        assert.equal(body.has_more, true);
+        assert.equal(body.cursor_applied, true);
+        assert.deepEqual(decodeSearchCursor(body.next_cursor, "updated_desc"), {
+            sort: "updated_desc",
+            value: "2026-07-11T08:00:00.000Z",
+            id: 8
+        });
+    });
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].sql, /\(COALESCE\(m\.updated_at, m\.created_at\), m\.id\) < \(\$2, \$3\)/);
+    assert.doesNotMatch(calls[0].sql, /OFFSET/);
+    assert.deepEqual(calls[0].params, [1, "2026-07-11T09:00:00.000Z", 9, 2]);
+});
+
+test("reader search cursor rejects tampering and sort mismatches", () => {
+    assert.throws(() => decodeSearchCursor("not-a-cursor", "updated_desc"), /invalid search cursor/);
+    const cursor = encodeSearchCursor("word_desc", { id: 2, word_count: 100 });
+    assert.throws(() => decodeSearchCursor(cursor, "updated_desc"), /cursor sort mismatch/);
 });

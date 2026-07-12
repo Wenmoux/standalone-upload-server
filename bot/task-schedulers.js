@@ -42,7 +42,10 @@ function createTaskSchedulers(deps = {}) {
             idempotencyKey: `bot:export:${format}:${from.id}:${id}${epubStyleId ? `:${epubStyleId}` : ""}`,
             maxAttempts: 3,
             lockKey: `export:${from.id}`,
-            task: (signal) => sendExport(chat, from, id, format, signal, { epubStyleId })
+            task: (signal, runtimeJob = {}) => sendExport(chat, from, id, format, signal, {
+                epubStyleId,
+                settlementKey: runtimeJob.systemJobId ? `system-job:${runtimeJob.systemJobId}:export-settlement` : ""
+            })
         };
     }
 
@@ -82,7 +85,9 @@ function createTaskSchedulers(deps = {}) {
             idempotencyKey: `bot:share:${message.from.id}:${id}`,
             maxAttempts: 5,
             lockKey: `share:${message.from.id}`,
-            task: (signal) => handleShare(message, id, signal)
+            task: (signal, runtimeJob = {}) => handleShare(message, id, signal, {
+                systemJobId: runtimeJob.systemJobId || null
+            })
         };
     }
 
@@ -100,7 +105,10 @@ function createTaskSchedulers(deps = {}) {
             idempotencyKey: `bot:sharebookshelf:${message.from.id}`,
             maxAttempts: 5,
             lockKey: `sharebookshelf:${message.from.id}`,
-            task: (signal) => handleShareBookshelf(message, signal)
+            task: (signal, runtimeJob = {}) => handleShareBookshelf(message, signal, {
+                systemJobId: runtimeJob.systemJobId || null,
+                rewardOperationPrefix: runtimeJob.systemJobId ? `system-job:${runtimeJob.systemJobId}:po18-share-reward` : ""
+            })
         };
     }
 

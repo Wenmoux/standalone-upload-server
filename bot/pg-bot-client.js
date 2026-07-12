@@ -12,6 +12,16 @@ function cloneData(data) {
     return JSON.parse(JSON.stringify(data));
 }
 
+function idempotencyPayload(options = {}) {
+    if (!options || typeof options !== "object") return {};
+    const key = String(options.idempotencyKey || options.idempotency_key || "").trim().slice(0, 240);
+    const scope = String(options.idempotencyScope || options.idempotency_scope || "").trim().slice(0, 120);
+    return {
+        ...(key ? { idempotency_key: key } : {}),
+        ...(scope ? { idempotency_scope: scope } : {})
+    };
+}
+
 class PgBotClient {
     constructor(options = {}) {
         this.baseUrl = String(options.baseUrl || process.env.PO18_SERVER_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
@@ -214,10 +224,10 @@ class PgBotClient {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/sign`, { method: "POST", body: "{}" });
     }
 
-    async addCurrency(telegramId, currency, delta, type = "", detail = "") {
+    async addCurrency(telegramId, currency, delta, type = "", detail = "", options = {}) {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/currency`, {
             method: "PATCH",
-            body: JSON.stringify({ currency, delta, type, detail })
+            body: JSON.stringify({ currency, delta, type, detail, ...idempotencyPayload(options) })
         });
     }
 
@@ -246,17 +256,17 @@ class PgBotClient {
         });
     }
 
-    async claimFreeExport(telegramId, bookId, format = "") {
+    async claimFreeExport(telegramId, bookId, format = "", options = {}) {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/export-free-claim`, {
             method: "POST",
-            body: JSON.stringify({ book_id: bookId, format })
+            body: JSON.stringify({ book_id: bookId, format, ...idempotencyPayload(options) })
         });
     }
 
-    async claimExtraExport(telegramId, bookId, format = "") {
+    async claimExtraExport(telegramId, bookId, format = "", options = {}) {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/export-extra-claim`, {
             method: "POST",
-            body: JSON.stringify({ book_id: bookId, format })
+            body: JSON.stringify({ book_id: bookId, format, ...idempotencyPayload(options) })
         });
     }
 
@@ -267,10 +277,10 @@ class PgBotClient {
         });
     }
 
-    async spendCurrency(telegramId, currency, amount, type = "spend", detail = "", source = "telegram_bot") {
+    async spendCurrency(telegramId, currency, amount, type = "spend", detail = "", source = "telegram_bot", options = {}) {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/spend`, {
             method: "POST",
-            body: JSON.stringify({ currency, amount, type, detail, source })
+            body: JSON.stringify({ currency, amount, type, detail, source, ...idempotencyPayload(options), ...(options.bookId ? { book_id: options.bookId } : {}) })
         });
     }
 
@@ -373,6 +383,20 @@ class PgBotClient {
         return this.request(`/bot-api/book-reviews/${encodeURIComponent(reviewId)}/vote`, {
             method: "POST",
             body: JSON.stringify({ telegram_id: telegramId, vote, source: "telegram_bot" })
+        });
+    }
+
+    async reportBookReview(reviewId, telegramId, reason, details = "") {
+        return this.request(`/bot-api/book-reviews/${encodeURIComponent(reviewId)}/report`, {
+            method: "POST",
+            body: JSON.stringify({ telegram_id: telegramId, reason, details })
+        });
+    }
+
+    async appealBookReview(reviewId, telegramId, content) {
+        return this.request(`/bot-api/book-reviews/${encodeURIComponent(reviewId)}/appeals`, {
+            method: "POST",
+            body: JSON.stringify({ telegram_id: telegramId, content })
         });
     }
 

@@ -1,6 +1,7 @@
 const assert = require("assert/strict");
 const test = require("node:test");
 const {
+    RANK_DEFINITIONS,
     createRankService,
     normalizePlatformKey,
     originalBookUrl,
@@ -72,6 +73,12 @@ test("rank service builds cached reader payload with filters and limits", async 
     assert.equal(payload.rows[0].book_id, "b");
     assert.equal(payload.rows[0].platform_label, "起点");
     assert.equal(payload.meta.total, 2);
+    assert.equal(payload.meta.sampleCount, 2);
+    assert.equal(payload.meta.eligibleCount, 2);
+    assert.equal(payload.meta.calculationCycleMs, 60_000);
+    assert.equal(payload.meta.latestDataAt, "2026-01-02T00:00:00.000Z");
+    assert.match(payload.sorts.overall.definition, /固定权重/);
+    assert.equal(payload.definitions, RANK_DEFINITIONS);
 
     const cached = await rank.getPayload();
     assert.equal(cached.rows.length, 2);

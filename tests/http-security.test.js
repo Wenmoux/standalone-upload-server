@@ -2,6 +2,7 @@ const assert = require("assert/strict");
 const test = require("node:test");
 const {
     isCorsOriginAllowed,
+    isLoopbackHost,
     productionSecurityErrors,
     trustProxySetting
 } = require("../services/http-security");
@@ -24,9 +25,23 @@ test("production configuration rejects known insecure defaults", () => {
         PO18_UPLOAD_ADMIN_PASSWORD: "admin123",
         PO18_SETUP_AUTH_DISABLED: "1"
     });
-    assert.equal(errors.length, 3);
+    assert.equal(errors.length, 4);
     assert.match(errors.join(" "), /SESSION_SECRET/);
     assert.match(errors.join(" "), /ADMIN_PASSWORD/);
+});
+
+test("public production metrics require authentication", () => {
+    const base = {
+        NODE_ENV: "production",
+        PO18_UPLOAD_SESSION_SECRET: "a-long-random-session-secret",
+        PO18_UPLOAD_ADMIN_PASSWORD: "a-long-random-admin-password",
+        PO18_UPLOAD_HOST: "0.0.0.0"
+    };
+    assert.match(productionSecurityErrors(base).join(" "), /METRICS_TOKEN/);
+    assert.deepEqual(productionSecurityErrors({ ...base, PO18_METRICS_TOKEN: "metrics-secret" }), []);
+    assert.deepEqual(productionSecurityErrors({ ...base, PO18_UPLOAD_HOST: "127.0.0.1" }), []);
+    assert.equal(isLoopbackHost("[::1]"), true);
+    assert.equal(isLoopbackHost("0.0.0.0"), false);
 });
 
 test("trust proxy parser handles booleans counts and named ranges", () => {

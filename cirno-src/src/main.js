@@ -5,6 +5,7 @@ import store from './store'
 import installAntDesign from './plugins/ant-design-vue.js'
 import cirnoHttp from './plugins/http'
 import { installReaderPerformance } from './utils/reader-performance'
+import { registerReaderPwa } from './utils/reader-pwa'
 
 import './styles/search-modal-fix.css'
 import './assets/icons/po18-icons.css'
@@ -17,3 +18,4 @@ app.use(store)
 app.use(installAntDesign)
 app.use(cirnoHttp)
 app.mount('#app')
+registerReaderPwa()

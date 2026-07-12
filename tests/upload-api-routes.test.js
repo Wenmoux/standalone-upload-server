@@ -276,3 +276,38 @@ test("upload API checks cache and deletes book chapters", async () => {
         details: { changes: 12 }
     }]);
 });
+
+test("upload API caches public cache lookups and invalidates after writes", async () => {
+    let lookupQueries = 0;
+    const router = createUploadApiRoutes(baseDeps({
+        cacheLookupTtlMs: 60000,
+        query: async (sql) => {
+            if (/SELECT chapter_id, chapter_order/.test(sql)) {
+                lookupQueries += 1;
+                return { rows: [{ chapter_id: "1", chapter_order: 1 }] };
+            }
+            return { rows: [], rowCount: 0 };
+        },
+        saveChapter: async () => ({ success: true })
+    }));
+
+    await withApp(router, async (base) => {
+        const requestLookup = () => fetch(`${base}/api/parse/check-cache`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bookId: "b-cache" })
+        });
+        assert.equal((await requestLookup()).status, 200);
+        assert.equal((await requestLookup()).status, 200);
+        assert.equal(lookupQueries, 1);
+
+        const write = await fetch(`${base}/api/parse/chapter-content`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Upload-Token": "upload-token" },
+            body: JSON.stringify({ bookId: "b-cache", chapterId: "2", html: "<p>x</p>", fromUserScript: true })
+        });
+        assert.equal(write.status, 200);
+        assert.equal((await requestLookup()).status, 200);
+        assert.equal(lookupQueries, 2);
+    });
+});

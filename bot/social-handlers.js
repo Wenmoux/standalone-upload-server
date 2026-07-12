@@ -148,6 +148,34 @@ function createSocialHandlers(options = {}) {
         return "已更新";
     }
 
+    async function handleReportReview(message, args = "") {
+        const [reviewId = "", reason = "", ...details] = String(args || "")
+            .trim()
+            .split(/\s+/);
+        if (!/^\d+$/.test(reviewId) || !["spam", "abuse", "spoiler", "illegal", "other"].includes(reason)) {
+            return sendMessage(message.chat.id, "用法：/reportreview 书评号 原因 说明\n原因：spam / abuse / spoiler / illegal / other");
+        }
+        await ensureRegistered(message.from);
+        const result = await client.reportBookReview(reviewId, message.from.id, reason, details.join(" "));
+        return sendMessage(
+            message.chat.id,
+            `举报已提交。当前有效举报 ${Number(result.report_count || 0)} 条，书评状态：${escapeHtml(result.review_status || "published")}。`
+        );
+    }
+
+    async function handleAppealReview(message, args = "") {
+        const [reviewId = "", ...content] = String(args || "")
+            .trim()
+            .split(/\s+/);
+        const text = content.join(" ").trim();
+        if (!/^\d+$/.test(reviewId) || Array.from(text).length < 6) {
+            return sendMessage(message.chat.id, "用法：/appealreview 书评号 申诉说明（至少 6 字）");
+        }
+        await ensureRegistered(message.from);
+        const result = await client.appealBookReview(reviewId, message.from.id, text);
+        return sendMessage(message.chat.id, `申诉已提交，记录号 #${result.appeal?.id || "-"}，请等待管理员审核。`);
+    }
+
     async function handleMyFav(message) {
         await ensureRegistered(message.from);
         const data = await client.listBookshelf(message.from.id);
@@ -163,6 +191,8 @@ function createSocialHandlers(options = {}) {
         handleReview,
         handleReviews,
         handleReviewVote,
+        handleReportReview,
+        handleAppealReview,
         parseReviewArgs
     };
 }

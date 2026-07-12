@@ -5,7 +5,9 @@ function registerSocialCommands(registry, handlers = {}) {
         handleClaimRedPacket,
         handleCrowd,
         handleReview,
-        handleReviews
+        handleReviews,
+        handleReportReview,
+        handleAppealReview
     } = handlers;
 
     registry.register({ command: "/myfav", description: "我的收藏", action: "myfav", handler: ({ message }) => handleMyFav(message) });
@@ -41,6 +43,18 @@ function registerSocialCommands(registry, handlers = {}) {
         description: "查看书评",
         action: "book_reviews",
         handler: ({ message, args }) => handleReviews(message, args)
+    });
+    registry.register({
+        command: "/reportreview",
+        description: "举报书评",
+        action: "book_review_report",
+        handler: ({ message, args }) => handleReportReview(message, args)
+    });
+    registry.register({
+        command: "/appealreview",
+        description: "申诉书评审核",
+        action: "book_review_appeal",
+        handler: ({ message, args }) => handleAppealReview(message, args)
     });
 }
 

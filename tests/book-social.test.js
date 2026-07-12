@@ -165,6 +165,7 @@ test("book social service creates reviews and settles vote rewards", async () =>
                 const vote = [...votes.values()].find((item) => item.id === Number(params[4]));
                 vote.vote = params[0];
                 vote.reward_delta = Number(params[1]);
+                vote.change_count = Number(vote.change_count || 0) + 1;
                 return { rows: [{ ...vote }] };
             }
             if (/INSERT INTO reader_transactions/.test(sql)) {
@@ -203,6 +204,11 @@ test("book social service creates reviews and settles vote rewards", async () =>
     assert.equal(disliked.review.like_count, 0);
     assert.equal(disliked.review.dislike_count, 1);
     assert.equal(users.get(1).copper_coins, 99);
+
+    await assert.rejects(
+        service.voteBookReview({ telegramId: "200", reviewId: created.review.id, vote: "like" }),
+        (error) => error.code === "REVIEW_VOTE_CHANGE_LIMIT" && error.status === 409
+    );
 
     const list = await service.listBookReviews("b1", { viewerUserId: 2 });
     assert.equal(list.total, 1);

@@ -23,6 +23,51 @@ async function fileBlob(filePath) {
 function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
     const base = String(apiBase || "https://api.telegram.org").replace(/\/+$/, "");
     const timeoutMs = Number.isFinite(Number(requestTimeoutMs)) ? Number(requestTimeoutMs) : 60000;
+    const metrics = {
+        requests: 0,
+        failures: 0,
+        sendFailures: 0,
+        rateLimited: 0,
+        unreachable: 0,
+        lastError: "",
+        lastErrorAt: null,
+        durations: []
+    };
+
+    function isSendMethod(method) {
+        return /^(send|editMessage)/.test(String(method || ""));
+    }
+
+    function recordFailure(method, status = 0, description = "") {
+        metrics.failures += 1;
+        if (isSendMethod(method)) metrics.sendFailures += 1;
+        if (Number(status) === 429) metrics.rateLimited += 1;
+        if (Number(status) === 403 || /bot was blocked|chat not found|user is deactivated|forbidden/i.test(String(description || ""))) {
+            metrics.unreachable += 1;
+        }
+        metrics.lastError = truncate(description || `HTTP ${status || 0}`, 500);
+        metrics.lastErrorAt = new Date().toISOString();
+    }
+
+    function percentile(values, ratio) {
+        if (!values.length) return 0;
+        const sorted = values.slice().sort((a, b) => a - b);
+        return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
+    }
+
+    function stats() {
+        return {
+            requests_total: metrics.requests,
+            failures_total: metrics.failures,
+            send_failures_total: metrics.sendFailures,
+            rate_limited_total: metrics.rateLimited,
+            unreachable_total: metrics.unreachable,
+            latency_p50_ms: percentile(metrics.durations, 0.5),
+            latency_p95_ms: percentile(metrics.durations, 0.95),
+            last_error: metrics.lastError,
+            last_error_at: metrics.lastErrorAt
+        };
+    }
 
     function tgUrl(method) {
         return `${base}/bot${token}/${method}`;
@@ -31,12 +76,19 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
     async function telegramFetch(method, options = {}) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
+        const startedAt = Date.now();
+        metrics.requests += 1;
         try {
-            return await fetch(tgUrl(method), { ...options, signal: controller.signal });
+            const response = await fetch(tgUrl(method), { ...options, signal: controller.signal });
+            if (!response.ok) recordFailure(method, response.status);
+            return response;
         } catch (err) {
+            recordFailure(method, 0, telegramNetworkMessage(method, err));
             throw new Error(telegramNetworkMessage(method, err), { cause: err });
         } finally {
             clearTimeout(timer);
+            metrics.durations.push(Math.max(0, Date.now() - startedAt));
+            if (metrics.durations.length > 500) metrics.durations.splice(0, metrics.durations.length - 500);
         }
     }
 
@@ -47,6 +99,7 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
             body: JSON.stringify(body)
         });
         const data = await response.json().catch(() => ({}));
+        if (response.ok && data.ok === false) recordFailure(method, data.error_code || response.status, data.description);
         if (!response.ok || data.ok === false) throw new Error(data.description || `Telegram ${method} failed`);
         return data.result;
     }
@@ -80,6 +133,7 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         form.append("document", await fileBlob(filePath), path.basename(filePath));
         const response = await telegramFetch("sendDocument", { method: "POST", body: form });
         const data = await response.json().catch(() => ({}));
+        if (response.ok && data.ok === false) recordFailure("sendDocument", data.error_code || response.status, data.description);
         if (!response.ok || data.ok === false) throw new Error(data.description || "sendDocument failed");
         return data.result;
     }
@@ -92,6 +146,7 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         form.append("photo", new Blob([bytes]), fileName);
         const response = await telegramFetch("sendPhoto", { method: "POST", body: form });
         const data = await response.json().catch(() => ({}));
+        if (response.ok && data.ok === false) recordFailure("sendPhoto", data.error_code || response.status, data.description);
         if (!response.ok || data.ok === false) throw new Error(data.description || "sendPhoto failed");
         return data.result;
     }
@@ -108,7 +163,8 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         editMessage,
         sendDocument,
         sendPhoto,
-        answerCallback
+        answerCallback,
+        stats
     };
 }
 

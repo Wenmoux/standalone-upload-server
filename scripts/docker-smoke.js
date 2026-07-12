@@ -7,6 +7,7 @@ const network = `po18-smoke-${suffix}`;
 const pgName = `${network}-pg`;
 const appName = `${network}-app`;
 const image = process.env.PO18_TEST_APP_IMAGE || "wenmoux/reader:v2.0";
+const expectedDigest = process.env.PO18_EXPECTED_IMAGE_DIGEST || "";
 const pgImage = process.env.PO18_TEST_PG_IMAGE || "postgres:16-alpine";
 const password = "po18-smoke-db-pass";
 
@@ -51,7 +52,7 @@ async function main() {
     ], { capture: true });
     await waitUntil(() => succeeds("docker", ["exec", pgName, "pg_isready", "-U", "po18", "-d", "po18"]), "PostgreSQL");
 
-    run("docker", [
+    const appArgs = [
         "run", "-d", "--name", appName, "--network", network, "--tmpfs", "/config",
         "-e", "NODE_ENV=production",
         "-e", `PO18_PG_URL=postgres://po18:${password}@${pgName}:5432/po18`,
@@ -61,8 +62,10 @@ async function main() {
         "-e", "PO18_UPLOAD_API_TOKEN=smoke-upload-token",
         "-e", "PO18_BOT_API_TOKEN=smoke-bot-token",
         "-e", "PO18_CORS_ORIGINS=http://127.0.0.1:3100,http://127.0.0.1:3200",
-        image
-    ], { capture: true });
+    ];
+    if (expectedDigest) appArgs.push("-e", `PO18_IMAGE_DIGEST=${expectedDigest}`);
+    appArgs.push(image);
+    run("docker", appArgs, { capture: true });
     await waitUntil(
         () => succeeds("docker", ["exec", appName, "wget", "-qO-", "http://127.0.0.1:3100/health/ready"]),
         "application"
@@ -70,6 +73,7 @@ async function main() {
 
     const browserCheck = `
       const base = "http://127.0.0.1:3100";
+      const expectedDigest = ${JSON.stringify(expectedDigest)};
       (async () => {
         const login = await fetch(base + "/admin-api/auth/login", {
           method: "POST", headers: { "content-type": "application/json", origin: base },
@@ -80,7 +84,11 @@ async function main() {
         const me = await fetch(base + "/admin-api/auth/me", { headers: { cookie } });
         const logout = await fetch(base + "/admin-api/auth/logout", { method: "POST", headers: { cookie, origin: base, "content-type": "application/json" }, body: JSON.stringify({ reason: "smoke test" }) });
         const payload = await me.json();
-        if (login.status !== 200 || !cookie || rejected.status !== 403 || payload.user?.username !== "smoke-admin" || logout.status !== 200) process.exit(1);
+        const versionResponse = await fetch(base + "/health/version");
+        const version = await versionResponse.json();
+        const identityOk = /^[a-f0-9]{64}$/i.test(version.source_hash || "") && Boolean(version.immutable_image);
+        const digestOk = !expectedDigest || version.image_digest === expectedDigest;
+        if (login.status !== 200 || !cookie || rejected.status !== 403 || payload.user?.username !== "smoke-admin" || logout.status !== 200 || !identityOk || !digestOk) process.exit(1);
       })().catch(() => process.exit(1));
     `;
     run("docker", ["exec", appName, "node", "-e", browserCheck]);

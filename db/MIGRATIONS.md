@@ -12,6 +12,7 @@ Applied versions are tracked in `schema_migrations`.
 - Startup fails when an applied migration checksum differs from the file in the image. `PO18_ALLOW_MIGRATION_CHECKSUM_DRIFT=1` is an emergency inspection override, not a normal deployment setting.
 - Fix a bad released migration with a new higher-numbered migration.
 - Add a matching `db/rollbacks/NNN_name.down.sql` for each released migration when the change can be safely reversed.
+- Update `db/schema-snapshot.json` in the same change. `npm run check:schema` rejects a changed migration chain or application DDL outside the migration directory.
 - Take a database backup before any schema change on a production instance.
 
 ## Preflight
@@ -31,6 +32,15 @@ docker exec po18-app sh -lc 'psql "$DATABASE_URL" -c "SELECT version, name, appl
 The migration table also records `duration_ms` and `app_version`, so a running database can be matched to the application version that applied each change.
 
 `018_data_quality_guards` adds `NOT VALID` checks for new writes without forcing a full validation scan of legacy rows. After cleaning historical anomalies, constraints can be validated individually with `ALTER TABLE ... VALIDATE CONSTRAINT ...`.
+
+Later additive migrations keep the explicitly deferred identity model unchanged:
+
+- `019_job_effect_idempotency`: exactly-once charge/reward ledger.
+- `020_taxonomy_and_quality_semantics`: normalized taxonomy, timestamp semantics and deferred order checks.
+- `021_book_manifest_checksums`: Manifest checksums.
+- `022_review_governance`: reports, appeals and bounded vote changes.
+
+None of these migrations introduces `book_key` or changes existing platform-unaware API fields.
 
 ## Rollback Strategy
 

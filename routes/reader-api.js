@@ -12,6 +12,42 @@ function positiveInteger(value, fallback, max = 1000) {
     return Math.min(max, Math.floor(parsed));
 }
 
+const SEARCH_CURSOR_SORTS = Object.freeze({
+    updated_desc: { expression: "COALESCE(m.updated_at, m.created_at)", direction: "DESC", value: (row) => row.updated_at || row.created_at || null },
+    updated_asc: { expression: "COALESCE(m.updated_at, m.created_at)", direction: "ASC", value: (row) => row.updated_at || row.created_at || null },
+    chapters_desc: { expression: "COALESCE(m.total_chapters, m.subscribed_chapters, 0)", direction: "DESC", value: (row) => Number(row.total_chapters ?? row.subscribed_chapters ?? 0) },
+    chapters_asc: { expression: "COALESCE(m.total_chapters, m.subscribed_chapters, 0)", direction: "ASC", value: (row) => Number(row.total_chapters ?? row.subscribed_chapters ?? 0) },
+    popularity_desc: { expression: "COALESCE(m.total_popularity, 0)", direction: "DESC", value: (row) => Number(row.total_popularity || 0) },
+    popularity_asc: { expression: "COALESCE(m.total_popularity, 0)", direction: "ASC", value: (row) => Number(row.total_popularity || 0) },
+    word_desc: { expression: "COALESCE(m.word_count, 0)", direction: "DESC", value: (row) => Number(row.word_count || 0) },
+    word_asc: { expression: "COALESCE(m.word_count, 0)", direction: "ASC", value: (row) => Number(row.word_count || 0) },
+    cache_desc: { expression: "COALESCE(cc.cache_count, 0)", direction: "DESC", value: (row) => Number(row.cache_count || 0) },
+    cache_asc: { expression: "COALESCE(cc.cache_count, 0)", direction: "ASC", value: (row) => Number(row.cache_count || 0) }
+});
+
+function encodeSearchCursor(sort, row = {}) {
+    const config = SEARCH_CURSOR_SORTS[sort];
+    const id = Number(row.id || 0);
+    if (!config || !Number.isInteger(id) || id <= 0) return null;
+    const value = config.value(row);
+    if (value === null || value === undefined || (typeof value === "number" && !Number.isFinite(value))) return null;
+    return Buffer.from(JSON.stringify({ v: 1, sort, value, id }), "utf8").toString("base64url");
+}
+
+function decodeSearchCursor(input, expectedSort = "") {
+    if (!input) return null;
+    try {
+        const parsed = JSON.parse(Buffer.from(String(input), "base64url").toString("utf8"));
+        if (parsed?.v !== 1 || !SEARCH_CURSOR_SORTS[parsed.sort]) throw new Error("unsupported cursor");
+        if (expectedSort && parsed.sort !== expectedSort) throw new Error("cursor sort mismatch");
+        if (!Number.isInteger(Number(parsed.id)) || Number(parsed.id) <= 0) throw new Error("invalid cursor id");
+        if (parsed.value === null || parsed.value === undefined) throw new Error("invalid cursor value");
+        return { sort: parsed.sort, value: parsed.value, id: Number(parsed.id) };
+    } catch (err) {
+        throw Object.assign(new Error(`invalid search cursor: ${err.message || String(err)}`), { status: 400, code: "INVALID_CURSOR" });
+    }
+}
+
 function createReaderApiRoutes(deps = {}) {
     const router = express.Router();
     const {
@@ -70,7 +106,7 @@ function createReaderApiRoutes(deps = {}) {
             }[sort] || "COALESCE(rh.updated_at, rb.updated_at, rb.created_at) DESC, rb.id DESC";
             const limit = positiveInteger(req.query.limit || req.query.count, 1000, 1000);
             const page = positiveInteger(req.query.page, 1, Number.MAX_SAFE_INTEGER);
-            const offset = (page - 1) * limit;
+            let offset = (page - 1) * limit;
             const rows = await query(
                 `WITH shelf_rows AS (
                     SELECT rb.id as shelf_row_id, rb.book_id,
@@ -266,7 +302,7 @@ function createReaderApiRoutes(deps = {}) {
         try {
             const page = Math.max(1, Number(req.query.page || 1));
             const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
-            const offset = (page - 1) * limit;
+            let offset = (page - 1) * limit;
             const where = [];
             const params = [];
             const keyword = String(req.query.keyword || req.query.q || "").trim();
@@ -287,7 +323,11 @@ function createReaderApiRoutes(deps = {}) {
             const popularityMin = numberFilter("popularity_min");
             const popularityMax = numberFilter("popularity_max");
             const sort = String(req.query.sort || "updated_desc");
-            const fastSearch = truthyQuery(req.query.fast || req.query.fast_search || req.query.no_total);
+            const cursorInput = String(req.query.cursor || "").trim();
+            const cursor = decodeSearchCursor(cursorInput, sort);
+            if (cursor && !SEARCH_CURSOR_SORTS[sort]) throw Object.assign(new Error(`cursor pagination is not supported for sort ${sort}`), { status: 400 });
+            if (cursor) offset = 0;
+            const fastSearch = !!cursor || truthyQuery(req.query.fast || req.query.fast_search || req.query.no_total);
             const requireCachedBook = !keyword;
             const effectiveCacheMin = requireCachedBook ? Math.max(1, cacheMin ?? 1) : cacheMin;
             const needsCacheJoin = effectiveCacheMin !== null || cacheMax !== null || isCacheCountSort(sort);
@@ -300,15 +340,21 @@ function createReaderApiRoutes(deps = {}) {
                 where.push(`m.author ILIKE $${params.length}`);
             }
             if (tag) {
-                params.push(`%${tag}%`);
-                where.push(`(m.tags ILIKE $${params.length} OR m.category ILIKE $${params.length})`);
+                params.push(tag.toLowerCase());
+                where.push(`EXISTS (
+                    SELECT 1 FROM book_taxonomy tag_taxonomy
+                    WHERE tag_taxonomy.metadata_id = m.id
+                      AND tag_taxonomy.kind IN ('tag', 'category')
+                      AND tag_taxonomy.normalized_value = $${params.length}
+                )`);
             }
             if (category) {
-                params.push(category);
+                params.push(category.toLowerCase());
                 where.push(`EXISTS (
-                    SELECT 1
-                    FROM regexp_split_to_table(COALESCE(m.category, ''), '[,，、/|·]+') AS category_token
-                    WHERE LOWER(BTRIM(category_token)) = LOWER($${params.length})
+                    SELECT 1 FROM book_taxonomy category_taxonomy
+                    WHERE category_taxonomy.metadata_id = m.id
+                      AND category_taxonomy.kind = 'category'
+                      AND category_taxonomy.normalized_value = $${params.length}
                 )`);
             }
             if (platform) {
@@ -339,6 +385,12 @@ function createReaderApiRoutes(deps = {}) {
                 params.push(popularityMax);
                 where.push(`COALESCE(m.total_popularity, 0) <= $${params.length}`);
             }
+            if (cursor) {
+                const config = SEARCH_CURSOR_SORTS[sort];
+                params.push(cursor.value, cursor.id);
+                const compare = config.direction === "DESC" ? "<" : ">";
+                where.push(`(${config.expression}, m.id) ${compare} ($${params.length - 1}, $${params.length})`);
+            }
             const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
             const cacheJoinSql = needsCacheJoin
                 ? `LEFT JOIN book_stats cc ON cc.book_id = m.book_id`
@@ -349,7 +401,8 @@ function createReaderApiRoutes(deps = {}) {
             const limitIndex = params.length + 1;
             const offsetIndex = params.length + 2;
             const fetchLimit = fastSearch ? limit + 1 : limit;
-            const dataParams = [...params, fetchLimit, offset];
+            const dataParams = cursor ? [...params, fetchLimit] : [...params, fetchLimit, offset];
+            const pagingSql = cursor ? `LIMIT $${limitIndex}` : `LIMIT $${limitIndex} OFFSET $${offsetIndex}`;
             const baseColumns = `m.id, m.book_id, m.title, m.author, m.cover, m.description, m.tags, m.category,
                         m.status, m.platform, m.word_count, m.free_chapters, m.paid_chapters,
                         m.chapter_count, m.total_chapters, m.subscribed_chapters,
@@ -365,7 +418,7 @@ function createReaderApiRoutes(deps = {}) {
                            ${cacheJoinSql}
                            ${whereSql}
                            ORDER BY ${pageOrder}
-                           LIMIT $${limitIndex} OFFSET $${offsetIndex}
+                            ${pagingSql}
                        )
                        SELECT m.*, COALESCE(bs.like_count, 0)::int like_count,
                               COALESCE(bs.dislike_count, 0)::int dislike_count
@@ -380,7 +433,7 @@ function createReaderApiRoutes(deps = {}) {
                            FROM book_metadata m
                            ${whereSql}
                            ORDER BY ${pageOrder}
-                           LIMIT $${limitIndex} OFFSET $${offsetIndex}
+                            ${pagingSql}
                        )
                        SELECT m.*, COALESCE(bs.cache_count, 0)::int cache_count,
                               COALESCE(bs.like_count, 0)::int like_count,
@@ -400,6 +453,8 @@ function createReaderApiRoutes(deps = {}) {
             if (fastSearch) {
                 payload.has_more = hasMore;
                 payload.total_is_estimated = true;
+                payload.next_cursor = hasMore ? encodeSearchCursor(sort, visibleRows[visibleRows.length - 1]) : null;
+                if (cursor) payload.cursor_applied = true;
             }
             logSlowSearch("reader-api/search", startedAt, slowSearchContext(req, { total: totalCount, rows: visibleRows.length }));
             res.json(payload);
@@ -600,7 +655,12 @@ function createReaderApiRoutes(deps = {}) {
     return router;
 }
 
-module.exports = { createReaderApiRoutes };
+module.exports = {
+    SEARCH_CURSOR_SORTS,
+    createReaderApiRoutes,
+    decodeSearchCursor,
+    encodeSearchCursor
+};
 
 
 

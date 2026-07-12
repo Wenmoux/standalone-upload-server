@@ -1,3 +1,8 @@
+function boundedConfigInteger(value, fallback, min, max) {
+    const number = Number(value);
+    return Number.isSafeInteger(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
 function createBookSocialService(options = {}) {
     const query = options.query;
     const pool = options.pool;
@@ -8,6 +13,11 @@ function createBookSocialService(options = {}) {
     const reviewMinLevel = Math.max(1, Math.trunc(Number(options.reviewMinLevel ?? 2)));
     const reviewMaxLength = Math.max(200, Math.trunc(Number(options.reviewMaxLength ?? 1200)));
     const reviewMinLength = Math.max(1, Math.trunc(Number(options.reviewMinLength ?? 6)));
+    const reviewHourlyLimit = boundedConfigInteger(options.reviewHourlyLimit ?? process.env.PO18_BOOK_REVIEW_HOURLY_LIMIT, 3, 1, 100);
+    const reviewDailyLimit = boundedConfigInteger(options.reviewDailyLimit ?? process.env.PO18_BOOK_REVIEW_DAILY_LIMIT, 10, reviewHourlyLimit, 500);
+    const reviewVoteHourlyLimit = boundedConfigInteger(options.reviewVoteHourlyLimit ?? process.env.PO18_BOOK_REVIEW_VOTE_HOURLY_LIMIT, 30, 1, 1000);
+    const reviewVoteDailyLimit = boundedConfigInteger(options.reviewVoteDailyLimit ?? process.env.PO18_BOOK_REVIEW_VOTE_DAILY_LIMIT, 100, reviewVoteHourlyLimit, 5000);
+    const reviewVoteMaxChanges = boundedConfigInteger(options.reviewVoteMaxChanges ?? process.env.PO18_BOOK_REVIEW_VOTE_MAX_CHANGES, 1, 0, 10);
 
     function normalizeFeedback(value) {
         const raw = String(value || "").trim().toLowerCase();
@@ -382,6 +392,20 @@ function createBookSocialService(options = {}) {
             const user = userResult.rows[0];
             if (!user) throw Object.assign(new Error("user not found"), { status: 404 });
             if (user.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
+            const activity = await client.query(
+                `SELECT
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour')::int hourly,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day')::int daily
+                 FROM reader_book_reviews WHERE user_id=$1`,
+                [user.id]
+            );
+            if (Number(activity.rows[0]?.hourly || 0) >= reviewHourlyLimit || Number(activity.rows[0]?.daily || 0) >= reviewDailyLimit) {
+                throw Object.assign(new Error("书评发布过于频繁，请稍后再试"), {
+                    status: 429,
+                    code: "REVIEW_PUBLISH_RATE_LIMIT",
+                    details: { hourly_limit: reviewHourlyLimit, daily_limit: reviewDailyLimit }
+                });
+            }
             const scholar = scholarProfile(user.scholar_exp);
             if (Number(scholar.level || 1) < reviewMinLevel) {
                 throw Object.assign(new Error(`Lv.${reviewMinLevel} 才能发布书评`), { status: 403, scholar });
@@ -476,6 +500,20 @@ function createBookSocialService(options = {}) {
             const voter = voterResult.rows[0];
             if (!voter) throw Object.assign(new Error("user not found"), { status: 404 });
             if (voter.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
+            const voteActivity = await client.query(
+                `SELECT
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour')::int hourly,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day')::int daily
+                 FROM reader_book_review_votes WHERE user_id=$1`,
+                [voter.id]
+            );
+            if (Number(voteActivity.rows[0]?.hourly || 0) >= reviewVoteHourlyLimit || Number(voteActivity.rows[0]?.daily || 0) >= reviewVoteDailyLimit) {
+                throw Object.assign(new Error("书评投票过于频繁，请稍后再试"), {
+                    status: 429,
+                    code: "REVIEW_VOTE_RATE_LIMIT",
+                    details: { hourly_limit: reviewVoteHourlyLimit, daily_limit: reviewVoteDailyLimit }
+                });
+            }
             const reviewResult = await client.query(
                 `SELECT r.*
                  FROM reader_book_reviews r
@@ -515,6 +553,13 @@ function createBookSocialService(options = {}) {
                     author
                 };
             }
+            if (previousVote && Number(existed.rows[0]?.change_count || 0) >= reviewVoteMaxChanges) {
+                throw Object.assign(new Error("书评投票修改次数已达上限"), {
+                    status: 409,
+                    code: "REVIEW_VOTE_CHANGE_LIMIT",
+                    details: { max_changes: reviewVoteMaxChanges }
+                });
+            }
 
             const previousReward = reviewVoteReward(previousVote);
             const nextReward = reviewVoteReward(safeVote);
@@ -522,7 +567,9 @@ function createBookSocialService(options = {}) {
             if (existed.rows.length) {
                 await client.query(
                     `UPDATE reader_book_review_votes
-                     SET vote = $1, reward_delta = $2, telegram_id = $3, source = $4, updated_at = CURRENT_TIMESTAMP
+                     SET vote = $1, reward_delta = $2, telegram_id = $3, source = $4,
+                         change_count = COALESCE(change_count, 0) + 1,
+                         last_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                      WHERE id = $5`,
                     [safeVote, nextReward, voter.telegram_id || safeTelegramId, String(source || "telegram_bot").slice(0, 64), existed.rows[0].id]
                 );
@@ -536,7 +583,9 @@ function createBookSocialService(options = {}) {
 
             let updatedAuthor = author;
             let transaction = null;
+            let appliedRewardDelta = rewardDelta;
             if (author && rewardDelta !== 0) {
+                const previousBalance = Number(author.copper_coins || 0);
                 const updated = await client.query(
                     `UPDATE reader_users
                      SET copper_coins = GREATEST(0, COALESCE(copper_coins, 0) + $1)
@@ -545,6 +594,7 @@ function createBookSocialService(options = {}) {
                     [rewardDelta, author.id]
                 );
                 updatedAuthor = updated.rows[0] || author;
+                appliedRewardDelta = Number(updatedAuthor.copper_coins || 0) - previousBalance;
                 const tx = await client.query(
                     `INSERT INTO reader_transactions(user_id, telegram_id, type, currency, amount, balance, detail, source)
                      VALUES ($1,$2,$3,'copper',$4,$5,$6,$7)
@@ -553,7 +603,7 @@ function createBookSocialService(options = {}) {
                         author.id,
                         author.telegram_id || "",
                         safeVote === "like" ? "book_review_like" : "book_review_dislike",
-                        rewardDelta,
+                        appliedRewardDelta,
                         Number(updatedAuthor.copper_coins || 0),
                         `review=${safeReviewId} voter=${voter.telegram_id || safeTelegramId}`,
                         String(source || "telegram_bot").slice(0, 64)
@@ -568,7 +618,7 @@ function createBookSocialService(options = {}) {
                 already_exists: false,
                 vote: safeVote,
                 previous_vote: previousVote,
-                reward_delta: rewardDelta,
+                reward_delta: appliedRewardDelta,
                 review: currentReview,
                 voter,
                 author: updatedAuthor,
@@ -620,7 +670,12 @@ function createBookSocialService(options = {}) {
         reviewMinLength,
         reviewMaxLength,
         reviewMinLevel,
+        reviewHourlyLimit,
+        reviewDailyLimit,
         reviewPublishCost,
+        reviewVoteDailyLimit,
+        reviewVoteHourlyLimit,
+        reviewVoteMaxChanges,
         reviewVoteReward,
         updateBookReviewChannelMessage,
         voteBookReview,

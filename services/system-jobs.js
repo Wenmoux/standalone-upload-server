@@ -65,7 +65,35 @@ async function collectSystemJobMetrics() {
                 COUNT(*) FILTER (WHERE status='running' AND lease_expires_at < CURRENT_TIMESTAMP)::int expired_leases,
                 COUNT(*) FILTER (WHERE cancel_requested_at IS NOT NULL AND status='running')::int cancel_requested,
                 COALESCE(SUM(GREATEST(attempt - 1, 0)), 0)::int retries,
-                COUNT(*) FILTER (WHERE status='failed' AND attempt >= max_attempts)::int exhausted
+                COUNT(*) FILTER (WHERE status='failed' AND attempt >= max_attempts)::int exhausted,
+                COUNT(*) FILTER (WHERE attempt > 1)::int retried_jobs,
+                COALESCE(ROUND(
+                    COUNT(*) FILTER (WHERE status='failed')::numeric /
+                    NULLIF(COUNT(*) FILTER (WHERE status IN ('succeeded','failed')), 0), 4
+                ), 0)::float8 failure_rate,
+                COALESCE(ROUND(
+                    COUNT(*) FILTER (WHERE attempt > 1)::numeric / NULLIF(COUNT(*), 0), 4
+                ), 0)::float8 retry_rate,
+                COALESCE(percentile_cont(0.50) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (started_at - created_at)) * 1000
+                ) FILTER (WHERE started_at IS NOT NULL), 0)::bigint queue_p50_ms,
+                COALESCE(percentile_cont(0.95) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (started_at - created_at)) * 1000
+                ) FILTER (WHERE started_at IS NOT NULL), 0)::bigint queue_p95_ms,
+                COALESCE(percentile_cont(0.99) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (started_at - created_at)) * 1000
+                ) FILTER (WHERE started_at IS NOT NULL), 0)::bigint queue_p99_ms,
+                COALESCE(percentile_cont(0.50) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (finished_at - started_at)) * 1000
+                ) FILTER (WHERE started_at IS NOT NULL AND finished_at IS NOT NULL), 0)::bigint run_p50_ms,
+                COALESCE(percentile_cont(0.95) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (finished_at - started_at)) * 1000
+                ) FILTER (WHERE started_at IS NOT NULL AND finished_at IS NOT NULL), 0)::bigint run_p95_ms,
+                COALESCE(percentile_cont(0.99) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (finished_at - started_at)) * 1000
+                ) FILTER (WHERE started_at IS NOT NULL AND finished_at IS NOT NULL), 0)::bigint run_p99_ms,
+                COALESCE(MAX(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at)) * 1000)
+                    FILTER (WHERE status='running' AND started_at IS NOT NULL), 0)::bigint running_max_ms
              FROM system_jobs`
         );
         return { available: true, ...result.rows[0] };

@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS idx_reader_review_appeals_one_pending;
+DROP INDEX IF EXISTS idx_reader_review_appeals_user;
+DROP INDEX IF EXISTS idx_reader_review_appeals_queue;
+DROP INDEX IF EXISTS idx_reader_review_reports_review;
+DROP INDEX IF EXISTS idx_reader_review_reports_queue;
+DROP TABLE IF EXISTS reader_book_review_appeals;
+DROP TABLE IF EXISTS reader_book_review_reports;
+ALTER TABLE reader_book_review_votes DROP CONSTRAINT IF EXISTS reader_review_vote_change_count_nonnegative;
+ALTER TABLE reader_book_review_votes DROP COLUMN IF EXISTS last_changed_at;
+ALTER TABLE reader_book_review_votes DROP COLUMN IF EXISTS change_count;

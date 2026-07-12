@@ -198,6 +198,9 @@ function createBookChapterService(options = {}) {
                 (platform === "popo" ? `https://www.popo.tw/books/${book.bookId}` : `https://www.po18.tw/books/${book.bookId}/articles`),
             uploader: book.uploader || "unknown_user",
             uploaderId: book.uploaderId || book.uploaderid || "unknown",
+            source_updated_at: book.sourceUpdatedAt || book.source_updated_at || null,
+            catalog_updated_at: book.catalogUpdatedAt || book.catalog_updated_at || null,
+            metadata_cached_at: nowSql(),
             updated_at: nowSql()
         });
     }

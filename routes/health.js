@@ -55,6 +55,17 @@ function percentile(values, percent = 95) {
     return Math.round(sorted[index]);
 }
 
+function eventEpochSeconds(events = [], names = []) {
+    const allowed = new Set(names);
+    let latest = 0;
+    for (const row of events || []) {
+        if (!allowed.has(String(row.event || ""))) continue;
+        const timestamp = Date.parse(row.ts || row.timestamp || row.created_at || "");
+        if (Number.isFinite(timestamp)) latest = Math.max(latest, Math.floor(timestamp / 1000));
+    }
+    return latest;
+}
+
 function readerMetricName(requestPath = "") {
     const clean = String(requestPath || "").split("?")[0];
     if (/^\/reader-api\/search(?:\/suggest)?$/i.test(clean)) return "search";
@@ -172,7 +183,9 @@ function readerPerformanceSummary(requests = [], budgets = {}) {
             name,
             count: values.length,
             avg_ms: values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0,
+            p50_ms: percentile(values, 50),
             p95_ms: p95,
+            p99_ms: percentile(values, 99),
             max_ms: values.length ? Math.max(...values) : 0,
             budget_ms: budget,
             ok: !budget || !values.length || p95 <= budget
@@ -213,11 +226,14 @@ function createPrometheusMetricsText(options = {}) {
     const readerPerformanceBudgets = normalizeBudgetOptions(options);
     const crawlerSnapshotProvider = options.crawlerSnapshotProvider || (() => null);
     const systemJobMetricsProvider = options.systemJobMetricsProvider || (async () => ({ available: false }));
+    const dataQualityMetricsProvider = options.dataQualityMetricsProvider || (async () => ({ available: false }));
+    const databaseQueryMetricsProvider = options.databaseQueryMetricsProvider || (() => ({}));
 
     return async function prometheusMetricsText() {
         const requests = readJsonLinesTail(requestLogFile, { limit: 5000, maxBytes: 2 * 1024 * 1024 });
         const slow = readJsonLinesTail(slowLogFile, { limit: 5000, maxBytes: 2 * 1024 * 1024 });
         const events = readJsonLinesTail(eventLogFile, { limit: 3000, maxBytes: 1024 * 1024 });
+        const databaseQueries = await Promise.resolve(databaseQueryMetricsProvider()).catch(() => ({}));
         const lines = [
             "# HELP po18_uptime_seconds Process uptime in seconds.",
             "# TYPE po18_uptime_seconds gauge",
@@ -228,6 +244,15 @@ function createPrometheusMetricsText(options = {}) {
             metricLine("po18_db_pool_connections", { state: "idle" }, pool.idleCount),
             metricLine("po18_db_pool_connections", { state: "waiting" }, pool.waitingCount)
         ];
+        lines.push("# HELP po18_db_query_latency_ms Rolling database query latency quantiles in milliseconds.");
+        lines.push("# TYPE po18_db_query_latency_ms gauge");
+        for (const quantile of ["p50", "p95", "p99"]) {
+            lines.push(metricLine("po18_db_query_latency_ms", { quantile }, databaseQueries[`${quantile}_ms`] || 0));
+        }
+        lines.push(metricLine("po18_db_queries_total", { result: "all" }, databaseQueries.count || 0));
+        lines.push(metricLine("po18_db_queries_total", { result: "failure" }, databaseQueries.failures || 0));
+        lines.push(metricLine("po18_db_queries_total", { result: "timeout" }, databaseQueries.timeouts || 0));
+        lines.push(metricLine("po18_db_queries_total", { result: "slow" }, databaseQueries.slow || 0));
 
         const requestGroups = groupedMetrics(requests, (row) => JSON.stringify({
             service: row.service || "app",
@@ -272,6 +297,9 @@ function createPrometheusMetricsText(options = {}) {
             if (!endpoint.budget_ms) continue;
             lines.push(metricLine("po18_reader_endpoint_p95_ms", { endpoint: endpoint.name }, endpoint.p95_ms));
             lines.push(metricLine("po18_reader_endpoint_budget_ms", { endpoint: endpoint.name }, endpoint.budget_ms));
+            for (const quantile of ["p50", "p95", "p99"]) {
+                lines.push(metricLine("po18_reader_endpoint_latency_ms", { endpoint: endpoint.name, quantile }, endpoint[`${quantile}_ms`] || 0));
+            }
         }
 
         const botApiErrors = requests.filter((row) => String(row.path || "").startsWith("/bot-api") && Number(row.status || 0) >= 400).length;
@@ -286,18 +314,33 @@ function createPrometheusMetricsText(options = {}) {
         lines.push("# HELP po18_backup_events_total Recent backup and restore event count.");
         lines.push("# TYPE po18_backup_events_total counter");
         for (const [key, count] of backupGroups) lines.push(metricLine("po18_backup_events_total", JSON.parse(key), count));
+        lines.push("# HELP po18_backup_last_success_timestamp_seconds Last successful backup timestamp.");
+        lines.push("# TYPE po18_backup_last_success_timestamp_seconds gauge");
+        lines.push(metricLine("po18_backup_last_success_timestamp_seconds", {}, eventEpochSeconds(events, ["backup-created", "backup-remote-uploaded"])));
+        lines.push("# HELP po18_backup_restore_drill_last_success_timestamp_seconds Last successful automated restore drill timestamp.");
+        lines.push("# TYPE po18_backup_restore_drill_last_success_timestamp_seconds gauge");
+        lines.push(metricLine("po18_backup_restore_drill_last_success_timestamp_seconds", {}, eventEpochSeconds(events, ["backup-restore-drill-succeeded"])));
 
         const botEnabled = !!String(botTokenProvider() || "");
         const botHealth = botEnabled && typeof healthService.httpHealthCheck === "function"
             ? await healthService.httpHealthCheck("bot", botHealthUrlProvider(), { required: false, includeBody: true })
             : { body: { background_tasks: {} } };
         const tasks = botHealth.body?.background_tasks || {};
+        const polling = botHealth.body?.polling || {};
+        const telegram = botHealth.body?.telegram || {};
         lines.push("# HELP po18_bot_queue_jobs Bot background job queue state.");
         lines.push("# TYPE po18_bot_queue_jobs gauge");
         lines.push(metricLine("po18_bot_queue_jobs", { state: "running" }, tasks.running || 0));
         lines.push(metricLine("po18_bot_queue_jobs", { state: "queued" }, tasks.queued || 0));
         lines.push(metricLine("po18_bot_queue_jobs", { state: "locks" }, tasks.locks || 0));
         lines.push(metricLine("po18_bot_queue_jobs", { state: "concurrency" }, tasks.concurrency || 0));
+        lines.push(metricLine("po18_bot_poll_age_ms", {}, botHealth.body?.poll_age_ms || 0));
+        lines.push(metricLine("po18_bot_poll_requests_total", { result: "all" }, polling.requests_total || 0));
+        lines.push(metricLine("po18_bot_poll_requests_total", { result: "failure" }, polling.failures_total || 0));
+        lines.push(metricLine("po18_bot_updates_total", {}, polling.updates_total || 0));
+        lines.push(metricLine("po18_bot_telegram_send_failures_total", {}, telegram.send_failures_total || 0));
+        lines.push(metricLine("po18_bot_telegram_rate_limited_total", {}, telegram.rate_limited_total || 0));
+        lines.push(metricLine("po18_bot_telegram_unreachable_total", {}, telegram.unreachable_total || 0));
 
         const crawler = await Promise.resolve(crawlerSnapshotProvider()).catch(() => null);
         const sourceHealth = crawler?.sourceHealth || {};
@@ -309,9 +352,14 @@ function createPrometheusMetricsText(options = {}) {
             lines.push(metricLine("po18_crawler_source_consecutive_failures", { source: sourceHealth.source }, sourceHealth.consecutiveFailures));
             lines.push(metricLine("po18_crawler_source_circuit_open", { source: sourceHealth.source }, sourceHealth.state === "open" ? 1 : 0));
             lines.push(metricLine("po18_crawler_request_retries_total", { source: sourceHealth.source }, crawler?.stats?.requestRetries || 0));
+            lines.push(metricLine("po18_crawler_source_failures_total", { source: sourceHealth.source, kind: "auth" }, sourceHealth.authFailures || 0));
+            lines.push(metricLine("po18_crawler_source_failures_total", { source: sourceHealth.source, kind: "rate_limit" }, sourceHealth.rateLimits || 0));
+            lines.push(metricLine("po18_crawler_source_failures_total", { source: sourceHealth.source, kind: "parse" }, sourceHealth.parseFailures || 0));
+            lines.push(metricLine("po18_crawler_source_latency_ms", { source: sourceHealth.source, quantile: "p50" }, sourceHealth.latencyP50Ms || 0));
+            lines.push(metricLine("po18_crawler_source_latency_ms", { source: sourceHealth.source, quantile: "p95" }, sourceHealth.latencyP95Ms || 0));
         }
 
-        const jobs = await systemJobMetricsProvider().catch(() => ({ available: false }));
+        const jobs = await Promise.resolve(systemJobMetricsProvider()).catch(() => ({ available: false }));
         if (jobs?.available) {
             lines.push("# HELP po18_system_jobs Current persistent system job states.");
             lines.push("# TYPE po18_system_jobs gauge");
@@ -322,6 +370,22 @@ function createPrometheusMetricsText(options = {}) {
             lines.push(metricLine("po18_system_job_expired_leases", {}, jobs.expired_leases || 0));
             lines.push(metricLine("po18_system_job_retries_exhausted", {}, jobs.exhausted || 0));
             lines.push(metricLine("po18_system_job_cancel_requests", {}, jobs.cancel_requested || 0));
+            lines.push(metricLine("po18_system_job_failure_ratio", {}, jobs.failure_rate || 0));
+            lines.push(metricLine("po18_system_job_retry_ratio", {}, jobs.retry_rate || 0));
+            lines.push(metricLine("po18_system_job_heartbeat_lost", {}, jobs.expired_leases || 0));
+            for (const phase of ["queue", "run"]) {
+                for (const quantile of ["p50", "p95", "p99"]) {
+                    lines.push(metricLine("po18_system_job_duration_ms", { phase, quantile }, jobs[`${phase}_${quantile}_ms`] || 0));
+                }
+            }
+            lines.push(metricLine("po18_system_job_running_max_ms", {}, jobs.running_max_ms || 0));
+        }
+
+        const quality = await Promise.resolve(dataQualityMetricsProvider()).catch(() => ({ available: false }));
+        if (quality?.available) {
+            for (const key of ["books", "cached_books", "complete_books", "cached_chapters", "order_drift_books", "abnormal_chapters"]) {
+                lines.push(metricLine("po18_data_quality", { metric: key }, quality[key] || 0));
+            }
         }
 
         return `${lines.join("\n")}\n`;
@@ -341,6 +405,8 @@ function createMetricsSummary(options = {}) {
     const readerDistDir = options.readerDistDir || process.env.PO18_READER_DIST_DIR || path.resolve(process.cwd(), "cirno-src", "dist-reader");
     const crawlerSnapshotProvider = options.crawlerSnapshotProvider || (() => null);
     const systemJobMetricsProvider = options.systemJobMetricsProvider || (async () => ({ available: false }));
+    const dataQualityMetricsProvider = options.dataQualityMetricsProvider || (async () => ({ available: false }));
+    const databaseQueryMetricsProvider = options.databaseQueryMetricsProvider || (() => ({}));
 
     return async function metricsSummary() {
         const requests = readJsonLinesTail(requestLogFile, { limit: 5000, maxBytes: 2 * 1024 * 1024 });
@@ -382,7 +448,11 @@ function createMetricsSummary(options = {}) {
         const readerPerformance = readerPerformanceSummary(requests, readerPerformanceBudgets);
         const readerAssets = collectReaderAssetBudget(readerDistDir, readerPerformanceBudgets);
         const crawler = await Promise.resolve(crawlerSnapshotProvider()).catch(() => null);
-        const systemJobs = await systemJobMetricsProvider().catch(() => ({ available: false }));
+        const systemJobs = await Promise.resolve(systemJobMetricsProvider()).catch(() => ({ available: false }));
+        const dataQuality = await Promise.resolve(dataQualityMetricsProvider()).catch(() => ({ available: false }));
+        const databaseQueries = await Promise.resolve(databaseQueryMetricsProvider()).catch(() => ({}));
+        const polling = botHealth.body?.polling || {};
+        const telegram = botHealth.body?.telegram || {};
         return {
             generated_at: now,
             window: {
@@ -419,9 +489,16 @@ function createMetricsSummary(options = {}) {
                 locks: Number(queue.locks || 0),
                 concurrency: Number(queue.concurrency || 0)
             },
+            bot_telegram: {
+                poll_age_ms: Number(botHealth.body?.poll_age_ms || 0),
+                polling,
+                requests: telegram
+            },
             backup: {
                 events: backupEvents.length,
-                failures: backupEvents.filter((row) => row.level === "error" || /failed/i.test(String(row.event || ""))).length
+                failures: backupEvents.filter((row) => row.level === "error" || /failed/i.test(String(row.event || ""))).length,
+                last_success_at: eventEpochSeconds(events, ["backup-created", "backup-remote-uploaded"]),
+                last_restore_drill_success_at: eventEpochSeconds(events, ["backup-restore-drill-succeeded"])
             },
             crawler: crawler ? {
                 running: !!crawler.running,
@@ -430,10 +507,12 @@ function createMetricsSummary(options = {}) {
                 stats: crawler.stats || {}
             } : null,
             system_jobs: systemJobs,
+            data_quality: dataQuality,
             database: {
                 total: pool.totalCount,
                 idle: pool.idleCount,
-                waiting: pool.waitingCount
+                waiting: pool.waitingCount,
+                queries: databaseQueries
             }
         };
     };
@@ -496,6 +575,7 @@ module.exports = {
     createMetricsSummary,
     createPrometheusMetricsText,
     createRequireMetrics,
+    eventEpochSeconds,
     groupedMetrics,
     metricLabelValue,
     metricLine,

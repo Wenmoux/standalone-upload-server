@@ -4,7 +4,7 @@
       <div v-show="loading === 1" class="book-content" ref="bookContent">
         <div class="top-bar">
           <i class="ri-arrow-left-line icon-button" @click="goBack"></i>
-          <div class="topbar-title">{{ chapterTitle }}</div>
+          <div class="topbar-title">{{ chapterTitle }} <span v-if="chapter_info.offline" class="offline-badge">离线</span></div>
         </div>
         <div
           v-if="customChapterHeaderVisible"
@@ -123,6 +123,11 @@
       <div v-show="loading === 0" class="skeleton-container">
         <a-skeleton active />
       </div>
+      <div v-if="loading === -1" class="reader-error-state">
+        <strong>章节暂时无法打开</strong>
+        <span>{{ loadError || '网络不可用，且当前账号没有这章的离线缓存。' }}</span>
+        <button type="button" @click="retryCurrentChapter">重试</button>
+      </div>
     </div>
     <div
       v-show="loading === 1"
@@ -149,7 +154,7 @@
         <div class="control-button-container" title="繁简转换" @click="toggleConvertModeQuick">
           <i class="ri-translate-2 control-button"></i>
         </div>
-        <div class="control-button-container" @click="noAccess">
+        <div class="control-button-container" title="保存当前章离线阅读" @click="pinCurrentChapterOffline">
           <i class="ri-download-cloud-2-line control-button"></i>
         </div>
         <div class="control-button-container" @click="giveTickets">
@@ -759,6 +764,8 @@ import readerCorrectionMixin from '../mixins/reader-correction'
 import readerNavigationMixin from '../mixins/reader-navigation'
 import readerTtsMixin from '../mixins/reader-tts'
 import { sanitizeHtml, sanitizeImageUrl } from '../utils/sanitize-html'
+import { cachedReaderUser } from '../utils/reader-session'
+import { listOfflineBookChapters, pinOfflineChapter, rememberRecentChapter } from '../utils/reader-offline'
 import {
   convertParagraphText,
   convertRawText,
@@ -808,6 +815,7 @@ export default {
       contentWidth: 0,
       controlBarLeftMargin: 0,
       loading: 0,
+      loadError: '',
       chapterTitle: '',
       book_info: {},
       book_chapters: [],
@@ -872,6 +880,8 @@ export default {
     this.cid = this.$route.query.cid
     if (this.cid === '[object Object]') this.cid = 0
     window.__cirnoCurrentBookId = this.bid
+    const ownerId = String(cachedReaderUser()?.id || '')
+    const offlineRows = () => (ownerId ? listOfflineBookChapters(ownerId, this.bid) : Promise.resolve([]))
     const hasInitialCid = !!this.cid && this.cid != 0
     const contentStarted = hasInitialCid
     if (hasInitialCid) {
@@ -880,6 +890,21 @@ export default {
     const bookInfoPromise = this.$get({
       url: '/book/get_info_by_id',
       urlParas: { book_id: this.bid }
+    }).catch(async error => {
+      const rows = await offlineRows()
+      if (!rows.length) throw error
+      return {
+        data: {
+          book_info: {
+            book_id: String(this.bid || ''),
+            book_name: rows[0].bookTitle || this.bid,
+            author_name: '离线缓存',
+            platform: rows[0].chapter?.platform || '',
+            cache_count: rows.length,
+            offline: true
+          }
+        }
+      }
     })
     const chaptersPromise = this.$get({
       url: '/chapter/get_updated_chapter_by_division_id',
@@ -887,9 +912,28 @@ export default {
         division_id: this.bid,
         last_update_time: 0
       }
-    }).then(res => res.data.chapter_list || [])
-    let [book_info, book_chapters] = await Promise.all([bookInfoPromise, chaptersPromise])
+    }).then(res => res.data.chapter_list || []).catch(async error => {
+      const rows = await offlineRows()
+      if (!rows.length) throw error
+      return rows.map(row => ({
+        chapter_id: row.chapterId,
+        chapter_title: row.chapterTitle,
+        chapter_order: row.chapterOrder,
+        is_volume: false,
+        offline: true
+      }))
+    })
+    let book_info
+    let book_chapters
+    try {
+      ;[book_info, book_chapters] = await Promise.all([bookInfoPromise, chaptersPromise])
+    } catch (error) {
+      this.loading = -1
+      this.loadError = error?.error || error?.message || '书籍信息与目录加载失败'
+      return
+    }
     this.book_info = book_info.data.book_info
+    window.__cirnoCurrentBookTitle = this.book_info.book_name || this.bid
     this.book_chapters = book_chapters
     this.book_chapterids = this.book_chapters.map(chapter => {
       return chapter['chapter_id']
@@ -1190,17 +1234,27 @@ export default {
       }
       this.cid = cid
       this.loading = 0
+      this.loadError = ''
       this.chapterIndex = this.book_chapterids.indexOf(cid)
       const requestId = ++this.contentRequestId
       const key = 'local-plain-text'
-      let chapter_info = await this.$get({
-        url: '/chapter/get_cpt_ifm',
-        urlParas: {
-          book_id: this.bid,
-          chapter_id: cid,
-          chapter_command: key
+      let chapter_info
+      try {
+        chapter_info = await this.$get({
+          url: '/chapter/get_cpt_ifm',
+          urlParas: {
+            book_id: this.bid,
+            chapter_id: cid,
+            chapter_command: key
+          }
+        })
+      } catch (error) {
+        if (requestId === this.contentRequestId && String(this.cid) === String(cid)) {
+          this.loading = -1
+          this.loadError = error?.error || error?.message || String(error || '章节加载失败')
         }
-      })
+        return
+      }
       if (requestId !== this.contentRequestId || String(this.cid) !== String(cid)) return
       if (chapter_info.data.chapter_info.is_local_plain) {
         chapter_info.data.chapter_info.txt_content = chapter_info.data.chapter_info.txt_content || ''
@@ -1209,6 +1263,18 @@ export default {
       }
       if (requestId !== this.contentRequestId || String(this.cid) !== String(cid)) return
       this.chapter_info = chapter_info.data.chapter_info
+      const ownerId = String(cachedReaderUser()?.id || '')
+      if (ownerId && !this.chapter_info.is_volume) {
+        rememberRecentChapter({
+          ownerId,
+          bookId: this.bid,
+          bookTitle: this.book_info.book_name || window.__cirnoCurrentBookTitle || this.bid,
+          chapterId: cid,
+          chapterTitle: this.chapter_info.chapter_title,
+          chapterOrder: currentChapter?.chapter_order || this.chapterIndex + 1,
+          chapter: this.chapter_info
+        }).catch(() => {})
+      }
       if (this.chapter_info.auth_access == 1) {
         this.auth = true
         this.setLastRead()
@@ -1387,9 +1453,35 @@ export default {
     giveTickets() {
       this.$refs.tickets.show(this.bid)
     },
-    noAccess() {
-      this.$message.info('此功能尚未开放')
+    retryCurrentChapter() {
+      if (this.cid) this.getContent(this.cid)
     },
+    async pinCurrentChapterOffline() {
+      const ownerId = String(cachedReaderUser()?.id || '')
+      if (!ownerId) {
+        this.$message.warn('请先登录后再保存离线章节')
+        return
+      }
+      if (!this.cid || !this.chapter_info?.chapter_id || this.chapter_info.is_volume) {
+        this.$message.warn('当前没有可保存的正文')
+        return
+      }
+      const currentChapter = this.book_chapters.find(chapter => String(chapter.chapter_id) === String(this.cid))
+      try {
+        await pinOfflineChapter({
+          ownerId,
+          bookId: this.bid,
+          bookTitle: this.book_info.book_name || this.bid,
+          chapterId: this.cid,
+          chapterTitle: this.chapter_info.chapter_title,
+          chapterOrder: currentChapter?.chapter_order || this.chapterIndex + 1,
+          chapter: this.chapter_info
+        })
+        this.$message.success('当前章节已保存，可离线打开')
+      } catch (error) {
+        this.$message.error(error?.message || '离线保存失败')
+      }
+    }
   }
 }
 </script>
@@ -1416,6 +1508,29 @@ export default {
       height: 72vh;
       display: flex;
       align-items: center;
+    }
+    .reader-error-state {
+      min-height: 72vh;
+      padding: 96px 32px;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 12px;
+      text-align: center;
+      color: var(--reader-muted-color);
+      strong {
+        color: var(--reader-text-color);
+        font-size: 20px;
+      }
+      button {
+        margin-top: 8px;
+        padding: 9px 20px;
+        border: 1px solid var(--reader-border-color);
+        border-radius: 999px;
+        color: var(--reader-text-color);
+        background: var(--reader-paper-bg);
+        cursor: pointer;
+      }
     }
     .book-content {
       .top-bar {
@@ -1445,6 +1560,15 @@ export default {
           font-weight: 500;
           line-height: 16px;
           margin-left: 16px;
+          .offline-badge {
+            margin-left: 6px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            color: #166534;
+            background: #dcfce7;
+            font-size: 11px;
+            font-weight: 700;
+          }
         }
       }
       .text-content {

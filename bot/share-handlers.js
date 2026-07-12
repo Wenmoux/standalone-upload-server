@@ -320,7 +320,7 @@ function createShareHandlers(options = {}) {
         return lines.join("\n");
     }
 
-    async function handleShareBookshelf(message) {
+    async function handleShareBookshelf(message, _signal, runtimeOptions = {}) {
         await ensureRegistered(message.from);
         const account = await client.po18Account(message.from.id);
         if (!account.cookies?.length || !hasPo18Auth(account.cookies)) {
@@ -393,7 +393,11 @@ function createShareHandlers(options = {}) {
                         "copper",
                         rewardCopper,
                         "po18_bookshelf_share_reward",
-                        `${shareBookId(stats.book)} paid_uploaded=${stats.rewardableUploaded} uploaded=${stats.uploaded} tgid=${message.from.id}`
+                        `${shareBookId(stats.book)} paid_uploaded=${stats.rewardableUploaded} uploaded=${stats.uploaded} tgid=${message.from.id}`,
+                        runtimeOptions.rewardOperationPrefix ? {
+                            idempotencyKey: `${runtimeOptions.rewardOperationPrefix}:${shareBookId(stats.book)}`,
+                            idempotencyScope: "po18-share-reward"
+                        } : {}
                     );
                     summary.rewardedBooks += 1;
                     summary.rewardCopper += rewardCopper;

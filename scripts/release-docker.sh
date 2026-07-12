@@ -5,15 +5,18 @@ IMAGE="${1:-wenmoux/reader:v2.0}"
 SETUP_PORT="${SETUP_PORT:-13100}"
 READER_PORT="${READER_PORT:-13200}"
 NAME="po18-release-test-$(date +%s)"
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct HEAD)}"
+export SOURCE_DATE_EPOCH
 
-PO18_IMAGE_TAG="$IMAGE" node scripts/docker-build.js
+PO18_RELEASE=1 PO18_IMAGE_TAG="$IMAGE" node scripts/docker-build.js
+IMMUTABLE_IMAGE="$(node -p "require('./.docker-build.json').immutableTag")"
 
 cleanup() {
   docker rm -f "$NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-docker run -d --rm --name "$NAME" -p "${SETUP_PORT}:3100" -p "${READER_PORT}:3200" "$IMAGE" >/dev/null
+docker run -d --rm --name "$NAME" -p "${SETUP_PORT}:3100" -p "${READER_PORT}:3200" "$IMMUTABLE_IMAGE" >/dev/null
 sleep 4
 wget -qO- "http://127.0.0.1:${SETUP_PORT}/health/ready" >/dev/null
 i=0
@@ -30,5 +33,10 @@ fi
 
 if [ "${NO_PUSH:-0}" != "1" ]; then
   PO18_IMAGE_TAG="$IMAGE" node scripts/docker-push.js
-  docker buildx imagetools inspect "$IMAGE"
+  node scripts/docker-release-manifest.js
+  DIGEST_REFERENCE="$(node -p "require('./release-manifest.json').digest_reference")"
+  DIGEST="$(node -p "require('./release-manifest.json').digest")"
+  docker pull "$DIGEST_REFERENCE"
+  PO18_TEST_APP_IMAGE="$DIGEST_REFERENCE" PO18_EXPECTED_IMAGE_DIGEST="$DIGEST" node scripts/docker-smoke.js
+  docker buildx imagetools inspect "$DIGEST_REFERENCE"
 fi

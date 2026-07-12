@@ -193,8 +193,9 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
     assert.equal(schedulers.scheduleExport({ id: "c1", type: "group" }, { id: 42 }, "b1", "epub", { epubStyleId: "style2" }), true);
     assert.equal(jobs[1].systemJobInput.epub_style_id, "style2");
     assert.match(jobs[1].idempotencyKey, /style2$/);
-    jobs[1].task(null);
+    jobs[1].task(null, { systemJobId: 88 });
     assert.equal(exports[0][5].epubStyleId, "style2");
+    assert.equal(exports[0][5].settlementKey, "system-job:88:export-settlement");
 
     assert.equal(schedulers.scheduleShareBookshelf({ chat: { id: "c2" }, from: { id: 99 } }), true);
     assert.equal(jobs[2].systemJobType, "bot_po18_bookshelf_share");

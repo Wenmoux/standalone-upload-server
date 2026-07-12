@@ -1,6 +1,6 @@
 # PO18 Reader v2.0 优化进度
 
-更新时间：2026-07-11
+更新时间：2026-07-12
 
 ## 本轮边界
 
@@ -225,12 +225,70 @@
 - [x] 加密支持往返验证和错误密钥认证失败测试。
 - [x] WebDAV/S3 维护远端索引并默认保留最新 8 份；清理失败会记录错误，但不会把已成功上传的备份误报为失败。
 
+### 25. 发布链与运行身份收口
+
+- [x] 推送 `main` 自动触发 GitHub Actions，验证后更新 Docker Hub `v2.0` 与源码指纹标签；本机不再依赖 Docker。
+- [x] 正式发布只接受 clean worktree，并生成不可变 `vX.Y.Z`、revision/source 标签；开发构建不会占用正式 semver 标签。
+- [x] Dockerfile 固定 Node Alpine/Bookworm 基础镜像 digest，构建信息记录源码 hash、dirty 状态、不可变引用和 OCI labels。
+- [x] 发布工作流执行测试、真实 PG、审计、前端构建、Docker smoke、SBOM、Cosign 签名及 attestation，推送后按 registry digest 再冒烟。
+- [x] `/health/version` 与后台显示 immutable image、所有标签、digest、Git revision 和源码 hash。
+
+### 26. 任务副作用幂等与数据语义
+
+- [x] 新增 `019_job_effect_idempotency`：操作账本和交易/导出 operation key，Worker 租约回收重跑时不会重复扣费、发奖或占额度。
+- [x] 新增真实 PG 重试场景，覆盖租约过期、重新领取、一次扣费和一次奖励。
+- [x] 新增 `020_taxonomy_and_quality_semantics`：规范化分类/标签、来源/目录/缓存时间拆分、完整度分母来源和延迟 chapter order 约束。
+- [x] 搜索支持 fast/no-total、keyset cursor 和 taxonomy 精确匹配；5 万行固定基准保存 `EXPLAIN (ANALYZE, BUFFERS)` 分位数并进入发布门禁。
+
+### 27. 监控、告警与真实恢复演练
+
+- [x] PostgreSQL 池、查询失败/超时/慢查询、Reader 核心 API、任务排队/运行、来源抓取和 Telegram polling/send 均输出 p50/p95/p99 或比率。
+- [x] `/metrics` 增加质量、备份和恢复演练时间；公网监听强制 Token；`monitoring/prometheus-alerts.yml` 提供预算告警。
+- [x] 恢复演练会校验 SHA/archive、创建临时数据库、执行 `pg_restore`、检查 Schema/核心行数并始终删除临时库。
+- [x] 每周自动选择最新 PostgreSQL 备份演练，可在后台手动触发，结果进入持久任务和事件。
+
+### 28. Reader PWA 与离线安全
+
+- [x] Service Worker 只缓存版本化静态壳，明确绕过 `/reader-auth`、`/reader-api` 和其它认证 API。
+- [x] IndexedDB 正文按已验证 Reader 身份分区，只保留白名单字段，单章 2 MiB 上限，支持最近章节淘汰和显式置顶。
+- [x] 离线阅读进度同样按账号分区，登录/恢复联网后合并补传；退出清理当前账号数据，不会跨账号回显。
+- [x] Reader 增加离线状态、失败/重试、正文 fallback、封面尺寸/懒加载/失败占位和可安装 PWA manifest/icons。
+
+### 29. Book Manifest 增量恢复
+
+- [x] 新增 `021_book_manifest_checksums`，元信息和章节记录 SHA-256；Manifest 包含格式版本、来源身份、正文和整包/逐章 checksum。
+- [x] 导入前验证版本、来源身份、字段范围、大小、重复章节、checksum 和章节序号冲突；未变化章节不写库。
+- [x] 后台书籍页支持导出、校验和带精确确认短语的增量导入。
+- [x] 发现跨平台同 `book_id` 时明确拒绝并要求 `book_key` 迁移，遵守本轮排除边界。
+
+### 30. 书评治理闭环
+
+- [x] 新增 `022_review_governance`：举报、审核、申诉记录和每个用户/书评唯一举报。
+- [x] 独立举报达到阈值自动进入 `under_review`；moderator/owner 可隐藏、恢复或驳回，处理原因进入管理员审计。
+- [x] 发评/赞踩增加小时与日频率上限；同一投票最多修改一次，余额触底时流水记录实际到账差额，阻断来回刷币。
+- [x] Reader 提供举报入口；Bot 新增 `/reportreview`、`/appealreview`；后台反馈页提供举报和申诉队列。
+
+### 31. API、Schema 与排行榜契约补强
+
+- [x] JSON Body 按登录、查缓存、TTS、元信息、正文、Manifest 和默认路由分别限制，限流先于解析器。
+- [x] Ajv 覆盖认证、高成本上传/TTS、Manifest 与书评治理请求；OpenAPI 自动绑定已注册请求 Schema 和关键响应 Schema。
+- [x] `db/schema-snapshot.json` 固定迁移链 fingerprint；CI 拒绝迁移漂移及业务运行时代码中的旁路 DDL。
+- [x] 榜单响应公开计算周期、刷新模式、样本/有效书数、最近数据时间，以及平台、分类、缓存、人气和热度公式定义。
+
+### 32. Setup 设计基础与远端发布
+
+- [x] Admin 与数据库不可用时仍可独立运行的 Setup 共用 `ui/design-tokens.css`，Docker 各目标显式携带静态令牌文件。
+- [x] 普通 Setup 配置导出移除数据库 URL、密码、Token、Cookie 与加密密钥；完整秘密导出需要显式参数和确认短语。
+- [x] Crawler 解析器新增脱敏 HTML fixture，覆盖登录、验证、404、分页、免费/付费、分卷占位、插章与缺失章节 ID。
+- [x] `main` 推送自动触发 GitHub Actions，在远端完成 PostgreSQL/Docker 验证并更新 Docker Hub 移动标签与源码指纹标签。
+
 ## 当前验证
 
-- [x] `npm run test:coverage`：237 通过、1 个 PostgreSQL 集成入口因默认未配置 `PO18_TEST_PG_URL` 跳过、0 失败。
-- [x] c8 覆盖率：语句/行 68.27%，分支 49.42%，函数 73.39%，均高于当前 CI 基线。
-- [x] Admin 构建：通过，主入口 JS gzip 45.56 KiB，其余视图按路由异步加载。
-- [x] Reader 构建：通过；主入口 JS gzip 68.31 KiB，公共 CSS 16.33 KiB；简繁转换词典为按需独立 chunk。
+- [x] 本轮 `node --test tests/*.test.js`：307 通过、1 个 PostgreSQL 集成入口因本机未配置 `PO18_TEST_PG_URL` 跳过、0 失败。
+- [x] c8 覆盖率：语句/行 71.38%，分支 52.52%，函数 75.37%，均高于当前 CI 基线。
+- [x] Admin 构建：通过，主入口 JS gzip 45.93 KiB，其余视图按路由异步加载。
+- [x] Reader 构建：通过；主入口 JS gzip 46.12 KiB，公共 CSS 16.59 KiB；简繁转换词典为按需独立 chunk。
+- [x] UTF-8、迁移/Schema 漂移、ESLint、Prettier 门禁通过；Docker context 325 文件、16.41 MiB，低于 80 MiB。
 - [x] 根项目生产依赖审计：0 漏洞。
 - [x] Admin 生产依赖审计：0 漏洞。
 - [x] Reader 生产依赖审计：0 漏洞。
@@ -246,17 +304,18 @@
 - [x] 覆盖率测试：242 通过、1 个 PostgreSQL 环境测试按预期跳过、0 失败；行/语句覆盖率 68.70%。
 - [x] Docker Hub 已推送，并通过远端 manifest 核对 digest。
 
-## 下一批优化
+## 本轮收口
 
 - [x] 增加后台审计日志查看入口，并把高风险操作收敛到统一二次确认组件。
 - [x] 完成 Reader、Bot 和 PO18 Crawler 第一轮按行为拆分，保持现有 UI 与接口兼容。
 - [x] 继续拆 Reader 校对/TTS 编排、Bot 共享编排和 Crawler HTML 解析。
 - [x] 继续拆 Bot 搜索/社交、Crawler HTTP、Reader 导航与进度编排。
 - [x] 增加运行时 OpenAPI、统一错误追踪、覆盖率基线、依赖更新和远端备份加密。
+- [x] 完成恢复演练、可观测性、搜索计划回归、Reader PWA、Manifest 和书评治理。
 
 ## 明确暂缓
 
-- [ ] `(platform, book_id)` / `book_key` 唯一身份迁移：按本轮要求暂不实施。
-- [ ] 现有 API 字段版本化或重命名：按本轮要求暂不实施。
+- [ ] `(platform, book_id)` / `book_key` 唯一身份迁移、碰撞回填和子表外键：按用户要求暂不实施。
+- [ ] Reader、Bot、Crawler、Admin 全端切换到平台感知 API：按用户要求暂不实施；现有字段不删除、不重命名。
 
 VoceChat 已按用户要求明确排除，不属于本轮或后续待办。

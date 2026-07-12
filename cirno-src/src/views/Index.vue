@@ -33,7 +33,8 @@
       <div class="books" v-if="book_list.length">
         <div class="book" v-for="book in book_list" :key="book.id">
           <div class="book-cover-wrap" @click="gotoBook(book)">
-            <img class="book-cover" :src="book.book_info.cover" loading="lazy" decoding="async" />
+            <img v-if="book.book_info.cover" class="book-cover" :src="book.book_info.cover" width="108" height="144" loading="lazy" decoding="async" @error="book.book_info.cover = ''" />
+            <div v-else class="book-cover cover-fallback">{{ coverText(book) }}</div>
           </div>
           <div class="book-name" :title="book.book_info.book_name" @click="gotoBook(book)">
             {{ book.book_info.book_name }}
@@ -122,7 +123,8 @@
         </div>
         <div class="search-results" v-else>
           <div class="search-book" v-for="book in searchResults" :key="book.book_info.book_id">
-            <img class="search-cover" :src="book.book_info.cover" loading="lazy" decoding="async" />
+            <img v-if="book.book_info.cover" class="search-cover" :src="book.book_info.cover" width="76" height="102" loading="lazy" decoding="async" @error="book.book_info.cover = ''" />
+            <div v-else class="search-cover cover-fallback">{{ coverText(book) }}</div>
             <div class="search-info">
               <div class="search-title">{{ book.book_info.book_name }}</div>
               <div class="search-meta">
@@ -336,6 +338,10 @@ export default {
     }
   },
   methods: {
+    coverText(book) {
+      const info = (book && book.book_info) || {}
+      return String(info.book_name || info.book_id || '书').slice(0, 4)
+    },
     splitTags(value) {
       return String(value || '')
         .split(/[,，、|/\s:：;；#＃·•・]+/)
@@ -820,6 +826,16 @@ export default {
             width: 100%;
             height: 100%;
             object-fit: cover;
+          }
+          .cover-fallback {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            color: var(--reader-muted-color);
+            font-weight: 700;
+            line-height: 1.4;
+            text-align: center;
           }
         }
         .book-name {

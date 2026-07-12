@@ -4,6 +4,20 @@
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
 
+## 2026-07-12：7 月 11 日综合报告剩余项收口
+
+- Docker 发布改由 GitHub 执行：推送 `main` 自动验证并更新 Docker Hub `wenmoux/reader:v2.0` 与源码指纹标签；版本 tag 继续执行不可变发布、SBOM、签名和证明，本机无需 Docker。
+- 发布链改为 clean、不可变 semver/source 标签，发布后按 registry digest 冒烟，并生成 SBOM、Cosign 签名和构建身份 attestation；开发构建不再冒充正式版本。
+- 任务扣费、免费额度和共享奖励增加 operation ledger，租约过期重跑不会重复结算；查询池、任务、来源、Bot、质量和备份增加分位数/比率及 Prometheus 告警。
+- PostgreSQL 备份支持后台和每周自动真实恢复演练：临时库执行 `pg_restore`、Schema/核心行数检查后自动清理。
+- 搜索增加 fast/no-total、keyset cursor、规范化 taxonomy 和 5 万行 `EXPLAIN (ANALYZE, BUFFERS)` 回归；榜单公开刷新周期、样本数、数据时间和指标公式。
+- Reader 新增安全 PWA：静态壳离线、正文/进度按 Reader 身份隔离、联网补传、退出清理，并补齐封面失败占位。
+- 后台新增 Book Manifest 导出、校验和增量导入，逐章/整包 SHA-256；跨平台同 `book_id` 冲突会明确拒绝，不静默串书。
+- 书评新增举报、阈值自动审核、moderator 处理、作者申诉、发评/投票频率限制和最多改票一次；Reader、Bot 和后台均有入口。
+- 新增迁移 `019`–`022` 及 rollback、迁移链 Schema snapshot、分路由 Body/Ajv 契约和关键 OpenAPI 响应 Schema。
+- 本轮全量及覆盖率门禁 307 通过、1 项真实 PG 环境缺省跳过、0 失败；覆盖率语句/行 71.38%、分支 52.52%、函数 75.37%；Admin/Reader 构建及 UTF-8、Schema、lint、format、Docker context 门禁通过。
+- 按确认边界，仅保留 `book_key` 身份迁移和全端平台感知 API 切换未实施。
+
 ## 2026-07-12：EPUB 样式二与导出交互
 
 - 新增“样式二 · 原书复刻”，按参考 EPUB 的标题页、制作说明、书籍信息、分卷图、正文章头和嵌套目录结构生成；无分卷数据时自动补“正文”分卷页。

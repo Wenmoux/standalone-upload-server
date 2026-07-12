@@ -141,7 +141,6 @@ export default {
       return true
     },
     applyLogin(res) {
-      markReaderSession(res.data.reader_info || {})
       localStorage.setItem('account', res.data.reader_info.account)
       const isPasswordLogin = !res.data.telegram_login
       if (isPasswordLogin && this.remUser && this.mode === 'login') {
@@ -201,7 +200,6 @@ export default {
           this.confirmLoading = false
           this.applyLogin({
             data: {
-              login_token: 'local-session',
               reader_info: {
                 account: user.username || this.userName,
                 reader_name: user.nickname || user.username || this.userName
@@ -280,10 +278,10 @@ export default {
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.error || 'TG 登录失败')
+        markReaderSession(data.user || {})
         this.applyLogin({
           data: {
             telegram_login: true,
-            login_token: 'local-session',
             reader_info: this.readerInfo(data.user || {})
           }
         })

@@ -47,6 +47,53 @@
       </div>
     </section>
 
+    <section v-if="canModerate" class="panel">
+      <div class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-title">书评举报审核</p>
+            <p class="section-desc">独立用户举报达到阈值后书评会自动进入待审核；处理原因进入后台审计。</p>
+          </div>
+        </div>
+        <DataTable :columns="reportColumns" :rows="reviewReports" :loading="loading" empty-text="暂无待处理举报">
+          <template #cell-review="{ row }"><div class="book-title-cell"><strong>#{{ row.review_id }} · {{ row.book_id }}</strong><small>{{ row.review_content }}</small></div></template>
+          <template #cell-reason="{ row }"><span class="tag">{{ reportReasonLabel(row.reason) }}</span><br /><small>{{ row.details || "-" }}</small></template>
+          <template #cell-actor="{ row }">{{ row.actor_nickname || row.actor_username || row.actor_telegram_username || "-" }}</template>
+          <template #cell-created_at="{ row }">{{ time(row.created_at) }}</template>
+          <template #cell-actions="{ row }">
+            <div class="inline-actions compact-actions">
+              <button class="danger" type="button" @click="moderateReport(row, 'hide')">隐藏</button>
+              <button class="secondary" type="button" @click="moderateReport(row, 'restore')">恢复公开</button>
+              <button class="secondary" type="button" @click="moderateReport(row, 'dismiss')">驳回举报</button>
+            </div>
+          </template>
+        </DataTable>
+      </div>
+    </section>
+
+    <section v-if="canModerate" class="panel">
+      <div class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-title">书评申诉</p>
+            <p class="section-desc">仅书评作者可对“已隐藏/审核中”的内容发起申诉。</p>
+          </div>
+        </div>
+        <DataTable :columns="appealColumns" :rows="reviewAppeals" :loading="loading" empty-text="暂无待处理申诉">
+          <template #cell-review="{ row }"><div class="book-title-cell"><strong>#{{ row.review_id }} · {{ row.book_id }}</strong><small>{{ row.review_content }}</small></div></template>
+          <template #cell-content="{ row }">{{ row.content }}</template>
+          <template #cell-actor="{ row }">{{ row.actor_nickname || row.actor_username || row.actor_telegram_username || "-" }}</template>
+          <template #cell-created_at="{ row }">{{ time(row.created_at) }}</template>
+          <template #cell-actions="{ row }">
+            <div class="inline-actions compact-actions">
+              <button type="button" @click="moderateAppeal(row, 'accept')">接受并恢复</button>
+              <button class="danger secondary" type="button" @click="moderateAppeal(row, 'reject')">驳回申诉</button>
+            </div>
+          </template>
+        </DataTable>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="section">
         <div class="section-head">
@@ -119,14 +166,18 @@ import FormModal from "../components/FormModal.vue";
 import { api } from "../services/api";
 import { number, time } from "../utils/format";
 
+const props = defineProps({ user: { type: Object, default: () => ({}) } });
 const toast = inject("toast", () => {});
 const navigate = inject("navigate", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const loading = ref(false);
 const feedbackRows = ref([]);
 const crowdRows = ref([]);
 const hotWords = ref([]);
 const searchRequests = ref([]);
 const requestSummary = ref({});
+const reviewReports = ref([]);
+const reviewAppeals = ref([]);
 const sortValue = ref("like_desc");
 const resolveOpen = ref(false);
 const resolveRow = ref(null);
@@ -134,6 +185,7 @@ const resolveForm = ref({ book_id: "", note: "", notify: true });
 const resolveFields = [{ key: "book_id", label: "已缓存书号", placeholder: "必填" }];
 const resolveTextareaFields = [{ key: "note", label: "处理说明", rows: 4, placeholder: "可选，会随通知发送" }];
 const resolveChecks = [{ key: "notify", label: "通知此前提交过该需求的 Telegram 用户" }];
+const canModerate = computed(() => ["owner", "moderator"].includes(props.user?.role || "owner"));
 
 const feedbackColumns = [
   { key: "book_id", label: "书号" },
@@ -161,6 +213,20 @@ const requestColumns = [
   { key: "user_count", label: "用户数" },
   { key: "latest_user", label: "最近用户" },
   { key: "latest_at", label: "最近提交" },
+  { key: "actions", label: "处理" }
+];
+const reportColumns = [
+  { key: "review", label: "书评" },
+  { key: "reason", label: "举报原因" },
+  { key: "actor", label: "举报者" },
+  { key: "created_at", label: "提交时间" },
+  { key: "actions", label: "处理" }
+];
+const appealColumns = [
+  { key: "review", label: "书评" },
+  { key: "content", label: "申诉说明" },
+  { key: "actor", label: "申诉者" },
+  { key: "created_at", label: "提交时间" },
   { key: "actions", label: "处理" }
 ];
 
@@ -203,6 +269,52 @@ function latestUser(row = {}) {
 
 function requestStatusLabel(value) {
   return ({ pending: "待处理", accepted: "已接受", crawling: "抓取中", cached: "已缓存", rejected: "已驳回" }[value] || "待处理");
+}
+
+function reportReasonLabel(value) {
+  return ({ spam: "垃圾/刷屏", abuse: "辱骂攻击", spoiler: "恶意剧透", illegal: "违法内容", other: "其他" }[value] || value || "其他");
+}
+
+async function moderateReport(row, action) {
+  const labels = { hide: "隐藏书评", restore: "恢复公开", dismiss: "驳回举报" };
+  const confirmation = await confirmAction({
+    title: labels[action],
+    message: `将处理书评 #${row.review_id} 的举报。`,
+    confirmLabel: labels[action],
+    phrase: `REVIEW ${row.review_id}`
+  });
+  if (!confirmation.confirmed) return;
+  try {
+    await api(`/admin-api/review-moderation/reports/${row.id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ action, note: confirmation.reason })
+    });
+    toast(`书评举报已处理：${labels[action]}`);
+    await load();
+  } catch (error) {
+    toast(error.message || String(error));
+  }
+}
+
+async function moderateAppeal(row, action) {
+  const label = action === "accept" ? "接受申诉并恢复书评" : "驳回申诉";
+  const confirmation = await confirmAction({
+    title: label,
+    message: `将处理书评 #${row.review_id} 的申诉。`,
+    confirmLabel: label,
+    phrase: `APPEAL ${row.review_id}`
+  });
+  if (!confirmation.confirmed) return;
+  try {
+    await api(`/admin-api/review-moderation/appeals/${row.id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ action, note: confirmation.reason })
+    });
+    toast(`书评申诉已处理：${label}`);
+    await load();
+  } catch (error) {
+    toast(error.message || String(error));
+  }
 }
 
 function requestPayload(row, status, extra = {}) {
@@ -256,17 +368,21 @@ async function saveResolution(form) {
 async function load() {
   loading.value = true;
   try {
-    const [feedback, hot, crowd, requests] = await Promise.all([
+    const [feedback, hot, crowd, requests, reports, appeals] = await Promise.all([
       api("/admin-api/book-feedback?limit=120"),
       api("/reader-api/hot-keywords?limit=40").catch(() => ({ rows: [] })),
       api("/admin-api/book-crowd?limit=120"),
-      api("/admin-api/search-requests?limit=120")
+      api("/admin-api/search-requests?limit=120"),
+      canModerate.value ? api("/admin-api/review-moderation?kind=reports&status=pending&limit=120") : Promise.resolve({ rows: [] }),
+      canModerate.value ? api("/admin-api/review-moderation?kind=appeals&status=pending&limit=120") : Promise.resolve({ rows: [] })
     ]);
     feedbackRows.value = feedback.rows || [];
     hotWords.value = hot.rows || [];
     crowdRows.value = crowd.rows || [];
     searchRequests.value = requests.rows || [];
     requestSummary.value = requests.summary || {};
+    reviewReports.value = reports.rows || [];
+    reviewAppeals.value = appeals.rows || [];
   } catch (err) {
     toast(err.message || String(err));
   } finally {

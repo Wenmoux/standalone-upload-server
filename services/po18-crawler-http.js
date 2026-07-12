@@ -15,6 +15,32 @@ function isRetriableRequestError(err) {
     return /abort|timeout|timed out|fetch failed|network|econnreset|etimedout|eai_again|socket|terminated/.test(message);
 }
 
+function looksLikeRateLimitPage(body = "") {
+    return /请求(?:过于)?频繁|操作(?:过于)?频繁|稍后再试|too many requests|rate limit/i.test(String(body || ""));
+}
+
+function parseRetryHintMs(body = "", headers, now = Date.now()) {
+    const retryAfter = String(headers?.get?.("retry-after") || "").trim();
+    if (/^\d+(?:\.\d+)?$/.test(retryAfter)) return Math.min(10 * 60 * 1000, Math.ceil(Number(retryAfter) * 1000));
+    if (retryAfter) {
+        const timestamp = Date.parse(retryAfter);
+        if (Number.isFinite(timestamp)) return Math.min(10 * 60 * 1000, Math.max(0, timestamp - now));
+    }
+    const text = String(body || "");
+    const match =
+        text.match(/(?:频繁|稍后再试|等待)[^\d]{0,20}(\d+(?:\.\d+)?)\s*(秒|分钟|分)/i) ||
+        text.match(/请\s*(\d+(?:\.\d+)?)\s*(秒|分钟|分)[^。\n]{0,20}(?:再试|重试)/i);
+    if (!match) return 0;
+    const multiplier = match[2] === "秒" ? 1000 : 60 * 1000;
+    return Math.min(10 * 60 * 1000, Math.ceil(Number(match[1]) * multiplier));
+}
+
+function jitterRetryDelay(delayMs, random = Math.random) {
+    const base = Math.max(0, Number(delayMs || 0));
+    if (!base) return 0;
+    return Math.min(10 * 60 * 1000, Math.round(base * (1 + Math.max(0, Math.min(1, Number(random()) || 0)) * 0.2)));
+}
+
 function createPo18HttpClient(options = {}) {
     const {
         fetchImpl = globalThis.fetch,
@@ -25,6 +51,8 @@ function createPo18HttpClient(options = {}) {
         checkStopped = () => {},
         waitWhilePaused = async () => {},
         onRetry = () => {},
+        sleepImpl = sleep,
+        random = Math.random,
         defaults = {}
     } = options;
     if (typeof fetchImpl !== "function") throw new Error("fetch is not available for po18 crawler");
@@ -38,7 +66,7 @@ function createPo18HttpClient(options = {}) {
             .then(async () => {
                 const interval = Number(config.requestIntervalMs || 0);
                 const waitMs = Math.max(0, interval - (Date.now() - lastRequestAt));
-                if (waitMs > 0) await sleep(waitMs);
+                if (waitMs > 0) await sleepImpl(waitMs);
                 lastRequestAt = Date.now();
             });
         return requestChain;
@@ -66,6 +94,7 @@ function createPo18HttpClient(options = {}) {
 
             const controller = new AbortController();
             let timeout = setTimeout(() => controller.abort(), config.timeoutMs || defaults.timeoutMs || 20000);
+            const attemptStartedAt = Date.now();
             try {
                 const response = await fetchImpl(url, {
                     method: requestOptions.method || "GET",
@@ -86,6 +115,13 @@ function createPo18HttpClient(options = {}) {
                         lastUsedAt: new Date().toISOString()
                     }).catch(() => {});
                 }
+                if (response.status === 429 || looksLikeRateLimitPage(body)) {
+                    const err = new Error(`PO18 rate limited for ${url}`);
+                    err.status = 429;
+                    err.code = "PO18_RATE_LIMITED";
+                    err.retryAfterMs = parseRetryHintMs(body, response.headers);
+                    throw err;
+                }
                 const authError = authErrorFromResponse(response, body);
                 if (authError) {
                     if (profile) {
@@ -101,7 +137,7 @@ function createPo18HttpClient(options = {}) {
                     err.status = response.status;
                     throw err;
                 }
-                sourceHealth?.recordSuccess?.(response.status);
+                sourceHealth?.recordSuccess?.(response.status, { durationMs: Date.now() - attemptStartedAt });
                 return body;
             } catch (err) {
                 lastError = err;
@@ -111,15 +147,14 @@ function createPo18HttpClient(options = {}) {
                 }
                 const retriable = isRetriableRequestError(err);
                 if (attempt >= maxRetries || !retriable) {
-                    sourceHealth?.recordFailure?.(err, { transient: retriable });
+                    sourceHealth?.recordFailure?.(err, { transient: retriable, durationMs: Date.now() - attemptStartedAt });
                     throw err;
                 }
-                const delay = Math.min(
-                    60000,
-                    Math.max(0, Number(config.requestRetryDelayMs ?? defaults.requestRetryDelayMs ?? 1200)) * (attempt + 1)
-                );
+                const configuredDelay =
+                    Math.max(0, Number(config.requestRetryDelayMs ?? defaults.requestRetryDelayMs ?? 1200)) * (attempt + 1);
+                const delay = jitterRetryDelay(Math.max(configuredDelay, Number(err.retryAfterMs || 0)), random);
                 await onRetry({ attempt: attempt + 1, maxRetries, delay, error: err });
-                if (delay > 0) await sleep(delay);
+                if (delay > 0) await sleepImpl(delay);
             } finally {
                 if (timeout) clearTimeout(timeout);
             }
@@ -130,4 +165,10 @@ function createPo18HttpClient(options = {}) {
     return { requestText, waitForRequestSlot };
 }
 
-module.exports = { createPo18HttpClient, isRetriableRequestError };
+module.exports = {
+    createPo18HttpClient,
+    isRetriableRequestError,
+    jitterRetryDelay,
+    looksLikeRateLimitPage,
+    parseRetryHintMs
+};

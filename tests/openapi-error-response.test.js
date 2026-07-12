@@ -19,7 +19,29 @@ test("OpenAPI index is generated from mounted Express routes", () => {
     assert.equal(spec.openapi, "3.1.0");
     assert.equal(spec.info.version, "2.0.0-test");
     assert.deepEqual(spec.paths["/admin-api/books/{id}/delete"].post.security, [{ AdminSession: [] }]);
+    assert.equal(spec.paths["/admin-api/books/{id}/delete"].post.requestBody["x-validation-policy"], "route-handler");
     assert.equal(spec.paths["/reader-api/books/{id}"].get.parameters[0].name, "id");
+    assert.ok(spec.components.schemas.BookManifest);
+    assert.ok(spec.components.responses.RateLimited);
+});
+
+test("OpenAPI binds registered Ajv request contracts to matching runtime routes", () => {
+    const app = express();
+    const router = express.Router();
+    router.post("/reader-api/book-reviews/:reviewId/report", () => {});
+    router.post("/api/parse/chapter-content", () => {});
+    router.get("/reader-api/search", () => {});
+    app.use(router);
+    const spec = buildOpenApiDocument(app);
+    assert.equal(spec.paths["/reader-api/book-reviews/{reviewId}/report"].post.requestBody["x-validation-policy"], "review-report");
+    assert.deepEqual(spec.paths["/api/parse/chapter-content"].post.requestBody.content["application/json"].schema.required, [
+        "bookId",
+        "chapterId"
+    ]);
+    assert.equal(
+        spec.paths["/reader-api/search"].get.responses[200].content["application/json"].schema.$ref,
+        "#/components/schemas/SearchResponse"
+    );
 });
 
 test("error response normalization preserves old fields and adds trace fields", () => {

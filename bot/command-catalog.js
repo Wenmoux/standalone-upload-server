@@ -22,6 +22,8 @@ const BOT_COMMAND_CATALOG = [
     { command: "/crowd", group: "群互动", description: "众筹投票榜", help: "/crowd 书号", aliases: ["/cf", "/zhongchou", "/众筹"] },
     { command: "/review", group: "群互动", description: "发布书评", help: "/review 书号 内容" },
     { command: "/reviews", group: "群互动", description: "查看书评", help: "/reviews 书号" },
+    { command: "/reportreview", group: "群互动", description: "举报书评", help: "/reportreview 书评号 原因 说明" },
+    { command: "/appealreview", group: "群互动", description: "申诉书评", help: "/appealreview 书评号 申诉说明" },
     { command: "/pikpak", group: "PO18 / PikPak", description: "PikPak 文件", help: "/pikpak search 关键词", aliases: ["/pp"] },
     { command: "/po18set", group: "PO18 / PikPak", description: "绑定 PO18", help: "/po18set 账号 密码" },
     { command: "/loginpo18", group: "PO18 / PikPak", description: "登录 PO18", help: "/loginpo18" },

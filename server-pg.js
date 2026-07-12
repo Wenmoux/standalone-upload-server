@@ -5,7 +5,7 @@ const session = require("express-session");
 const PgSessionStore = require("connect-pg-simple")(session);
 const crypto = require("crypto");
 const path = require("path");
-const { initPg, query, pool, bookColumns, chapterColumns, pick } = require("./pg-store");
+const { initPg, query, pool, databaseQueryMetrics, bookColumns, chapterColumns, pick } = require("./pg-store");
 const {
     attachExpressPanel,
     collectDiagnostics,
@@ -45,6 +45,7 @@ const {
 const { createHealthService } = require("./services/health");
 const { createRankService } = require("./services/rank");
 const { createDataQualityService } = require("./services/data-quality");
+const { createBookManifestService } = require("./services/book-manifest");
 const { createAdminOverviewService } = require("./services/admin-overview");
 const { createReaderRumService } = require("./services/reader-rum");
 const { createUserCurrencyService } = require("./services/user-currency");
@@ -61,6 +62,7 @@ const { createEventService } = require("./services/events");
 const { createHotKeywordService } = require("./services/hot-keywords");
 const { createWordCloudService } = require("./services/word-cloud");
 const { createBookSocialService } = require("./services/book-social");
+const { createReviewGovernanceService } = require("./services/review-governance");
 const { createChapterMaintenanceService } = require("./services/chapter-maintenance");
 const { createBookMaintenanceService } = require("./services/book-maintenance");
 const { createSystemJobRetryService } = require("./services/job-retry");
@@ -69,6 +71,9 @@ const { createPo18CrawlerService } = require("./services/po18-crawler");
 const { createCredentialCrypto, encryptStoredPo18Credentials } = require("./services/credential-crypto");
 const { botScopeForRequest, createApiTokenService } = require("./services/api-tokens");
 const { createRateLimiter } = require("./services/rate-limit");
+const { installRouteBodyParsers } = require("./services/body-limits");
+const { createRequestSchemaValidation } = require("./services/schema-validation");
+const { createBackupRestoreDrillScheduler } = require("./services/backup-restore-drill");
 const { createCsrfProtection } = require("./services/csrf");
 const { createAdminAuditMiddleware, listAdminAuditLogs } = require("./services/admin-audit");
 const {
@@ -83,6 +88,8 @@ const { createAdminBackupRoutes } = require("./routes/admin-backups");
 const { createAdminConfigRoutes } = require("./routes/admin-config");
 const { createAdminCrawlerRoutes } = require("./routes/admin-crawler");
 const { createAdminContentRoutes } = require("./routes/admin-content");
+const { createAdminManifestRoutes } = require("./routes/admin-manifests");
+const { createReviewGovernanceRoutes } = require("./routes/review-governance");
 const { createAdminAuthRoutes } = require("./routes/admin-auth");
 const { createBotApiRoutes } = require("./routes/bot-api");
 const { createReaderApiRoutes } = require("./routes/reader-api");
@@ -274,6 +281,7 @@ const {
     updateBookReviewChannelMessage,
     voteBookReview
 } = bookSocialService;
+const reviewGovernanceService = createReviewGovernanceService({ query, pool });
 const healthService = createHealthService({
     serviceName: "server-pg",
     startedAt: STARTED_AT,
@@ -297,6 +305,16 @@ const rankService = createRankService({
     logger: console
 });
 const dataQualityService = createDataQualityService({ query });
+const bookManifestService = createBookManifestService({
+    query,
+    pool,
+    appVersion: () => versionPayload("server-pg").version
+});
+const backupRestoreDrillScheduler = createBackupRestoreDrillScheduler({
+    configFile: CONFIG_FILE,
+    backupDir: DEFAULT_BACKUP_DIR,
+    logEvent
+});
 const botAuditService = createBotAuditService({ query });
 const adminOverviewService = createAdminOverviewService({
     query,
@@ -422,6 +440,8 @@ const healthRoutes = createHealthRoutes({
     eventLogFile: EVENT_LOG_FILE,
     crawlerSnapshotProvider: po18CrawlerService.snapshot,
     systemJobMetricsProvider: collectSystemJobMetrics,
+    dataQualityMetricsProvider: dataQualityService.collectDataQualityMetrics,
+    databaseQueryMetricsProvider: databaseQueryMetrics,
     metricsTokenProvider: () => process.env.PO18_METRICS_TOKEN || ""
 });
 const rankRoutes = createRankRoutes({
@@ -545,6 +565,18 @@ const adminContentRoutes = createAdminContentRoutes({
     cleanupStalePo18Books: bookMaintenanceService.cleanupStalePo18Books,
     runTrackedJob
 });
+const adminManifestRoutes = createAdminManifestRoutes({
+    requireAdmin,
+    bookManifestService,
+    logEvent
+});
+const reviewGovernanceRoutes = createReviewGovernanceRoutes({
+    requireAdmin,
+    requireReader,
+    requireBotApi,
+    currentReaderUser,
+    service: reviewGovernanceService
+});
 const adminAuthRoutes = createAdminAuthRoutes({
     query,
     hashPassword,
@@ -570,6 +602,7 @@ const botApiRoutes = createBotApiRoutes({
     claimExtraExportQuota: userCurrencyService.claimExtraExportQuota,
     redeemExportQuotaCdk: userCurrencyService.redeemExportQuotaCdk,
     spendUserCurrency: userCurrencyService.spendUserCurrency,
+    adjustUserCurrency: userCurrencyService.adjustUserCurrency,
     todayDateKey,
     positiveNumber,
     signExpReward,
@@ -670,6 +703,8 @@ pool.on("error", (err) => {
     logEvent("warn", "server-pg", "pg-pool-error", { error: err.message || String(err) });
 });
 
+app.use(createRequestLogger({ service: "server-pg", slowMs: REQUEST_SLOW_MS, skip: (req) => req.path === "/favicon.ico" }));
+app.use(createErrorResponseNormalizer());
 app.use(cors({ origin: corsOriginCallback(), credentials: true }));
 attachExpressPanel(app, { configFile: CONFIG_FILE });
 app.use(compression());
@@ -684,8 +719,8 @@ app.use([
 app.use("/api/parse/check-cache", publicLookupRateLimiter);
 app.use("/reader-api/tts", ttsRateLimiter);
 app.use(["/api/parse/chapter-content", "/api/metadata/batch"], uploadRateLimiter);
-app.use(express.json({ limit: "30mb" }));
-app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+installRouteBodyParsers(app, express);
+app.use(createRequestSchemaValidation());
 app.use(["/reader-api", "/reader-auth"], (req, res, next) => {
     delete req.headers["if-none-match"];
     delete req.headers["if-modified-since"];
@@ -709,8 +744,6 @@ app.use(
         }
     })
 );
-app.use(createRequestLogger({ service: "server-pg", slowMs: REQUEST_SLOW_MS, skip: (req) => req.path === "/favicon.ico" }));
-app.use(createErrorResponseNormalizer());
 app.use(createCsrfProtection({ cookieName: "po18_upload_admin_pg" }));
 app.use(createAdminAuditMiddleware({ query, logEvent }));
 app.use(healthRoutes);
@@ -719,6 +752,8 @@ app.use(adminSystemRoutes);
 app.use(adminBackupRoutes);
 app.use(adminConfigRoutes);
 app.use(adminCrawlerRoutes);
+app.use(adminManifestRoutes);
+app.use(reviewGovernanceRoutes);
 app.use(adminContentRoutes);
 app.use(adminAuthRoutes);
 app.use(botApiRoutes);
@@ -1108,6 +1143,7 @@ async function bootApplication() {
     await initAdmin();
     startDailyReportScheduler();
     rankService.startRefreshScheduler();
+    backupRestoreDrillScheduler.start();
     await po18CrawlerService.startScheduler();
 }
 

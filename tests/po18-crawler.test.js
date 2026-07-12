@@ -1,4 +1,6 @@
 const assert = require("assert/strict");
+const fs = require("fs");
+const path = require("path");
 const test = require("node:test");
 const {
     createPo18CrawlerService,
@@ -16,6 +18,34 @@ const {
     formatChapterListLog
 } = require("../services/po18-crawler");
 const { createCredentialCrypto } = require("../services/credential-crypto");
+
+function po18Fixture(name) {
+    return fs.readFileSync(path.join(__dirname, "fixtures", "po18", name), "utf8");
+}
+
+test("po18 sanitized HTML fixtures cover auth, challenge, pagination and mixed chapter rows", () => {
+    assert.equal(looksLikeAuthPage(po18Fixture("login-page.html")), true);
+    assert.equal(looksLikeAuthPage(po18Fixture("challenge-page.html")), true);
+    assert.equal(looksLikeAuthPage(po18Fixture("not-found.html")), false);
+
+    const detail = parseBookDetailHtml(po18Fixture("book-detail-paginated.html"), "700001");
+    assert.equal(detail.totalChapters, 251);
+    assert.equal(detail.pageNum, 3);
+
+    const mixed = parseChapterListHtml(po18Fixture("chapter-list-mixed.html"), "700001");
+    assert.equal(mixed.scanned, 4);
+    assert.deepEqual(
+        mixed.chapters.map((chapter) => ({
+            id: chapter.chapterId,
+            order: chapter.order,
+            purchased: chapter.isPurchased
+        })),
+        [
+            { id: "810001", order: 1, purchased: true },
+            { id: "810003", order: 3, purchased: false }
+        ]
+    );
+});
 
 test("po18 crawler parses findbooks rows", () => {
     const rows = parseFindBooksHtml(`
@@ -45,7 +75,8 @@ test("po18 crawler parses findbooks rows", () => {
 });
 
 test("po18 crawler parses book detail and chapter content", () => {
-    const book = parseBookDetailHtml(`
+    const book = parseBookDetailHtml(
+        `
       <html><body>
         <h1 class="book_name">測試書（限）</h1>
         <a class="book_author">某作者</a>
@@ -63,7 +94,9 @@ test("po18 crawler parses book detail and chapter content", () => {
         <dd class="statu">共 3 頁</dd>
         <div class="new_chapter"><h4>最新章</h4><div class="date">2026-06-18 12:00</div></div>
       </body></html>
-    `, "123");
+    `,
+        "123"
+    );
 
     assert.equal(book.title, "測試書");
     assert.equal(book.author, "某作者");
@@ -92,10 +125,7 @@ test("po18 crawler formats chapter logs with free and paid split", () => {
     const chapters = Array.from({ length: 26 }, (_, index) => ({ chapterId: String(index + 1) }));
     const candidates = chapters.slice();
 
-    assert.equal(
-        formatBookDetailLog(detail),
-        "book 855623 detail loaded: chapters 83, free 26, paid 57, status finished, pages 1"
-    );
+    assert.equal(formatBookDetailLog(detail), "book 855623 detail loaded: chapters 83, free 26, paid 57, status finished, pages 1");
     assert.equal(
         formatChapterListLog(detail, chapters, candidates, 0, 0, 5),
         "book 855623 chapter list: accessible 26, candidates 26, cached 0, locked 0, concurrency 5"
@@ -103,7 +133,8 @@ test("po18 crawler formats chapter logs with free and paid split", () => {
 });
 
 test("po18 crawler reads detail status block and ignores comment pagination", () => {
-    const book = parseBookDetailHtml(`
+    const book = parseBookDetailHtml(
+        `
       <html><body>
         <h1 class="book_name">\u6545\u4e8b\u7ec6\u817b\uff081V1 \uff09</h1>
         <a class="book_author">\u897f\u51c9\u8352\u8349</a>
@@ -118,7 +149,9 @@ test("po18 crawler reads detail status block and ignores comment pagination", ()
         <a class="num" href="/books/652799/view?page=155#Goreply">&gt;|</a>
         <div class="new_chapter"><h4>\u540e\u8bb0</h4><div class="date">\u516c\u958b 2019-01-15 12:32</div></div>
       </body></html>
-    `, "652799");
+    `,
+        "652799"
+    );
 
     assert.equal(book.status, "\u5b8c\u7ed3");
     assert.equal(book.totalChapters, 52);
@@ -127,15 +160,19 @@ test("po18 crawler reads detail status block and ignores comment pagination", ()
 });
 
 test("po18 crawler calculates all chapter list pages like userscript", () => {
-    const byChapterCount = parseBookDetailHtml(`
+    const byChapterCount = parseBookDetailHtml(
+        `
       <html><body>
         <h1 class="book_name">長篇測試</h1>
         <dd class="statu">250 chapters</dd>
       </body></html>
-    `, "250001");
+    `,
+        "250001"
+    );
     assert.equal(byChapterCount.pageNum, 3);
 
-    const byMetadataStats = parseBookDetailHtml(`
+    const byMetadataStats = parseBookDetailHtml(
+        `
       <html><body>
         <h1 class="book_name">統計長篇</h1>
         <table class="book_data">
@@ -143,18 +180,23 @@ test("po18 crawler calculates all chapter list pages like userscript", () => {
           <tr><th>付費章回</th><td>130</td></tr>
         </table>
       </body></html>
-    `, "250002");
+    `,
+        "250002"
+    );
     assert.equal(byMetadataStats.totalChapters, 250);
     assert.equal(byMetadataStats.pageNum, 3);
 });
 
 test("po18 crawler parses chapter list and access status", () => {
-    const parsed = parseChapterListHtml(`
+    const parsed = parseChapterListHtml(
+        `
       <div id="w0">
         <div><span class="l_counter">0001</span><a class="l_chaptname">免費章</a><span>免費</span><div class="l_btn"><a href="/books/123/articles/9001">讀</a></div></div>
         <div><span class="l_counter">0002</span><a class="l_chaptname">訂購章</a><span>訂購</span><div class="l_btn"><a href="/books/123/articles/9002">讀</a></div></div>
       </div>
-    `, "123");
+    `,
+        "123"
+    );
 
     assert.equal(parsed.chapters.length, 2);
     assert.equal(parsed.chapters[0].chapterId, "9001");
@@ -164,7 +206,8 @@ test("po18 crawler parses chapter list and access status", () => {
 });
 
 test("po18 crawler parses current po18 chapter row structure", () => {
-    const parsed = parseChapterListHtml(`
+    const parsed = parseChapterListHtml(
+        `
       <div data-key="1">
         <div class="c_l">
           <span class="l_counter">0001</span>
@@ -172,7 +215,9 @@ test("po18 crawler parses current po18 chapter row structure", () => {
           <div class="l_btn"><a href="/books/123/articles/9001">免費</a></div>
         </div>
       </div>
-    `, "123");
+    `,
+        "123"
+    );
 
     assert.equal(parsed.chapters.length, 1);
     assert.equal(parsed.chapters[0].chapterId, "9001");
@@ -182,7 +227,8 @@ test("po18 crawler parses current po18 chapter row structure", () => {
 });
 
 test("po18 crawler does not treat non-uploadable chapter rows as invalid cookie", () => {
-    const parsed = parseChapterListHtml(`
+    const parsed = parseChapterListHtml(
+        `
       <div class="member_login">會員登入</div>
       <div data-key="1">
         <div class="c_l">
@@ -191,7 +237,9 @@ test("po18 crawler does not treat non-uploadable chapter rows as invalid cookie"
           <div class="l_btn">訂購</div>
         </div>
       </div>
-    `, "123");
+    `,
+        "123"
+    );
 
     assert.equal(parsed.chapters.length, 0);
     assert.equal(parsed.scanned, 1);
@@ -206,7 +254,10 @@ test("po18 crawler parses purchased bookshelf rows", () => {
     `);
 
     assert.equal(rows.length, 2);
-    assert.deepEqual(rows.map((row) => row.bookId), ["810001", "810002"]);
+    assert.deepEqual(
+        rows.map((row) => row.bookId),
+        ["810001", "810002"]
+    );
     assert.equal(rows[0].author, "作者甲");
 });
 
@@ -238,7 +289,9 @@ test("po18 crawler encrypts stored cookie profiles while keeping runtime config 
     const service = createPo18CrawlerService({
         query: async () => ({ rows: [] }),
         configGet: async () => JSON.stringify({ cookie: "authtoken1=test-value", cookieProfiles: [], enabled: false }),
-        configSet: async (key, value) => { saved = value; },
+        configSet: async (key, value) => {
+            saved = value;
+        },
         credentialCrypto,
         upsertBook: async () => {},
         saveChapter: async () => {},
@@ -282,7 +335,10 @@ test("po18 crawler masks cookie profiles and keeps active profile", () => {
 
 test("po18 crawler dedupes copied cookie headers with last value winning", () => {
     const cookies = parseCookieString("a=old; b=1; a=new; b=2");
-    assert.deepEqual(cookies.map((cookie) => `${cookie.name}=${cookie.value}`), ["a=new", "b=2"]);
+    assert.deepEqual(
+        cookies.map((cookie) => `${cookie.name}=${cookie.value}`),
+        ["a=new", "b=2"]
+    );
 
     const config = sanitizeConfig({
         cookieProfiles: [{ name: "main", cookie: "a=old; b=1; a=new; b=2" }],
@@ -293,14 +349,16 @@ test("po18 crawler dedupes copied cookie headers with last value winning", () =>
 
 test("po18 crawler sends one cookie value per name like document.cookie", () => {
     const config = sanitizeConfig({
-        cookieProfiles: [{
-            name: "main",
-            cookies: [
-                { name: "token", value: "old", domain: ".po18.tw", path: "/" },
-                { name: "sid", value: "1", domain: ".po18.tw", path: "/" },
-                { name: "token", value: "new", domain: "www.po18.tw", path: "/" }
-            ]
-        }],
+        cookieProfiles: [
+            {
+                name: "main",
+                cookies: [
+                    { name: "token", value: "old", domain: ".po18.tw", path: "/" },
+                    { name: "sid", value: "1", domain: ".po18.tw", path: "/" },
+                    { name: "token", value: "new", domain: "www.po18.tw", path: "/" }
+                ]
+            }
+        ],
         activeCookieProfile: "main"
     });
 
@@ -341,28 +399,38 @@ test("po18 crawler applies chapter count range only to discover source", () => {
 });
 
 test("po18 crawler detects finished books with full cache", () => {
-    assert.equal(isCompleteCachedBook({
-        status: "完结",
-        totalChapters: 60,
-        cacheCount: 60
-    }), true);
-    assert.equal(isCompleteCachedBook({
-        status: "连载",
-        totalChapters: 60,
-        cacheCount: 60
-    }), false);
-    assert.equal(isCompleteCachedBook({
-        status: "完結",
-        total_chapters: 60,
-        cache_count: 59
-    }), false);
+    assert.equal(
+        isCompleteCachedBook({
+            status: "完结",
+            totalChapters: 60,
+            cacheCount: 60
+        }),
+        true
+    );
+    assert.equal(
+        isCompleteCachedBook({
+            status: "连载",
+            totalChapters: 60,
+            cacheCount: 60
+        }),
+        false
+    );
+    assert.equal(
+        isCompleteCachedBook({
+            status: "完結",
+            total_chapters: 60,
+            cache_count: 59
+        }),
+        false
+    );
 });
 
 test("po18 crawler posts selected discover category parameters like the website form", async () => {
     const requests = [];
     const service = createPo18CrawlerService({
         query: async () => ({ rows: [] }),
-        configGet: async () => JSON.stringify({ categoryTag: "romance", categoryTid: "12", status: "writing", sort: "popularity", words: "3" }),
+        configGet: async () =>
+            JSON.stringify({ categoryTag: "romance", categoryTid: "12", status: "writing", sort: "popularity", words: "3" }),
         configSet: async () => {},
         upsertBook: async () => {},
         saveChapter: async () => {},
@@ -376,9 +444,10 @@ test("po18 crawler posts selected discover category parameters like the website 
                 status: 200,
                 url: String(url),
                 headers: { get: () => "", getSetCookie: () => [] },
-                text: async () => method === "POST"
-                    ? `<input name="_po18rf-tk001" value="next-token"><div class="row"><a class="l_bookname" href="/books/123">A</a></div>`
-                    : `<input name="_po18rf-tk001" value="token">`
+                text: async () =>
+                    method === "POST"
+                        ? `<input name="_po18rf-tk001" value="next-token"><div class="row"><a class="l_bookname" href="/books/123">A</a></div>`
+                        : `<input name="_po18rf-tk001" value="token">`
             };
         }
     });
@@ -403,7 +472,7 @@ test("po18 crawler posts selected discover category parameters like the website 
 
 test("po18 crawler does not treat a normal page login link as auth failure", () => {
     assert.equal(looksLikeAuthPage("<html><body><a>會員登入</a><div>正常列表內容</div></body></html>"), false);
-    assert.equal(looksLikeAuthPage("<form action=\"/login\"><input type=\"password\" /></form><h1>會員登入</h1>"), true);
+    assert.equal(looksLikeAuthPage('<form action="/login"><input type="password" /></form><h1>會員登入</h1>'), true);
 });
 
 test("po18 crawler clamps unsafe config values", () => {

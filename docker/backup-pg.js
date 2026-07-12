@@ -158,6 +158,75 @@ async function databaseBackupMetadata(connectionString, options = {}) {
     }
 }
 
+async function restoreTargetMetadata(connectionString, options = {}) {
+    const { arg, env } = pgDumpConnection(connectionString);
+    const run = options.runProcess || runProcess;
+    const result = await run(
+        "psql",
+        [
+            "--no-align",
+            "--tuples-only",
+            "--field-separator=\t",
+            "--command",
+            `SELECT current_database(),
+                    current_setting('server_version'),
+                    pg_database_size(current_database()),
+                    (SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()),
+                    current_setting('max_connections');`,
+            arg
+        ],
+        { env, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS }
+    );
+    const [database = "", postgresVersion = "", databaseBytes = "0", activeConnections = "0", maxConnections = "0"] = String(result.stdout || "").trim().split("\t");
+    if (!database) throw new Error("restore target database could not be identified");
+    return {
+        database,
+        postgres_version: postgresVersion,
+        database_bytes: Number(databaseBytes || 0),
+        active_connections: Number(activeConnections || 0),
+        max_connections: Number(maxConnections || 0)
+    };
+}
+
+async function availableDiskBytes(targetPath, options = {}) {
+    const statfs = options.statfs || fsp.statfs;
+    if (typeof statfs !== "function") return null;
+    try {
+        const stats = await statfs(targetPath);
+        const blockSize = Number(stats.bsize || stats.frsize || 0);
+        const availableBlocks = Number(stats.bavail ?? stats.bfree ?? 0);
+        const bytes = blockSize * availableBlocks;
+        return Number.isFinite(bytes) && bytes >= 0 ? bytes : null;
+    } catch {
+        return null;
+    }
+}
+
+async function restorePreflight({ connectionString, file, backupDir, fileBytes = 0, skipPreBackup = false, ...options } = {}) {
+    const target = await restoreTargetMetadata(connectionString, options);
+    const maxActive = positiveInt(options.maxActiveConnections || process.env.PO18_RESTORE_MAX_ACTIVE_CONNECTIONS, 20);
+    if (target.active_connections > maxActive) {
+        throw new Error(`restore target has ${target.active_connections} active connections; maximum allowed is ${maxActive}`);
+    }
+    const freeBytes = await availableDiskBytes(backupDir || path.dirname(file), options);
+    const reserveBytes = positiveInt(options.reserveBytes || process.env.PO18_RESTORE_DISK_RESERVE_BYTES, 256 * 1024 * 1024);
+    const estimatedPreBackup = skipPreBackup ? 0 : Math.max(Number(fileBytes || 0), Number(target.database_bytes || 0));
+    const requiredFreeBytes = estimatedPreBackup + Number(fileBytes || 0) + reserveBytes;
+    if (freeBytes !== null && freeBytes < requiredFreeBytes) {
+        throw new Error(`insufficient disk space for restore preflight: need ${requiredFreeBytes} bytes, have ${freeBytes}`);
+    }
+    return {
+        checked_at: new Date().toISOString(),
+        target,
+        backup_file: path.basename(file || ""),
+        backup_bytes: Number(fileBytes || 0),
+        disk_free_bytes: freeBytes,
+        disk_required_bytes: requiredFreeBytes,
+        max_active_connections: maxActive,
+        pre_restore_backup: !skipPreBackup
+    };
+}
+
 async function writeMeta(file, meta) {
     await fsp.writeFile(`${file}.json`, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
 }
@@ -176,7 +245,8 @@ async function verifyBackupChecksum(file, expected = "") {
 }
 
 async function verifyPostgresArchive(file, options = {}) {
-    const result = await runProcess("pg_restore", ["--list", file], {
+    const run = options.runProcess || runProcess;
+    const result = await run("pg_restore", ["--list", file], {
         timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS
     });
     const entries = String(result.stdout || "")
@@ -185,6 +255,93 @@ async function verifyPostgresArchive(file, options = {}) {
         .length;
     if (!entries) throw new Error(`postgres backup archive is empty: ${path.basename(file)}`);
     return { archive_verified_at: new Date().toISOString(), archive_entries: entries };
+}
+
+function postgresDatabaseUrl(connectionString, database) {
+    const url = new URL(connectionString);
+    url.pathname = `/${encodeURIComponent(String(database || "postgres"))}`;
+    return url.toString();
+}
+
+async function drillPostgresBackup(options = {}) {
+    const startedAt = Date.now();
+    const configFile = options.configFile || DEFAULT_CONFIG_FILE;
+    const backupDir = options.backupDir || DEFAULT_BACKUP_DIR;
+    if (options.loadConfig !== false) loadConfigIntoEnv(configFile);
+    const connectionString = options.connectionString || process.env.PO18_PG_URL || "";
+    if (!/^postgres(?:ql)?:\/\//i.test(connectionString)) throw new Error("PO18_PG_URL is empty or invalid");
+    const run = options.runProcess || runProcess;
+    const file = resolveBackupFile(options.file || options.fileName, backupDir);
+    await fsp.access(file);
+    const stat = await fsp.stat(file);
+    const meta = (await readMeta(file)) || {};
+    if (meta.type && meta.type !== "postgres") throw new Error("only postgres backups can be restore-drilled");
+    const sha256 = await verifyBackupChecksum(file, meta.sha256);
+    const verification = await verifyPostgresArchive(file, { timeoutMs: options.timeoutMs, runProcess: run });
+    const suffix = `${Date.now()}_${process.pid}_${crypto.randomBytes(3).toString("hex")}`;
+    const database = `po18_restore_drill_${suffix}`;
+    const adminConnection = postgresDatabaseUrl(connectionString, options.adminDatabase || "postgres");
+    const targetConnection = postgresDatabaseUrl(connectionString, database);
+    const admin = pgDumpConnection(adminConnection);
+    const target = pgDumpConnection(targetConnection);
+    let databaseCreated = false;
+    try {
+        await run(
+            "psql",
+            ["--set", "ON_ERROR_STOP=1", "--command", `CREATE DATABASE \"${database}\" TEMPLATE template0;`, admin.arg],
+            { env: admin.env, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS }
+        );
+        databaseCreated = true;
+        await run(
+            "pg_restore",
+            ["--exit-on-error", "--no-owner", "--no-acl", "--dbname", target.arg, file],
+            { env: target.env, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS }
+        );
+        const checked = await run(
+            "psql",
+            [
+                "--set", "ON_ERROR_STOP=1",
+                "--no-align",
+                "--tuples-only",
+                "--field-separator=\t",
+                "--command",
+                `SELECT current_setting('server_version'),
+                        (SELECT COUNT(*) FROM schema_migrations),
+                        (SELECT COUNT(*) FROM book_metadata),
+                        (SELECT COUNT(*) FROM chapter_cache);`,
+                target.arg
+            ],
+            { env: target.env, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS }
+        );
+        const [postgresVersion = "", migrations = "0", books = "0", chapters = "0"] = String(checked.stdout || "").trim().split("\t");
+        if (!postgresVersion || Number(migrations) <= 0) throw new Error("restore drill consistency check did not find schema migrations");
+        return {
+            success: true,
+            drilled_at: new Date().toISOString(),
+            file: path.basename(file),
+            bytes: stat.size,
+            sha256,
+            ...verification,
+            postgres_version: postgresVersion,
+            schema_migrations: Number(migrations || 0),
+            books: Number(books || 0),
+            chapters: Number(chapters || 0),
+            duration_ms: Date.now() - startedAt
+        };
+    } finally {
+        if (databaseCreated) {
+            await run(
+                "psql",
+                [
+                    "--set", "ON_ERROR_STOP=1",
+                    "--command", `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${database}' AND pid <> pg_backend_pid();`,
+                    "--command", `DROP DATABASE IF EXISTS \"${database}\";`,
+                    admin.arg
+                ],
+                { env: admin.env, timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS }
+            ).catch(() => {});
+        }
+    }
 }
 
 async function readMeta(file) {
@@ -321,6 +478,18 @@ async function restorePostgresBackup(options = {}) {
     if (meta.type && meta.type !== "postgres") throw new Error("only postgres backups can be restored");
     const sha256 = await verifyBackupChecksum(file, meta.sha256);
     const verification = await verifyPostgresArchive(file, { timeoutMs: options.timeoutMs });
+    const preflight = await restorePreflight({
+        connectionString,
+        file,
+        backupDir,
+        fileBytes: stat.size,
+        skipPreBackup: !!options.skipPreBackup,
+        timeoutMs: options.timeoutMs,
+        runProcess: options.runProcess,
+        statfs: options.statfs,
+        maxActiveConnections: options.maxActiveConnections,
+        reserveBytes: options.reserveBytes
+    });
 
     const before = options.skipPreBackup
         ? null
@@ -343,6 +512,7 @@ async function restorePostgresBackup(options = {}) {
         bytes: stat.size,
         sha256,
         ...verification,
+        preflight,
         database: redactPgUrl(connectionString),
         pre_restore_backup: before,
         stderr: String(result.stderr || "").slice(-2000)
@@ -492,11 +662,16 @@ module.exports = {
     createPostgresBackup,
     createUploadedPostgresBackup,
     databaseBackupMetadata,
+    drillPostgresBackup,
+    availableDiskBytes,
     fileSha256,
     listBackups,
     loadConfigIntoEnv,
+    postgresDatabaseUrl,
     redactPgUrl,
     restorePostgresBackup,
+    restorePreflight,
+    restoreTargetMetadata,
     resolveBackupFile,
     verifyBackupChecksum,
     verifyPostgresBackup

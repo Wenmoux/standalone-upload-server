@@ -189,6 +189,10 @@
             <StatCard label="PO18 来源" :value="metricsSummary.crawler?.source_health?.state || 'unknown'">成功 {{ number(metricsSummary.crawler?.source_health?.successes || 0) }} / 失败 {{ number(metricsSummary.crawler?.source_health?.failures || 0) }}</StatCard>
             <StatCard label="持久任务" :value="`${number(metricsSummary.system_jobs?.running || 0)} / ${number(metricsSummary.system_jobs?.queued || 0)}`">重试 {{ number(metricsSummary.system_jobs?.retries || 0) }} / 过期租约 {{ number(metricsSummary.system_jobs?.expired_leases || 0) }}</StatCard>
             <StatCard label="真实用户性能" :value="number(readerRum.sessions || 0)">会话 / {{ number(readerRum.samples || 0) }} 个样本</StatCard>
+            <StatCard label="数据库查询 p95" :value="`${number(metricsSummary.database?.queries?.p95_ms || 0)}ms`">超时 {{ number(metricsSummary.database?.queries?.timeouts || 0) }} / 慢查询 {{ number(metricsSummary.database?.queries?.slow || 0) }}</StatCard>
+            <StatCard label="恢复演练" :value="metricTime(metricsSummary.backup?.last_restore_drill_success_at)">最近一次成功恢复到临时库</StatCard>
+            <StatCard label="数据质量" :value="number(metricsSummary.data_quality?.complete_books || 0)">完整书 / 异常正文 {{ number(metricsSummary.data_quality?.abnormal_chapters || 0) }}</StatCard>
+            <StatCard label="Telegram" :value="number(metricsSummary.bot_telegram?.requests?.send_failures_total || 0)">发送失败 / 429 {{ number(metricsSummary.bot_telegram?.requests?.rate_limited_total || 0) }}</StatCard>
           </div>
           <div class="split observability-grid reader-budget-grid" style="margin-top: 14px">
             <div>
@@ -295,6 +299,7 @@
               <span>{{ time(item.created_at) }} · {{ bytes(item.bytes) }}<template v-if="item.database"> · {{ item.database }}</template><template v-if="item.sha256"> · SHA-256 {{ item.sha256.slice(0, 12) }}</template><template v-if="item.archive_verified_at"> · 已验证 {{ number(item.archive_entries || 0) }} 项</template></span>
             </div>
             <button v-if="item.type === 'postgres'" class="secondary" type="button" :disabled="verifyBusy === item.file" @click="verifyBackup(item.file)">{{ verifyBusy === item.file ? "验证中..." : "验证归档" }}</button>
+            <button v-if="item.type === 'postgres'" class="secondary" type="button" :disabled="drillBusy === item.file" @click="drillBackup(item.file)">{{ drillBusy === item.file ? "演练中..." : "恢复演练" }}</button>
             <button class="secondary" type="button" @click="downloadBackup(item.file)">下载</button>
           </article>
         </div>
@@ -374,6 +379,7 @@ const restoreResult = ref("");
 const remoteBackup = ref({});
 const remoteUploadBusy = ref("");
 const verifyBusy = ref("");
+const drillBusy = ref("");
 const metricsSummary = ref({ http: {}, reader_api: {}, bot_queue: {}, backup: {}, database: {}, crawler: {}, system_jobs: {}, window: {} });
 const readerRum = ref({ metrics: [], routes: [], samples: 0, sessions: 0, users: 0 });
 const apiTokens = ref([]);
@@ -427,6 +433,11 @@ function perfEndpointLabel(name) {
     chapter: "正文"
   };
   return labels[name] || name || "-";
+}
+
+function metricTime(seconds) {
+  const value = Number(seconds || 0);
+  return value > 0 ? time(value * 1000) : "尚未成功";
 }
 
 function perfStateClass(item) {
@@ -547,6 +558,25 @@ async function verifyBackup(file) {
     toast(err.message || String(err));
   } finally {
     verifyBusy.value = "";
+  }
+}
+
+async function drillBackup(file) {
+  if (!file) return;
+  drillBusy.value = file;
+  try {
+    const data = await api("/admin-api/backup/drill", {
+      method: "POST",
+      body: JSON.stringify({ file })
+    });
+    backupRows.value = data.backups || backupRows.value;
+    const drill = data.drill || {};
+    toast(`恢复演练通过：${number(drill.schema_migrations || 0)} 个迁移，${number(drill.books || 0)} 本书，${number(drill.chapters || 0)} 章`);
+    await loadMetrics();
+  } catch (err) {
+    toast(err.message || String(err));
+  } finally {
+    drillBusy.value = "";
   }
 }
 

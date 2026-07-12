@@ -2,12 +2,13 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { readerPwaPlugin } from './scripts/reader-pwa-plugin.mjs'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   base: process.env.CIRNO_PUBLIC_PATH || '/cirno-app/',
-  plugins: [vue()],
+  plugins: [vue(), readerPwaPlugin()],
   resolve: {
     alias: {
       '@': path.resolve(rootDir, 'src')
@@ -17,6 +18,7 @@ export default defineConfig({
     outDir: process.env.CIRNO_OUTPUT_DIR || '../public/cirno-app',
     assetsDir: 'static',
     sourcemap: false,
+    manifest: true,
     emptyOutDir: true
   },
   server: {

@@ -17,7 +17,16 @@ const {
     uploadBackupToRemote
 } = require("../services/remote-backups");
 const { decryptBackupFile, encryptedBackupFile } = require("../services/backup-crypto");
-const { databaseBackupMetadata, fileSha256, verifyBackupChecksum } = require("../docker/backup-pg");
+const {
+    availableDiskBytes,
+    databaseBackupMetadata,
+    drillPostgresBackup,
+    fileSha256,
+    restorePreflight,
+    restoreTargetMetadata,
+    verifyBackupChecksum
+} = require("../docker/backup-pg");
+const { createBackupRestoreDrillScheduler } = require("../services/backup-restore-drill");
 
 test("backup service normalizes and validates supported types", () => {
     assert.equal(normalizeBackupType(" PG "), "pg");
@@ -45,6 +54,61 @@ test("backup restore confirmation uses the basename only", () => {
     assert.equal(invalid.body.expectedConfirm, "RESTORE po18-pg-20260604.dump");
 });
 
+test("restore drill creates a temporary database, checks rows, and always drops it", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "po18-restore-drill-"));
+    const file = path.join(root, "po18-sample.dump");
+    const calls = [];
+    try {
+        await fs.writeFile(file, "fake-postgres-archive");
+        const drill = await drillPostgresBackup({
+            file: "po18-sample.dump",
+            backupDir: root,
+            connectionString: "postgres://po18:secret@db.example:5432/po18",
+            loadConfig: false,
+            runProcess: async (command, args, options = {}) => {
+                calls.push({ command, args, options });
+                if (command === "pg_restore" && args.includes("--list")) return { stdout: "123 TABLE public book_metadata\n124 TABLE public chapter_cache\n", stderr: "" };
+                if (command === "psql" && args.some((value) => /current_setting\('server_version'\)/.test(value))) {
+                    return { stdout: "16.4\t20\t3\t44\n", stderr: "" };
+                }
+                return { stdout: "", stderr: "" };
+            }
+        });
+        assert.equal(drill.success, true);
+        assert.equal(drill.schema_migrations, 20);
+        assert.equal(drill.books, 3);
+        assert.equal(drill.chapters, 44);
+        assert.match(drill.sha256, /^[a-f0-9]{64}$/);
+        assert.ok(calls.some((call) => call.command === "psql" && call.args.some((value) => /^CREATE DATABASE/.test(value))));
+        assert.ok(calls.some((call) => call.command === "psql" && call.args.some((value) => /^DROP DATABASE/.test(value))));
+        assert.ok(calls.every((call) => !call.args.some((value) => String(value).includes(":secret@"))));
+    } finally {
+        await fs.rm(root, { recursive: true, force: true });
+    }
+});
+
+test("restore drill scheduler uses the latest postgres backup and records success", async () => {
+    const events = [];
+    const calls = [];
+    const scheduler = createBackupRestoreDrillScheduler({
+        enabled: false,
+        backupDir: "C:/backups",
+        listBackups: async () => [
+            { type: "config", file: "config.json" },
+            { type: "postgres", file: "latest.dump" }
+        ],
+        drillBackupJob: async (_req, options) => {
+            calls.push(options);
+            return { drill: { file: options.fileName, duration_ms: 12, schema_migrations: 20, books: 3, chapters: 44 } };
+        },
+        logEvent: (...args) => events.push(args)
+    });
+    const result = await scheduler.runNow();
+    assert.equal(result.drill.file, "latest.dump");
+    assert.equal(calls[0].fileName, "latest.dump");
+    assert.equal(events[0][2], "backup-restore-drill-succeeded");
+});
+
 test("backup checksum detects truncated or changed files", async (t) => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "po18-backup-checksum-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
@@ -67,6 +131,50 @@ test("database backup metadata records postgres and schema versions", async () =
     assert.deepEqual(meta, { postgres_version: "16.4", schema_version: "018_data_quality_guards" });
     assert.equal(calls[0].command, "psql");
     assert.equal(calls[0].options.env.PGPASSWORD, "secret");
+});
+
+test("restore preflight checks target connections and local disk headroom", async () => {
+    const runProcess = async () => ({ stdout: "po18\t16.4\t1048576\t3\t100\n" });
+    const target = await restoreTargetMetadata("postgres://user:secret@db.example.com:5432/po18", { runProcess });
+    assert.equal(target.database, "po18");
+    assert.equal(target.active_connections, 3);
+    assert.equal(await availableDiskBytes("C:/backup", { statfs: async () => ({ bsize: 4096, bavail: 1000 }) }), 4096000);
+
+    const preflight = await restorePreflight({
+        connectionString: "postgres://user:secret@db.example.com:5432/po18",
+        file: "C:/backup/test.dump",
+        backupDir: "C:/backup",
+        fileBytes: 1024,
+        reserveBytes: 2048,
+        maxActiveConnections: 5,
+        runProcess,
+        statfs: async () => ({ bsize: 4096, bavail: 1000 })
+    });
+    assert.equal(preflight.target.postgres_version, "16.4");
+    assert.equal(preflight.pre_restore_backup, true);
+    assert.ok(preflight.disk_free_bytes >= preflight.disk_required_bytes);
+});
+
+test("restore preflight refuses busy targets and insufficient disk", async () => {
+    const connectionString = "postgres://user:secret@db.example.com:5432/po18";
+    await assert.rejects(() => restorePreflight({
+        connectionString,
+        file: "test.dump",
+        fileBytes: 1024,
+        maxActiveConnections: 2,
+        reserveBytes: 1,
+        runProcess: async () => ({ stdout: "po18\t16.4\t1024\t3\t100\n" }),
+        statfs: async () => ({ bsize: 4096, bavail: 1000 })
+    }), /active connections/);
+    await assert.rejects(() => restorePreflight({
+        connectionString,
+        file: "test.dump",
+        fileBytes: 2048,
+        maxActiveConnections: 5,
+        reserveBytes: 2048,
+        runProcess: async () => ({ stdout: "po18\t16.4\t4096\t1\t100\n" }),
+        statfs: async () => ({ bsize: 1, bavail: 1000 })
+    }), /insufficient disk space/);
 });
 
 test("remote backup config reports readiness without exposing secrets", () => {

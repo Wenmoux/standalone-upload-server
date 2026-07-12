@@ -5,6 +5,7 @@ const {
     DEFAULT_BACKUP_DIR,
     backupListPayload,
     createBackupJob,
+    drillBackupJob,
     resolveBackupDownload,
     restoreBackupJob,
     uploadBackupJob,
@@ -27,6 +28,7 @@ function createAdminBackupRoutes(options = {}) {
     const services = {
         backupListPayload: options.backupListPayload || backupListPayload,
         createBackupJob: options.createBackupJob || createBackupJob,
+        drillBackupJob: options.drillBackupJob || drillBackupJob,
         resolveBackupDownload: options.resolveBackupDownload || resolveBackupDownload,
         restoreBackupJob: options.restoreBackupJob || restoreBackupJob,
         uploadBackupJob: options.uploadBackupJob || uploadBackupJob,
@@ -135,6 +137,24 @@ function createAdminBackupRoutes(options = {}) {
             res.json(payload);
         } catch (err) {
             logEvent("error", "server-pg", "backup-verify-failed", { error: err.message || String(err) });
+            next(err);
+        }
+    });
+
+    router.post("/admin-api/backup/drill", requireAdmin, async (req, res, next) => {
+        try {
+            const fileName = String(req.body?.file || "").trim();
+            const payload = await services.drillBackupJob(req, { fileName, configFile, backupDir });
+            logEvent("info", "server-pg", "backup-restore-drill-succeeded", {
+                file: payload.drill?.file || fileName || "latest",
+                duration_ms: payload.drill?.duration_ms || 0,
+                schema_migrations: payload.drill?.schema_migrations || 0,
+                books: payload.drill?.books || 0,
+                chapters: payload.drill?.chapters || 0
+            });
+            res.json(payload);
+        } catch (err) {
+            logEvent("error", "server-pg", "backup-restore-drill-failed", { error: err.message || String(err) });
             next(err);
         }
     });

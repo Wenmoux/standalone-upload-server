@@ -42,7 +42,8 @@
 
 <script>
 import defaultAvatarImage from '@/assets/d_avatar.jpg'
-import { clearReaderSession } from '@/utils/reader-session'
+import { cachedReaderUser, clearReaderSession, getReaderSession, updateReaderSession } from '@/utils/reader-session'
+import { clearOfflineOwner } from '@/utils/reader-offline'
 export default {
   data() {
     return {
@@ -66,11 +67,10 @@ export default {
     },
     async loadProfile() {
       try {
-        const res = await fetch('/reader-auth/me', { credentials: 'include' })
-        const data = await res.json()
-        if (!data.user) return this.$router.replace({ name: 'Login' })
-        this.profile = Object.assign({}, this.profile, data.user)
-        this.account = data.user.username || this.account
+        const user = await getReaderSession()
+        if (!user) return this.$router.replace({ name: 'Login' })
+        this.profile = Object.assign({}, this.profile, user)
+        this.account = user.username || this.account
       } catch (e) {
         this.$message.error('获取资料失败')
       }
@@ -90,6 +90,7 @@ export default {
           }
         })
         this.profile = Object.assign({}, this.profile, data.user)
+        updateReaderSession(data.user || {})
         localStorage.setItem('account', this.profile.username || '')
         this.$store.commit('setReaderInfo', {
           reader_id: this.profile.id || 0,
@@ -108,11 +109,7 @@ export default {
       const confirm = this.$confirm || (this.$modal && this.$modal.confirm)
       if (!confirm) {
         if (!window.confirm('确定退出登录？')) return
-        await fetch('/reader-auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null)
-        clearReaderSession()
-        localStorage.removeItem('account')
-        this.$store.commit('setReaderInfo', {})
-        this.$router.replace({ name: 'Login' })
+        await this.finishLogout()
         return
       }
       confirm({
@@ -121,13 +118,18 @@ export default {
         okType: 'danger',
         cancelText: '取消',
         onOk: async () => {
-          await fetch('/reader-auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null)
-          clearReaderSession()
-          localStorage.removeItem('account')
-          this.$store.commit('setReaderInfo', {})
-          this.$router.replace({ name: 'Login' })
+          await this.finishLogout()
         }
       })
+    },
+    async finishLogout() {
+      const ownerId = cachedReaderUser()?.id
+      await fetch('/reader-auth/logout', { method: 'POST', credentials: 'include' }).catch(() => null)
+      if (ownerId) await clearOfflineOwner(ownerId).catch(() => {})
+      clearReaderSession()
+      localStorage.removeItem('account')
+      this.$store.commit('setReaderInfo', {})
+      this.$router.replace({ name: 'Login' })
     }
   }
 }

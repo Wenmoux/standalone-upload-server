@@ -2,6 +2,18 @@
 const express = require("express");
 const { bodyNumber, bodyString, enumValue, trimString } = require("../services/validation");
 
+function internalIdempotency(body = {}) {
+    const key = trimString(body.idempotency_key ?? body.idempotencyKey ?? "", 240);
+    const scope = trimString(body.idempotency_scope ?? body.idempotencyScope ?? "", 120);
+    const bookId = trimString(body.book_id ?? body.bookId ?? "", 240);
+    const format = trimString(body.format ?? "", 16).toLowerCase();
+    return {
+        idempotencyKey: key,
+        idempotencyScope: scope,
+        idempotencyData: { ...(bookId ? { book_id: bookId } : {}), ...(format ? { format } : {}) }
+    };
+}
+
 function createBotApiUserRoutes(deps = {}) {
     const router = express.Router();
     const {
@@ -21,6 +33,7 @@ function createBotApiUserRoutes(deps = {}) {
         claimExtraExportQuota,
         redeemExportQuotaCdk,
         spendUserCurrency,
+        adjustUserCurrency,
         todayDateKey,
         positiveNumber,
         signExpReward,
@@ -136,6 +149,23 @@ function createBotApiUserRoutes(deps = {}) {
             const currency = currencyName === "silver" ? "silver_coins" : "copper_coins";
             const delta = bodyNumber(req.body, "delta", { defaultValue: 0, integer: true, message: "delta must be a finite integer" });
             if (!delta) return res.status(400).json({ error: "delta must not be zero" });
+            if (typeof adjustUserCurrency === "function") {
+                const result = await adjustUserCurrency({
+                    telegramId,
+                    currency: currencyName,
+                    delta,
+                    type: req.body?.type || "admin_give",
+                    detail: req.body?.detail || "管理员发币",
+                    source: "telegram_bot",
+                    ...internalIdempotency(req.body || {})
+                });
+                return res.json({
+                    success: true,
+                    repeated: !!result.repeated,
+                    user: botPublicUser(result.user),
+                    transaction: result.transaction || null
+                });
+            }
             const updated = await query(
                 `UPDATE reader_users SET ${currency} = GREATEST(0, COALESCE(${currency}, 0) + $1)
                  WHERE telegram_id = $2
@@ -181,7 +211,8 @@ function createBotApiUserRoutes(deps = {}) {
             const result = await claimDailyFreeExport({
                 telegramId: req.params.telegramId,
                 bookId: req.body?.book_id || req.body?.bookId,
-                format: req.body?.format || ""
+                format: req.body?.format || "",
+                ...internalIdempotency(req.body || {})
             });
             res.json({ success: true, user: botPublicUser(result.user), usage: result.usage });
         } catch (err) {
@@ -196,7 +227,8 @@ function createBotApiUserRoutes(deps = {}) {
             const result = await claimExtraExportQuota({
                 telegramId: req.params.telegramId,
                 bookId: req.body?.book_id || req.body?.bookId,
-                format: req.body?.format || ""
+                format: req.body?.format || "",
+                ...internalIdempotency(req.body || {})
             });
             res.json({ success: true, user: botPublicUser(result.user), usage: result.usage });
         } catch (err) {
@@ -259,9 +291,10 @@ function createBotApiUserRoutes(deps = {}) {
                 amount: req.body?.amount || 0,
                 type: req.body?.type || "spend",
                 detail: req.body?.detail || "",
-                source: req.body?.source || "telegram_bot"
+                source: req.body?.source || "telegram_bot",
+                ...internalIdempotency(req.body || {})
             });
-            res.json({ success: true, amount: result.amount, currency: result.currency, user: botPublicUser(result.user), transaction: result.transaction });
+            res.json({ success: true, repeated: !!result.repeated, amount: result.amount, currency: result.currency, user: botPublicUser(result.user), transaction: result.transaction });
         } catch (err) {
             if (err.status) return res.status(err.status).json({ error: err.message });
             next(err);

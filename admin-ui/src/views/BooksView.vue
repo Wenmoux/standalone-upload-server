@@ -6,6 +6,8 @@
         <p class="sub">筛选、维护元信息、查看章节缓存和导出 TXT。</p>
       </div>
       <div class="row-actions">
+        <input ref="manifestInput" type="file" accept="application/json,.json" style="display: none" @change="importManifestFile" />
+        <button class="secondary" type="button" @click="manifestInput?.click()">导入 Manifest</button>
         <button class="secondary" type="button" @click="exportBooksCsv">导出 CSV</button>
         <button class="secondary" type="button" @click="loadBooks(page)">刷新</button>
         <button type="button" @click="openBookEditor()">新增书籍</button>
@@ -129,6 +131,7 @@
               <button class="secondary" type="button" @click="openBookEditor(row)">改</button>
               <button class="secondary" type="button" @click="loadChapters(row.book_id, row.title)">查</button>
               <button class="secondary" type="button" @click="exportBookTxt(row.book_id)">TXT</button>
+              <button class="secondary" type="button" @click="exportBookManifest(row)">Manifest</button>
               <button class="danger secondary" type="button" @click="deleteBook(row)">删</button>
             </div>
           </template>
@@ -241,6 +244,7 @@ const chapters = ref([]);
 const chaptersLoading = ref(false);
 const selectedBookIds = ref(new Set());
 const selectedChapterIds = ref(new Set());
+const manifestInput = ref(null);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(Number(total.value || 0) / Number(limit.value || 20))));
 const selectedRows = computed(() => books.value.filter((book) => selectedBookIds.value.has(String(book.id))));
@@ -498,6 +502,46 @@ function exportBooksCsv() {
     sort: sortValue.value
   });
   window.open(`/admin-api/books/export.csv?${params}`, "_blank");
+}
+
+function exportBookManifest(row) {
+  if (!row?.id) return toast("缺少书籍元信息 ID，无法导出 Manifest");
+  window.open(`/admin-api/books/${encodeURIComponent(row.id)}/manifest`, "_blank");
+}
+
+async function importManifestFile(event) {
+  const input = event?.target;
+  const file = input?.files?.[0];
+  if (!file) return;
+  try {
+    const manifest = JSON.parse(await file.text());
+    const validation = await api("/admin-api/books/manifests/validate", {
+      method: "POST",
+      body: JSON.stringify({ manifest })
+    });
+    const confirmation = await confirmAction({
+      title: "导入书籍 Manifest",
+      message: [
+        `书籍：${validation.book?.title || validation.book?.book_id || "-"}`,
+        `身份：${validation.book?.platform || "-"}:${validation.book?.book_id || "-"}`,
+        `章节：${number(validation.chapters || 0)}`,
+        "校验和已通过。导入会增量写入变化的数据，不会删除 Manifest 之外的章节。"
+      ].join("\n"),
+      confirmLabel: "确认导入",
+      phrase: validation.expected_confirmation
+    });
+    if (!confirmation.confirmed) return;
+    const result = await api("/admin-api/books/manifests/import", {
+      method: "POST",
+      body: JSON.stringify({ manifest, confirmation: validation.expected_confirmation })
+    });
+    await loadBooks(1);
+    toast(`Manifest 已导入：新增 ${number(result.chapters?.inserted)}，更新 ${number(result.chapters?.updated)}，跳过 ${number(result.chapters?.unchanged)}`);
+  } catch (error) {
+    toast(error instanceof SyntaxError ? "Manifest 不是有效的 JSON 文件" : (error.message || String(error)));
+  } finally {
+    if (input) input.value = "";
+  }
 }
 
 async function batchExportTxt() {

@@ -13,8 +13,12 @@ function createMockDb() {
         scholar_exp: 0,
         is_banned: false
     };
-    const usage = new Set();
-    const extraUsage = new Set();
+    const usage = new Map();
+    const extraUsage = new Map();
+    const operationLedger = new Map();
+    const transactions = new Map();
+    let usageSequence = 0;
+    let transactionSequence = 0;
     const cdks = new Map([
         ["CDK-QUOTA", { id: 10, code: "CDK-QUOTA", cdk_type: "export_quota", export_quota: 3 }]
     ]);
@@ -22,11 +26,43 @@ function createMockDb() {
         calls,
         user,
         usage,
+        operationLedger,
         async query(sql, params = []) {
             calls.push({ sql, params });
             if (/BEGIN|COMMIT|ROLLBACK/.test(sql)) return { rows: [] };
+            if (/FROM reader_operation_ledger/.test(sql)) {
+                const row = operationLedger.get(params[0]);
+                return { rows: row ? [row] : [] };
+            }
+            if (/INSERT INTO reader_operation_ledger/.test(sql)) {
+                const row = {
+                    id: operationLedger.size + 1,
+                    idempotency_key: params[0],
+                    operation_scope: params[1],
+                    operation_type: params[2],
+                    user_id: params[3],
+                    telegram_id: params[4],
+                    result_json: JSON.parse(params[5]),
+                    created_at: "now"
+                };
+                operationLedger.set(params[0], row);
+                return { rows: [row] };
+            }
+            if (/SELECT \* FROM reader_transactions WHERE id/.test(sql)) {
+                const row = transactions.get(Number(params[0]));
+                return { rows: row ? [row] : [] };
+            }
             if (/INSERT INTO reader_transactions/.test(sql)) {
-                return { rows: [{ id: calls.length, amount: params[4], balance: params[5], currency: params[3], type: params[2] }] };
+                const row = {
+                    id: ++transactionSequence,
+                    amount: params[4],
+                    balance: params[5],
+                    currency: params[3],
+                    type: params[2],
+                    operation_key: params[8] || ""
+                };
+                transactions.set(row.id, row);
+                return { rows: [row] };
             }
             if (/COUNT\(\*\)::int count FROM reader_transactions/.test(sql)) return { rows: [{ count: 1 }] };
             if (/FROM reader_transactions t/.test(sql)) return { rows: [{ id: 10, type: "spend" }] };
@@ -40,9 +76,12 @@ function createMockDb() {
                 return { rows: [{ ...user }] };
             }
             if (/UPDATE reader_users/.test(sql) && /SET\s+copper_coins/.test(sql)) {
-                const cost = Number(params[0] || 0);
-                if (user.copper_coins < cost) return { rows: [] };
-                user.copper_coins -= cost;
+                const amount = Number(params[0] || 0);
+                if (/GREATEST\(0,[\s\S]*\+ \$1/.test(sql)) user.copper_coins = Math.max(0, user.copper_coins + amount);
+                else {
+                    if (user.copper_coins < amount) return { rows: [] };
+                    user.copper_coins -= amount;
+                }
                 if (params[2]) user.export_unlocked_at = "now";
                 return { rows: [{ ...user }] };
             }
@@ -65,19 +104,23 @@ function createMockDb() {
             if (/COUNT\(DISTINCT book_id\)::int count/.test(sql)) {
                 return { rows: [{ count: usage.size }] };
             }
+            if (/SELECT id FROM reader_export_usage/.test(sql)) {
+                const store = /charge_type='extra_quota'|charge_type = 'extra_quota'/.test(sql) ? extraUsage : usage;
+                return { rows: store.has(params[2]) ? [{ id: store.get(params[2]) }] : [] };
+            }
             if (/FROM reader_export_usage/.test(sql) && /charge_type = 'extra_quota'/.test(sql)) {
-                return { rows: extraUsage.has(params[2]) ? [{ "?column?": 1 }] : [] };
+                return { rows: extraUsage.has(params[2]) ? [{ id: extraUsage.get(params[2]), "?column?": 1 }] : [] };
             }
             if (/SELECT 1\s+FROM reader_export_usage/.test(sql)) {
-                return { rows: usage.has(params[2]) ? [{ "?column?": 1 }] : [] };
+                return { rows: usage.has(params[2]) ? [{ id: usage.get(params[2]), "?column?": 1 }] : [] };
             }
             if (/INSERT INTO reader_export_usage/.test(sql) && /'extra_quota'/.test(sql)) {
-                extraUsage.add(params[2]);
-                return { rows: [] };
+                if (!extraUsage.has(params[2])) extraUsage.set(params[2], ++usageSequence);
+                return { rows: [{ id: extraUsage.get(params[2]) }] };
             }
             if (/INSERT INTO reader_export_usage/.test(sql)) {
-                usage.add(params[2]);
-                return { rows: [] };
+                if (!usage.has(params[2])) usage.set(params[2], ++usageSequence);
+                return { rows: [{ id: usage.get(params[2]) }] };
             }
             return { rows: [] };
         },
@@ -192,4 +235,88 @@ test("user currency service claims extra export quota and redeems quota cdk", as
     const redeemed = await service.redeemExportQuotaCdk({ telegramId: "100", code: "cdk-quota" });
     assert.equal(redeemed.cdk.export_quota, 3);
     assert.equal(redeemed.user.export_extra_quota, 4);
+});
+
+test("currency settlement replays without charging twice after a worker retry", async () => {
+    const db = createMockDb();
+    const service = serviceWith(db);
+    const input = {
+        telegramId: "100",
+        currency: "copper",
+        amount: 120,
+        type: "export_txt_fee",
+        idempotencyKey: "system-job:42:export-settlement",
+        idempotencyScope: "export-settlement",
+        idempotencyData: { book_id: "b42", format: "txt" }
+    };
+
+    const first = await service.spendUserCurrency(input);
+    const replayed = await service.spendUserCurrency(input);
+
+    assert.equal(first.repeated, false);
+    assert.equal(replayed.repeated, true);
+    assert.equal(db.user.copper_coins, 180);
+    assert.equal(db.calls.filter((call) => /INSERT INTO reader_transactions/.test(call.sql)).length, 1);
+    assert.equal(db.operationLedger.size, 1);
+});
+
+test("share reward adjustment is exactly once for a persistent job operation", async () => {
+    const db = createMockDb();
+    const service = serviceWith(db);
+    const input = {
+        telegramId: "100",
+        currency: "copper",
+        delta: 1000,
+        type: "po18_bookshelf_share_reward",
+        idempotencyKey: "system-job:77:po18-share-reward:b77",
+        idempotencyScope: "po18-share-reward",
+        idempotencyData: { book_id: "b77" }
+    };
+
+    const first = await service.adjustUserCurrency(input);
+    const replayed = await service.adjustUserCurrency(input);
+
+    assert.equal(first.repeated, false);
+    assert.equal(replayed.repeated, true);
+    assert.equal(db.user.copper_coins, 1300);
+    assert.equal(db.calls.filter((call) => /INSERT INTO reader_transactions/.test(call.sql)).length, 1);
+});
+
+test("a retry replays the settlement strategy already chosen by the first attempt", async () => {
+    const db = createMockDb();
+    db.usage.set("already-used", 1);
+    const service = serviceWith(db);
+    const common = {
+        telegramId: "100",
+        bookId: "b2",
+        format: "epub",
+        idempotencyKey: "system-job:88:export-settlement",
+        idempotencyScope: "export-settlement"
+    };
+
+    await assert.rejects(() => service.claimDailyFreeExport(common), /daily free export quota used/);
+    const extra = await service.claimExtraExportQuota(common);
+    const replayed = await service.claimDailyFreeExport(common);
+
+    assert.equal(extra.usage.kind, "extra_quota");
+    assert.equal(replayed.usage.kind, "extra_quota");
+    assert.equal(replayed.usage.settlement_replayed, true);
+    assert.equal(db.user.export_extra_quota, 1);
+});
+
+test("idempotency keys cannot be reused for a different export format", async () => {
+    const db = createMockDb();
+    const service = serviceWith(db);
+    const first = {
+        telegramId: "100",
+        bookId: "b1",
+        format: "txt",
+        idempotencyKey: "system-job:99:export-settlement",
+        idempotencyScope: "export-settlement"
+    };
+    await service.claimDailyFreeExport(first);
+    await assert.rejects(
+        () => service.claimDailyFreeExport({ ...first, format: "epub" }),
+        (error) => error?.status === 409 && error?.code === "IDEMPOTENCY_CONFLICT"
+    );
 });

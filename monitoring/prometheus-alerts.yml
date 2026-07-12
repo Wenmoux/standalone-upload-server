@@ -1,0 +1,106 @@
+groups:
+  - name: po18-reader-runtime
+    rules:
+      - alert: Po18DatabasePoolWaiting
+        expr: po18_db_pool_connections{state="waiting"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: PostgreSQL 连接池持续等待
+          description: 数据库连接池已有请求等待超过 5 分钟。
+
+      - alert: Po18DatabaseQueryTimeouts
+        expr: increase(po18_db_queries_total{result="timeout"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL 查询发生超时
+          description: 最近 10 分钟至少有一个查询达到 statement/query timeout。
+
+      - alert: Po18ReaderSearchLatencyBudgetExceeded
+        expr: po18_reader_endpoint_latency_ms{endpoint="search",quantile="p95"} > 1500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Reader 搜索 p95 超预算
+          description: 搜索 p95 连续 10 分钟超过 1.5 秒冷查询预算。
+
+      - alert: Po18PersistentJobHeartbeatLost
+        expr: po18_system_job_heartbeat_lost > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 持久任务租约失去心跳
+          description: 存在运行任务租约过期，Worker 可能退出或卡死。
+
+      - alert: Po18PersistentJobFailureRatioHigh
+        expr: po18_system_job_failure_ratio > 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: 持久任务失败率偏高
+          description: 已完成任务中的失败比例连续 15 分钟高于 20%。
+
+      - alert: Po18CrawlerAuthenticationFailures
+        expr: increase(po18_crawler_source_failures_total{kind="auth"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: 爬虫来源认证失败
+          description: 最近 15 分钟出现 Cookie/登录状态失效。
+
+      - alert: Po18CrawlerRateLimited
+        expr: increase(po18_crawler_source_failures_total{kind="rate_limit"}[15m]) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: 爬虫来源持续限流
+          description: 最近 15 分钟至少出现 3 次来源限流。
+
+      - alert: Po18TelegramPollingStale
+        expr: po18_bot_poll_age_ms > 120000
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: Telegram Bot polling 停滞
+          description: Bot 超过 2 分钟没有成功完成 polling。
+
+      - alert: Po18TelegramRateLimited
+        expr: increase(po18_bot_telegram_rate_limited_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Telegram API 返回 429
+          description: 最近 15 分钟 Telegram Bot API 出现限流。
+
+      - alert: Po18BackupTooOld
+        expr: po18_backup_last_success_timestamp_seconds > 0 and time() - po18_backup_last_success_timestamp_seconds > 691200
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: 备份已超过 8 天未成功
+          description: 最近一次本地或远端备份成功时间已超过 8 天。
+
+      - alert: Po18RestoreDrillTooOld
+        expr: po18_backup_restore_drill_last_success_timestamp_seconds > 0 and time() - po18_backup_restore_drill_last_success_timestamp_seconds > 691200
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: 恢复演练已超过 8 天未成功
+          description: 备份尚未按周成功恢复到临时数据库并完成一致性检查。
+
+      - alert: Po18AbnormalChapterContentDetected
+        expr: po18_data_quality{metric="abnormal_chapters"} > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: 检测到异常章节正文
+          description: 存在空正文或超过质量阈值的大正文，需要在数据质量中心检查。

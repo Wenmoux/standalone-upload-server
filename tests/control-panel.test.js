@@ -3,7 +3,15 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const test = require("node:test");
-const { handlePanelRequest, importedValuesFromText, loadConfigIntoEnv, setupToken, versionPayload } = require("../docker/control-panel");
+const {
+    designTokensCss,
+    handlePanelRequest,
+    importedValuesFromText,
+    loadConfigIntoEnv,
+    sanitizeConfigExport,
+    setupToken,
+    versionPayload
+} = require("../docker/control-panel");
 const { createRateWindow } = require("../services/rate-limit");
 
 function withTempEnv(contents, fn) {
@@ -25,23 +33,63 @@ test("setup token from app.env ignores outer quotes", async () => {
     }
 });
 
+test("ordinary setup export removes directly usable credentials", () => {
+    const exported = sanitizeConfigExport(
+        [
+            'PO18_PG_URL="postgres://user:password@db:5432/po18"',
+            'PO18_UPLOAD_ADMIN_USER="admin"',
+            'PO18_UPLOAD_ADMIN_PASSWORD="admin-password"',
+            'PO18_UPLOAD_API_TOKEN="upload-token"',
+            'PO18_CREDENTIAL_ENCRYPTION_KEY="encryption-key"',
+            'PO18_SERVER_URL="https://reader.example.com"'
+        ].join("\n")
+    );
+    assert.match(exported.content, /PO18_UPLOAD_ADMIN_USER/);
+    assert.match(exported.content, /PO18_SERVER_URL/);
+    assert.doesNotMatch(exported.content, /postgres:\/\/|admin-password|upload-token|encryption-key/);
+    assert.deepEqual(exported.omitted, [
+        "PO18_CREDENTIAL_ENCRYPTION_KEY",
+        "PO18_PG_URL",
+        "PO18_UPLOAD_ADMIN_PASSWORD",
+        "PO18_UPLOAD_API_TOKEN"
+    ]);
+});
+
+test("setup and admin consume the same static design token source", () => {
+    const source = fs.readFileSync(path.join(__dirname, "..", "ui", "design-tokens.css"), "utf8");
+    const adminStyles = fs.readFileSync(path.join(__dirname, "..", "admin-ui", "src", "styles.css"), "utf8");
+    assert.equal(designTokensCss(), source);
+    assert.match(source, /--po18-primary:/);
+    assert.match(source, /--po18-font-sans:/);
+    assert.match(adminStyles, /@import "\.\.\/\.\.\/ui\/design-tokens\.css"/);
+});
+
 test("version payload exposes runtime app version and build metadata", () => {
     const previous = {
         PO18_APP_VERSION: process.env.PO18_APP_VERSION,
         PO18_IMAGE_TAG: process.env.PO18_IMAGE_TAG,
+        PO18_IMMUTABLE_IMAGE_TAG: process.env.PO18_IMMUTABLE_IMAGE_TAG,
+        PO18_IMAGE_DIGEST: process.env.PO18_IMAGE_DIGEST,
         PO18_BUILD_DATE: process.env.PO18_BUILD_DATE,
-        PO18_BUILD_REVISION: process.env.PO18_BUILD_REVISION
+        PO18_BUILD_REVISION: process.env.PO18_BUILD_REVISION,
+        PO18_SOURCE_HASH: process.env.PO18_SOURCE_HASH
     };
     try {
         process.env.PO18_APP_VERSION = "1.0.0+test";
         process.env.PO18_IMAGE_TAG = "wenmoux/reader:test";
+        process.env.PO18_IMMUTABLE_IMAGE_TAG = "wenmoux/reader:sha-abc123-source";
+        process.env.PO18_IMAGE_DIGEST = "sha256:runtime-digest";
         process.env.PO18_BUILD_DATE = "2026-06-23T12:00:00.000Z";
         process.env.PO18_BUILD_REVISION = "abc123def456";
+        process.env.PO18_SOURCE_HASH = "source-hash";
 
         const payload = versionPayload("unit-test");
         assert.equal(payload.service, "unit-test");
         assert.equal(payload.version, "1.0.0+test");
         assert.equal(payload.image, "wenmoux/reader:test");
+        assert.equal(payload.immutable_image, "wenmoux/reader:sha-abc123-source");
+        assert.equal(payload.image_digest, "sha256:runtime-digest");
+        assert.equal(payload.source_hash, "source-hash");
         assert.equal(payload.build_date, "2026-06-23T12:00:00.000Z");
         assert.equal(payload.build_revision, "abc123def456");
         assert.equal(payload.revision, "abc123def456");
@@ -58,18 +106,28 @@ test("version payload prefers immutable image build info over runtime env", () =
     const previous = {
         PO18_APP_VERSION: process.env.PO18_APP_VERSION,
         PO18_IMAGE_TAG: process.env.PO18_IMAGE_TAG,
+        PO18_IMMUTABLE_IMAGE_TAG: process.env.PO18_IMMUTABLE_IMAGE_TAG,
+        PO18_IMAGE_DIGEST: process.env.PO18_IMAGE_DIGEST,
         PO18_BUILD_DATE: process.env.PO18_BUILD_DATE,
-        PO18_BUILD_REVISION: process.env.PO18_BUILD_REVISION
+        PO18_BUILD_REVISION: process.env.PO18_BUILD_REVISION,
+        PO18_SOURCE_HASH: process.env.PO18_SOURCE_HASH
     };
     const hadBuildInfo = fs.existsSync(buildInfoFile);
     const oldBuildInfo = hadBuildInfo ? fs.readFileSync(buildInfoFile, "utf8") : "";
     try {
-        fs.writeFileSync(buildInfoFile, JSON.stringify({
-            version: "1.0.0+image",
-            image: "wenmoux/reader:v1.0",
-            build_date: "2026-06-28T16:12:44.322Z",
-            build_revision: "image-rev"
-        }));
+        fs.writeFileSync(
+            buildInfoFile,
+            JSON.stringify({
+                version: "1.0.0+image",
+                image: "wenmoux/reader:v1.0",
+                immutable_image: "wenmoux/reader:sha-image-rev-source",
+                image_tags: ["wenmoux/reader:v1.0.0", "wenmoux/reader:sha-image-rev-source"],
+                build_date: "2026-06-28T16:12:44.322Z",
+                build_revision: "image-rev",
+                source_hash: "image-source-hash",
+                dirty: false
+            })
+        );
         process.env.PO18_APP_VERSION = "1.0.0+runtime-old";
         process.env.PO18_IMAGE_TAG = "wenmoux/reader:runtime-old";
         process.env.PO18_BUILD_DATE = "2026-06-23T12:00:00.000Z";
@@ -79,6 +137,9 @@ test("version payload prefers immutable image build info over runtime env", () =
         assert.equal(payload.version, "1.0.0+image");
         assert.equal(payload.runtime_version, "1.0.0+runtime-old");
         assert.equal(payload.image, "wenmoux/reader:v1.0");
+        assert.equal(payload.immutable_image, "wenmoux/reader:sha-image-rev-source");
+        assert.deepEqual(payload.image_tags, ["wenmoux/reader:v1.0.0", "wenmoux/reader:sha-image-rev-source"]);
+        assert.equal(payload.source_hash, "image-source-hash");
         assert.equal(payload.build_date, "2026-06-28T16:12:44.322Z");
         assert.equal(payload.build_revision, "image-rev");
     } finally {
@@ -107,18 +168,21 @@ test("loadConfigIntoEnv strips quoted secret values", async () => {
 
 test("setup import parses exported env and maps BOT_TOKEN", async () => {
     await withTempEnv('PO18_SETUP_TOKEN="current-token-123456"\n', async (file) => {
-        const { values, importedCount } = importedValuesFromText([
-            "# exported",
-            'PO18_SETUP_TOKEN="next-token-123456"',
-            'PO18_PG_URL="postgres://user:pass@db:5432/po18"',
-            'PO18_UPLOAD_ADMIN_USER="admin"',
-            'PO18_UPLOAD_ADMIN_PASSWORD="admin-pass"',
-            'PO18_UPLOAD_SESSION_SECRET="session-secret-123456"',
-            'PO18_UPLOAD_API_TOKEN="upload-token-123456"',
-            'PO18_BOT_API_TOKEN="bot-api-token-123456"',
-            'BOT_TOKEN="telegram-token"',
-            'UNKNOWN_KEY="ignored"'
-        ].join("\n"), file);
+        const { values, importedCount } = importedValuesFromText(
+            [
+                "# exported",
+                'PO18_SETUP_TOKEN="next-token-123456"',
+                'PO18_PG_URL="postgres://user:pass@db:5432/po18"',
+                'PO18_UPLOAD_ADMIN_USER="admin"',
+                'PO18_UPLOAD_ADMIN_PASSWORD="admin-pass"',
+                'PO18_UPLOAD_SESSION_SECRET="session-secret-123456"',
+                'PO18_UPLOAD_API_TOKEN="upload-token-123456"',
+                'PO18_BOT_API_TOKEN="bot-api-token-123456"',
+                'BOT_TOKEN="telegram-token"',
+                'UNKNOWN_KEY="ignored"'
+            ].join("\n"),
+            file
+        );
 
         assert.equal(importedCount, 8);
         assert.equal(values.PO18_SETUP_TOKEN, "next-token-123456");
@@ -232,7 +296,10 @@ test("setup panel rate limits repeated invalid tokens", async () => {
                 let status = 0;
                 let headers = {};
                 const res = {
-                    writeHead(code, nextHeaders) { status = code; headers = nextHeaders; },
+                    writeHead(code, nextHeaders) {
+                        status = code;
+                        headers = nextHeaders;
+                    },
                     end() {}
                 };
                 await handlePanelRequest(req, res, {

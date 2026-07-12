@@ -41,6 +41,32 @@ function pathParameters(routePath = "") {
     }));
 }
 
+function requestPolicyForRoute(method, routePath, policies = REQUEST_SCHEMA_POLICIES) {
+    const upperMethod = String(method || "").toUpperCase();
+    return policies.find((policy) => policy.method === upperMethod && policy.path.test(routePath)) || null;
+}
+
+function requestBodyForRoute(method, routePath) {
+    if (!["post", "put", "patch"].includes(String(method || "").toLowerCase())) return null;
+    const policy = requestPolicyForRoute(method, routePath);
+    return {
+        required: true,
+        content: {
+            "application/json": {
+                schema: policy?.schema || { type: "object", additionalProperties: true }
+            }
+        },
+        ...(policy ? { "x-validation-policy": policy.name } : { "x-validation-policy": "route-handler" })
+    };
+}
+
+function successSchemaForRoute(routePath = "") {
+    if (/\/admin-api\/books\/(?:\{metadataId\}|[^/]+)\/manifest$/.test(routePath)) return { $ref: "#/components/schemas/BookManifest" };
+    if (routePath === "/reader-api/search") return { $ref: "#/components/schemas/SearchResponse" };
+    if (routePath === "/admin-api/review-moderation") return { $ref: "#/components/schemas/ModerationQueue" };
+    return { type: "object", additionalProperties: true };
+}
+
 function routeRecords(stack = [], rows = []) {
     for (const layer of stack || []) {
         if (layer.route) {
@@ -69,20 +95,29 @@ function buildOpenApiDocument(app, options = {}) {
     for (const route of collectExpressRoutes(app)) {
         if (!paths[route.path]) paths[route.path] = {};
         const security = routeSecurity(route.path);
+        const requestBody = requestBodyForRoute(route.method, route.path);
         paths[route.path][route.method] = {
             operationId: operationId(route.method, route.path),
             tags: [routeTag(route.path)],
             summary: `${route.method.toUpperCase()} ${route.path}`,
             parameters: pathParameters(route.path),
+            ...(requestBody ? { requestBody } : {}),
             ...(security.length ? { security } : {}),
             responses: {
                 200: {
                     description: "Success",
-                    content: { "application/json": { schema: { type: "object", additionalProperties: true } } }
+                    content: { "application/json": { schema: successSchemaForRoute(route.path) } }
                 },
                 400: { $ref: "#/components/responses/BadRequest" },
                 401: { $ref: "#/components/responses/Unauthorized" },
-                500: { $ref: "#/components/responses/ServerError" }
+                403: { $ref: "#/components/responses/Forbidden" },
+                404: { $ref: "#/components/responses/NotFound" },
+                409: { $ref: "#/components/responses/Conflict" },
+                413: { $ref: "#/components/responses/PayloadTooLarge" },
+                422: { $ref: "#/components/responses/Unprocessable" },
+                429: { $ref: "#/components/responses/RateLimited" },
+                500: { $ref: "#/components/responses/ServerError" },
+                503: { $ref: "#/components/responses/ServiceUnavailable" }
             }
         };
     }
@@ -112,6 +147,62 @@ function buildOpenApiDocument(app, options = {}) {
                         request_id: { type: "string" }
                     },
                     additionalProperties: true
+                },
+                Checksum: {
+                    type: "object",
+                    required: ["algorithm", "value"],
+                    properties: {
+                        algorithm: { const: "sha256" },
+                        value: { type: "string", pattern: "^[0-9a-f]{64}$" }
+                    },
+                    additionalProperties: false
+                },
+                BookManifest: {
+                    type: "object",
+                    required: ["format", "version", "generated_at", "source", "book", "chapters", "summary", "checksum"],
+                    properties: {
+                        format: { const: "po18-reader-book" },
+                        version: { const: 1 },
+                        generated_at: { type: "string", format: "date-time" },
+                        source: {
+                            type: "object",
+                            required: ["app_version", "identity_model", "platform", "book_id"],
+                            additionalProperties: true
+                        },
+                        book: { type: "object", required: ["platform", "book_id"], additionalProperties: true },
+                        chapters: {
+                            type: "array",
+                            items: { type: "object", required: ["chapter_id", "checksum"], additionalProperties: true }
+                        },
+                        summary: { type: "object", required: ["chapters", "content_included"], additionalProperties: true },
+                        checksum: { $ref: "#/components/schemas/Checksum" }
+                    },
+                    additionalProperties: false
+                },
+                SearchResponse: {
+                    type: "object",
+                    required: ["rows", "total", "page", "limit"],
+                    properties: {
+                        rows: { type: "array", items: { type: "object", additionalProperties: true } },
+                        total: { type: "integer", minimum: 0 },
+                        page: { type: "integer", minimum: 1 },
+                        limit: { type: "integer", minimum: 1 },
+                        has_more: { type: "boolean" },
+                        next_cursor: { type: ["string", "null"] }
+                    },
+                    additionalProperties: true
+                },
+                ModerationQueue: {
+                    type: "object",
+                    required: ["kind", "page", "limit", "total", "rows"],
+                    properties: {
+                        kind: { enum: ["reports", "appeals"] },
+                        page: { type: "integer", minimum: 1 },
+                        limit: { type: "integer", minimum: 1 },
+                        total: { type: "integer", minimum: 0 },
+                        rows: { type: "array", items: { type: "object", additionalProperties: true } }
+                    },
+                    additionalProperties: true
                 }
             },
             responses: {
@@ -123,8 +214,37 @@ function buildOpenApiDocument(app, options = {}) {
                     description: "Authentication required",
                     content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
                 },
+                Forbidden: {
+                    description: "Permission denied",
+                    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+                },
+                NotFound: {
+                    description: "Resource not found",
+                    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+                },
+                Conflict: {
+                    description: "State conflict",
+                    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+                },
+                PayloadTooLarge: {
+                    description: "Payload too large",
+                    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+                },
+                Unprocessable: {
+                    description: "Checksum or semantic validation failed",
+                    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+                },
+                RateLimited: {
+                    description: "Rate limit exceeded",
+                    headers: { "Retry-After": { schema: { type: "integer" } } },
+                    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+                },
                 ServerError: {
                     description: "Server error",
+                    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+                },
+                ServiceUnavailable: {
+                    description: "Dependency or service unavailable",
                     content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
                 }
             }
@@ -137,6 +257,10 @@ module.exports = {
     collectExpressRoutes,
     expressPathToOpenApi,
     operationId,
+    requestBodyForRoute,
+    requestPolicyForRoute,
     routeSecurity,
+    successSchemaForRoute,
     routeTag
 };
+const { REQUEST_SCHEMA_POLICIES } = require("./schema-validation");

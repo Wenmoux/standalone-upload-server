@@ -29,6 +29,11 @@ function trustProxySetting(value = process.env.PO18_TRUST_PROXY) {
     return String(value).trim();
 }
 
+function isLoopbackHost(value) {
+    const host = String(value || "").trim().toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || host === "127.0.0.1" || host.startsWith("127.");
+}
+
 function productionSecurityErrors(env = process.env) {
     if (env.NODE_ENV !== "production" || env.PO18_ALLOW_INSECURE_DEFAULTS === "1") return [];
     const errors = [];
@@ -46,6 +51,10 @@ function productionSecurityErrors(env = process.env) {
     if (allowedCorsOrigins(env).includes("*") && env.PO18_ALLOW_INSECURE_CORS !== "1") {
         errors.push("wildcard PO18_CORS_ORIGINS requires PO18_ALLOW_INSECURE_CORS=1");
     }
+    const bindHost = env.PO18_UPLOAD_HOST || "0.0.0.0";
+    if (!isLoopbackHost(bindHost) && !String(env.PO18_METRICS_TOKEN || "").trim()) {
+        errors.push("PO18_METRICS_TOKEN must be configured when the server binds beyond localhost");
+    }
     return errors;
 }
 
@@ -59,6 +68,7 @@ module.exports = {
     assertProductionSecurity,
     corsOriginCallback,
     isCorsOriginAllowed,
+    isLoopbackHost,
     listValues,
     productionSecurityErrors,
     trustProxySetting

@@ -17,6 +17,7 @@ const defaultSecrets = {
 
 let generatedSetupToken = "";
 let adminIndexCache = { file: "", mtimeMs: 0, html: "" };
+let designTokensCache = "";
 const REQUIRED_TABLES = ["book_metadata", "chapter_cache", "admin_users", "admin_config", "reader_users", "upload_events"];
 const setupAuthRateWindow = createRateWindow({
     windowMs: Number(process.env.PO18_SETUP_AUTH_RATE_WINDOW_MS || 15 * 60 * 1000),
@@ -56,6 +57,8 @@ const CONFIG_KEYS = [
     "PIKPAK_WEBDAV_ROOT"
 ];
 const CONFIG_KEY_SET = new Set(CONFIG_KEYS);
+const SENSITIVE_CONFIG_KEY =
+    /(?:PASSWORD|PASSWD|SECRET|TOKEN|COOKIE|CREDENTIAL|PRIVATE_KEY|ENCRYPTION_KEY|DATABASE_URL|PG_URL|ACCESS_KEY)/i;
 
 function packageVersion() {
     try {
@@ -64,6 +67,19 @@ function packageVersion() {
     } catch {
         return "0.0.0";
     }
+}
+
+function designTokensCss() {
+    if (designTokensCache) return designTokensCache;
+    try {
+        designTokensCache = fsSync
+            .readFileSync(path.join(__dirname, "..", "ui", "design-tokens.css"), "utf8")
+            .replace(/<\/style/gi, "<\\/style");
+    } catch {
+        designTokensCache =
+            ':root{--po18-bg:#eef2f7;--po18-surface:#fff;--po18-surface-alt:#f8fafc;--po18-text:#162033;--po18-muted:#65748b;--po18-line:#d8e1ea;--po18-accent:#2563eb;--po18-accent-dark:#1d4ed8;--po18-success:#15803d;--po18-danger:#be123c;--po18-warning:#a16207;--po18-shadow:0 18px 44px rgba(15,23,42,.11);--po18-radius-lg:12px;--po18-font-sans:Inter,Roboto,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,"Microsoft YaHei",sans-serif}';
+    }
+    return designTokensCache;
 }
 
 function imageBuildInfo() {
@@ -78,15 +94,23 @@ function versionPayload(service = "po18-reader") {
     const build = imageBuildInfo();
     const runtimeVersion = process.env.PO18_APP_VERSION || "";
     const revision = build.build_revision || build.revision || process.env.PO18_BUILD_REVISION || "";
+    const immutableImage = build.immutable_image || process.env.PO18_IMMUTABLE_IMAGE_TAG || "";
+    const sourceHash = build.source_hash || process.env.PO18_SOURCE_HASH || "";
+    const imageDigest = process.env.PO18_IMAGE_DIGEST || build.image_digest || "";
     return {
         ok: true,
         service,
         version: build.version || runtimeVersion || packageVersion(),
         runtime_version: runtimeVersion,
         image: build.image || process.env.PO18_IMAGE_TAG || "wenmoux/reader:v2.0",
+        immutable_image: immutableImage,
+        image_tags: Array.isArray(build.image_tags) ? build.image_tags : [],
+        image_digest: imageDigest,
         build_date: build.build_date || process.env.PO18_BUILD_DATE || "",
         build_revision: revision,
         revision,
+        source_hash: sourceHash,
+        dirty: build.dirty === true || process.env.PO18_BUILD_DIRTY === "true",
         node: process.version,
         platform: `${process.platform}/${process.arch}`,
         uptime_seconds: Math.round(process.uptime())
@@ -120,6 +144,27 @@ function normalizeEnvSecret(value) {
         text = text.slice(1, -1);
     }
     return text.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
+function sanitizeConfigExport(content = "") {
+    const omitted = [];
+    const lines = String(content || "").split(/\r?\n/);
+    const safe = [];
+    for (const line of lines) {
+        const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+        if (match && SENSITIVE_CONFIG_KEY.test(match[1])) {
+            omitted.push(match[1]);
+            continue;
+        }
+        safe.push(line);
+    }
+    const header = [
+        "# PO18 safe configuration export",
+        "# Sensitive values were intentionally omitted. Re-enter them through Setup on the target server.",
+        `# Omitted keys: ${omitted.sort().join(", ") || "none"}`,
+        ""
+    ];
+    return { content: `${header.join("\n")}${safe.join("\n").replace(/^\s+/, "")}`, omitted };
 }
 
 function readEnvFileSync(file = DEFAULT_CONFIG_FILE) {
@@ -306,9 +351,9 @@ function field({
 }
 
 function sharedStyles() {
-    return `<style>
-    :root{color-scheme:light;--bg:#f7f9fd;--surface:#fff;--surface-2:#f9fbff;--text:#172033;--muted:#64748b;--line:#d9e2ef;--primary:#2563eb;--primary-dark:#1d4ed8;--success:#15803d;--danger:#be123c;--warn:#a16207;--shadow:0 18px 44px rgba(15,23,42,.10);--radius:12px}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:Inter,Roboto,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;letter-spacing:0}
+    return `<style>${designTokensCss()}
+    :root{--bg:var(--po18-bg);--surface:var(--po18-surface);--surface-2:var(--po18-surface-alt);--text:var(--po18-text);--muted:var(--po18-muted);--line:var(--po18-line);--primary:var(--po18-accent);--primary-dark:var(--po18-accent-dark);--success:var(--po18-success);--danger:var(--po18-danger);--warn:var(--po18-warning);--shadow:var(--po18-shadow);--radius:var(--po18-radius-lg)}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--po18-font-sans);letter-spacing:0}
     .topbar{position:sticky;top:0;z-index:2;min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 28px;background:rgba(255,255,255,.92);border-bottom:1px solid rgba(217,226,239,.92);backdrop-filter:saturate(140%) blur(14px)}
     .brand{display:flex;align-items:center;gap:12px;min-width:0}.mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#e8f0ff;color:var(--primary);font-weight:800;box-shadow:inset 0 0 0 1px #c8d9ff}.brand strong{display:block;font-size:16px;line-height:1.15}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:2px}
     .chip{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 12px;border-radius:999px;color:#285347;background:#e7f6ee;border:1px solid #c7ead5;font-size:13px;white-space:nowrap}.dot{width:8px;height:8px;border-radius:50%;background:#16a34a}
@@ -359,7 +404,7 @@ function nav(token) {
       <a href="${authPath("/setup/admin", token)}">后台面板</a>
       <a href="${authPath("/setup/status", token)}">状态</a>
       <a href="${authPath("/setup/logs", token)}">日志</a>
-      <a href="${authPath("/backup", token)}">导出配置</a>
+      <a href="${authPath("/backup", token)}">导出安全配置</a>
       <a href="${authPath("/setup", token)}#import-config">导入配置</a>
     </nav>`;
 }
@@ -367,7 +412,7 @@ function nav(token) {
 function formPage({ configFile = DEFAULT_CONFIG_FILE, auth = {}, message = "", error = "" } = {}) {
     const values = currentValues(configFile);
     const token = auth.token || "";
-    const backupLink = fsSync.existsSync(configFile) ? `<a class="ghost-button" href="${authPath("/backup", token)}">下载当前配置</a>` : "";
+    const backupLink = fsSync.existsSync(configFile) ? `<a class="ghost-button" href="${authPath("/backup", token)}">下载安全配置</a>` : "";
     const body = `<main><div class="layout">
       <aside class="summary">
         <h1>${fsSync.existsSync(configFile) ? "运行配置" : "部署前配置"}</h1>
@@ -393,7 +438,7 @@ function formPage({ configFile = DEFAULT_CONFIG_FILE, auth = {}, message = "", e
                 <span class="field-label">配置内容</span>
                 <textarea id="configImportText" class="import-area" placeholder="把 app.env 内容粘贴到这里，或选择文件自动读取。"></textarea>
               </label>
-              <div class="field field-wide"><div class="button-row"><button id="previewImport" class="ghost-button" type="button">填入表单</button><button id="submitImport" class="ghost-button" type="button">导入并重启</button><a class="ghost-button" href="${authPath("/backup", token)}">导出当前配置</a></div><span id="importResult" class="inline-status" role="status"></span></div>
+              <div class="field field-wide"><div class="button-row"><button id="previewImport" class="ghost-button" type="button">填入表单</button><button id="submitImport" class="ghost-button" type="button">导入并重启</button><a class="ghost-button" href="${authPath("/backup", token)}">导出安全配置</a></div><span id="importResult" class="inline-status" role="status"></span></div>
             </div>
           </div>
           <div class="section"><div class="section-head"><p class="section-title">数据库</p><p class="section-desc">后端服务启动前必须能访问 PostgreSQL。保存前建议先测试一次。</p></div>
@@ -466,7 +511,7 @@ function successPage({ values, auth = {}, configFile = DEFAULT_CONFIG_FILE, rest
         <div class="status-box"><strong>阅读器地址</strong><span>${htmlEscape(shareUrl)}</span></div>
         <div class="status-box"><strong>Bot 状态</strong><span>${values.TELEGRAM_BOT_TOKEN ? "已配置 Token，重启后自动启动" : "未填写 Telegram Token，重启后不启动 Bot"}</span></div>
       </div>
-      <div class="button-row"><a class="primary-button" href="${authPath("/setup/status", token)}">查看状态</a><a class="ghost-button" href="${authPath("/backup", token)}">下载配置备份</a><a class="ghost-button" href="${authPath("/setup", token)}">返回配置</a></div>
+      <div class="button-row"><a class="primary-button" href="${authPath("/setup/status", token)}">查看状态</a><a class="ghost-button" href="${authPath("/backup", token)}">下载安全配置</a><a class="ghost-button" href="${authPath("/setup", token)}">返回配置</a></div>
     </section></div></main>${restarting ? `<script>var seconds=${Math.ceil(RESTART_DELAY_MS / 1000)};var node=document.getElementById("countdown");setInterval(function(){seconds=Math.max(0,seconds-1);if(node)node.textContent=String(seconds)},1000)</script>` : ""}`;
     return pageShell({ chip: "配置已保存", body, auth: { ...auth, token } });
 }
@@ -598,10 +643,9 @@ async function collectDatabaseState(connectionString) {
     try {
         const [versionResult, tablesResult] = await Promise.all([
             pool.query("SELECT current_database() AS database, version() AS version"),
-            pool.query(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1::text[])",
-                [REQUIRED_TABLES]
-            )
+            pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1::text[])", [
+                REQUIRED_TABLES
+            ])
         ]);
         const present = new Set(tablesResult.rows.map((row) => row.table_name));
         const missing = REQUIRED_TABLES.filter((table) => !present.has(table));
@@ -660,7 +704,15 @@ async function checkHttp(name, url, required = true) {
         } catch {
             body = { raw: text.slice(0, 200) };
         }
-        return { name, ok: response.ok && body.ok !== false, required, status: response.status, latency_ms: Date.now() - started, url, body };
+        return {
+            name,
+            ok: response.ok && body.ok !== false,
+            required,
+            status: response.status,
+            latency_ms: Date.now() - started,
+            url,
+            body
+        };
     } catch (err) {
         return { name, ok: false, required, latency_ms: Date.now() - started, url, error: err.message || String(err) };
     } finally {
@@ -681,10 +733,16 @@ async function collectStatus(configFile = DEFAULT_CONFIG_FILE) {
         checkHttp("server-pg", process.env.SERVER_PG_HEALTH_URL || "http://127.0.0.1:3100/health/deep", true),
         checkHttp("reader", process.env.READER_HEALTH_URL || "http://127.0.0.1:3200/health/ready", true),
         testDatabase(values.PO18_PG_URL).catch((err) => ({ ok: false, error: err.message || String(err) })),
-        collectDatabaseState(values.PO18_PG_URL).catch((err) => ({ ok: false, error: err.message || String(err), missing_tables: REQUIRED_TABLES }))
+        collectDatabaseState(values.PO18_PG_URL).catch((err) => ({
+            ok: false,
+            error: err.message || String(err),
+            missing_tables: REQUIRED_TABLES
+        }))
     ]);
     results.push(server, reader, { name: "database", required: true, ...db });
-    results.push(dbState.error ? { name: "database schema", required: true, ...dbState } : { ...databaseStateResult(dbState), required: true });
+    results.push(
+        dbState.error ? { name: "database schema", required: true, ...dbState } : { ...databaseStateResult(dbState), required: true }
+    );
     if (values.TELEGRAM_BOT_TOKEN) {
         results.push(await checkHttp("bot", process.env.BOT_HEALTH_URL || "http://127.0.0.1:3300/health/ready", false));
     } else {
@@ -791,7 +849,8 @@ async function statusPage({ configFile = DEFAULT_CONFIG_FILE, auth = {} } = {}) 
 
 function readLogTail(logFile = DEFAULT_RUNTIME_LOG_FILE, maxBytes = 120000) {
     try {
-        if (!fsSync.existsSync(logFile)) return "暂无运行日志。单容器模式会把 run-all 子进程日志写入这里；也可以执行 docker logs po18-app --tail 200。";
+        if (!fsSync.existsSync(logFile))
+            return "暂无运行日志。单容器模式会把 run-all 子进程日志写入这里；也可以执行 docker logs po18-app --tail 200。";
         const stat = fsSync.statSync(logFile);
         const fd = fsSync.openSync(logFile, "r");
         const length = Math.min(stat.size, maxBytes);
@@ -817,10 +876,12 @@ function filterLogText(text, filter = "all") {
     };
     const pattern = patterns[mode] || patterns.all;
     if (!pattern) return text;
-    return text
-        .split(/\r?\n/)
-        .filter((line) => pattern.test(line))
-        .join("\n") || `没有匹配 ${mode} 的日志。`;
+    return (
+        text
+            .split(/\r?\n/)
+            .filter((line) => pattern.test(line))
+            .join("\n") || `没有匹配 ${mode} 的日志。`
+    );
 }
 
 function logFilterLinks(token, active) {
@@ -834,14 +895,19 @@ function logFilterLinks(token, active) {
         setup: "启动/面板"
     };
     return `<div class="filter-row">${Object.entries(labels)
-        .map(([key, label]) => `<a class="${key === active ? "active" : ""}" href="${authPath("/setup/logs", token, { filter: key })}">${label}</a>`)
+        .map(
+            ([key, label]) =>
+                `<a class="${key === active ? "active" : ""}" href="${authPath("/setup/logs", token, { filter: key })}">${label}</a>`
+        )
         .join("")}</div>`;
 }
 
 function logsPage({ auth = {}, filter = "all" } = {}) {
     const token = auth.token || "";
     const logFile = process.env.PO18_RUNTIME_LOG_FILE || DEFAULT_RUNTIME_LOG_FILE;
-    const active = ["all", "error", "database", "bot", "reader", "server", "setup"].includes(String(filter || "").toLowerCase()) ? String(filter).toLowerCase() : "all";
+    const active = ["all", "error", "database", "bot", "reader", "server", "setup"].includes(String(filter || "").toLowerCase())
+        ? String(filter).toLowerCase()
+        : "all";
     const body = `<main><div class="layout"><aside class="summary"><h1>运行日志</h1><p class="lead">显示容器内最近运行日志。完整日志仍建议使用 <code>docker logs po18-app</code>。</p><div class="path">${htmlEscape(logFile)}</div>${nav(token)}</aside>
       <section class="panel"><div class="section">${logFilterLinks(token, active)}<pre class="logbox">${htmlEscape(filterLogText(readLogTail(logFile), active))}</pre></div></section></div></main>`;
     return pageShell({ chip: active === "all" ? "最近日志" : `日志过滤：${active}`, body, auth });
@@ -898,7 +964,12 @@ async function handleImportPost(req, res, { configFile, auth, onSave }) {
         const configText = new URLSearchParams(body).get("config") || "";
         const { values, importedCount } = importedValuesFromText(configText, configFile);
         if (!importedCount) {
-            writeJson(res, 400, { ok: false, error: "没有识别到可导入的配置项" }, auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {});
+            writeJson(
+                res,
+                400,
+                { ok: false, error: "没有识别到可导入的配置项" },
+                auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {}
+            );
             return;
         }
         const error = validate(values);
@@ -909,15 +980,25 @@ async function handleImportPost(req, res, { configFile, auth, onSave }) {
         await saveConfig(values, configFile);
         Object.assign(process.env, values);
         const nextAuth = { ...auth, token: "", cookieToken: values.PO18_SETUP_TOKEN, setCookie: true };
-        writeJson(res, 200, {
-            ok: true,
-            imported: importedCount,
-            restarting: typeof onSave === "function",
-            next: "/setup/status"
-        }, { "Set-Cookie": authCookie(nextAuth.cookieToken) });
+        writeJson(
+            res,
+            200,
+            {
+                ok: true,
+                imported: importedCount,
+                restarting: typeof onSave === "function",
+                next: "/setup/status"
+            },
+            { "Set-Cookie": authCookie(nextAuth.cookieToken) }
+        );
         if (typeof onSave === "function") onSave();
     } catch (err) {
-        writeJson(res, 500, { ok: false, error: err.message || String(err) }, auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {});
+        writeJson(
+            res,
+            500,
+            { ok: false, error: err.message || String(err) },
+            auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {}
+        );
     }
 }
 
@@ -926,24 +1007,47 @@ async function handleTestDb(req, res, configFile, auth) {
         const body = await parseBody(req);
         const values = valuesFromParams(new URLSearchParams(body), configFile);
         if (!/^postgres(?:ql)?:\/\//i.test(values.PO18_PG_URL)) {
-            writeJson(res, 400, { ok: false, error: "PostgreSQL 连接地址格式不正确" }, auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {});
+            writeJson(
+                res,
+                400,
+                { ok: false, error: "PostgreSQL 连接地址格式不正确" },
+                auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {}
+            );
             return;
         }
         writeJson(res, 200, await testDatabase(values.PO18_PG_URL), auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {});
     } catch (err) {
-        writeJson(res, 400, { ok: false, error: err.message || String(err) }, auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {});
+        writeJson(
+            res,
+            400,
+            { ok: false, error: err.message || String(err) },
+            auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {}
+        );
     }
 }
 
-async function handleBackup(res, configFile, auth) {
+async function handleBackup(res, configFile, auth, options = {}) {
     try {
         const content = await fs.readFile(configFile, "utf8");
-        write(res, 200, content, "text/plain; charset=utf-8", {
-            "Content-Disposition": 'attachment; filename="app.env"',
+        const includeSecrets = options.includeSecrets === true;
+        const exported = includeSecrets
+            ? { content: `# SENSITIVE CONFIGURATION BACKUP - encrypt at rest and restrict access\n${content}`, omitted: [] }
+            : sanitizeConfigExport(content);
+        write(res, 200, exported.content, "text/plain; charset=utf-8", {
+            "Content-Disposition": includeSecrets ? 'attachment; filename="app.secrets.env"' : 'attachment; filename="app.safe.env"',
+            "Cache-Control": "no-store",
+            "X-PO18-Contains-Secrets": includeSecrets ? "true" : "false",
+            "X-PO18-Omitted-Keys": includeSecrets ? "" : String(exported.omitted.length),
             ...(auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {})
         });
     } catch {
-        write(res, 404, "config file not found", "text/plain; charset=utf-8", auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {});
+        write(
+            res,
+            404,
+            "config file not found",
+            "text/plain; charset=utf-8",
+            auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {}
+        );
     }
 }
 
@@ -990,7 +1094,7 @@ async function handlePanelRequest(req, res, options = {}) {
         url.searchParams.delete("token");
         const location = `${url.pathname}${url.search}` || "/setup";
         write(res, 302, "", "text/plain; charset=utf-8", {
-            "Location": location,
+            Location: location,
             "Set-Cookie": authCookie(auth.token)
         });
         return;
@@ -1025,7 +1129,17 @@ async function handlePanelRequest(req, res, options = {}) {
         return;
     }
     if (req.method === "GET" && pathname === "/backup") {
-        await handleBackup(res, configFile, auth);
+        const requestedSecrets = /^(1|true|yes)$/i.test(String(url.searchParams.get("include_secrets") || ""));
+        if (requestedSecrets && url.searchParams.get("confirm") !== "EXPORT_SECRETS") {
+            writeJson(
+                res,
+                400,
+                { ok: false, error: "full secret export requires confirm=EXPORT_SECRETS" },
+                auth.setCookie ? { "Set-Cookie": authCookie(auth.token) } : {}
+            );
+            return;
+        }
+        await handleBackup(res, configFile, auth, { includeSecrets: requestedSecrets });
         return;
     }
     if (req.method === "POST" && pathname === "/setup") {
@@ -1086,12 +1200,14 @@ module.exports = {
     attachExpressPanel,
     collectDiagnostics,
     collectStatus,
+    designTokensCss,
     filterLogText,
     handlePanelRequest,
     importedValuesFromText,
     loadConfigIntoEnv,
     logSetupToken,
     readLogTail,
+    sanitizeConfigExport,
     setupToken,
     versionPayload
 };

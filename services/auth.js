@@ -35,6 +35,7 @@ function adminRoleAllows(roleValue, req) {
     const path = String(req.path || req.url || "").split("?")[0];
     if (["GET", "HEAD", "OPTIONS"].includes(method)) {
         if (/\/admin-api\/auth\/admins(?:\/|$)/.test(path)) return false;
+        if (/\/admin-api\/review-moderation(?:\/|$)/.test(path)) return role === "moderator";
         if (role === "viewer" && /\/admin-api\/(config|backup\/download|backup\/config|backup\/diagnostics|system\/api-tokens)/.test(path)) return false;
         return true;
     }
@@ -44,7 +45,7 @@ function adminRoleAllows(roleValue, req) {
         if (/\/admin-api\/backup(?:\/|$)/.test(path) && path !== "/admin-api/backup/restore") return true;
         return false;
     }
-    if (role === "moderator") return /\/admin-api\/corrections(?:\/|$)/.test(path);
+    if (role === "moderator") return /\/admin-api\/(?:corrections|review-moderation)(?:\/|$)/.test(path);
     return false;
 }
 

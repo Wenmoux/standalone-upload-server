@@ -6,6 +6,7 @@ const {
     createDiagnosticsBackup,
     createPostgresBackup,
     createUploadedPostgresBackup,
+    drillPostgresBackup,
     listBackups,
     restorePostgresBackup,
     resolveBackupFile,
@@ -103,6 +104,24 @@ async function verifyBackupPayload({ fileName, backupDir = DEFAULT_BACKUP_DIR } 
     return { success: true, verification, backups: await listBackups({ backupDir }) };
 }
 
+async function drillBackupPayload({ fileName, configFile, backupDir = DEFAULT_BACKUP_DIR } = {}) {
+    const safeName = String(fileName || "").trim();
+    let selected = safeName;
+    if (!selected) {
+        const backups = await listBackups({ backupDir });
+        selected = backups.find((item) => item.type === "postgres")?.file || "";
+    }
+    if (!selected) throw httpError(404, "no postgres backup available for restore drill");
+    const drill = await drillPostgresBackup({ file: selected, configFile, backupDir });
+    return { success: true, drill, backups: await listBackups({ backupDir }) };
+}
+
+async function drillBackupJob(req, options = {}) {
+    return runTrackedJob(req, "backup:restore-drill", { file: path.basename(String(options.fileName || "latest")) }, async () => {
+        return drillBackupPayload(options);
+    });
+}
+
 async function resolveBackupDownload(fileName, { backupDir = DEFAULT_BACKUP_DIR } = {}) {
     let safeName = String(fileName || "");
     if (!safeName) {
@@ -121,6 +140,8 @@ module.exports = {
     backupListPayload,
     createBackupJob,
     createBackupPayload,
+    drillBackupJob,
+    drillBackupPayload,
     expectedRestoreConfirm,
     normalizeBackupType,
     resolveBackupDownload,

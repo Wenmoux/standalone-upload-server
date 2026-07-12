@@ -11,6 +11,12 @@
                 "semi": false,
                 "singleQuote": true
             }
+        },
+        {
+            "files": ["admin-ui/src/**/*.css", "ui/**/*.css"],
+            "options": {
+                "tabWidth": 2
+            }
         }
     ]
 }

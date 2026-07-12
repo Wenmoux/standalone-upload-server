@@ -42,6 +42,9 @@ test("data quality service builds summary and samples", async () => {
                             no_cover: 3,
                             no_description: 4,
                             platform_abnormal: 1,
+                            status_abnormal: 2,
+                            denominator_site_total: 6,
+                            denominator_unknown: 4,
                             stale_books: 5,
                             coverage_percent: 88.5
                         }
@@ -57,11 +60,19 @@ test("data quality service builds summary and samples", async () => {
 
     const payload = await service.collectDataQuality();
 
-    assert.equal(calls, 10);
+    assert.equal(calls, 11);
     assert.equal(rowNumber({ a: "7" }, "a"), 7);
     assert.equal(payload.summary.books, 10);
     assert.equal(payload.summary.duplicate_books, 1);
     assert.equal(payload.summary.large_chapters, 3);
+    assert.equal(payload.summary.status_abnormal, 2);
+    assert.deepEqual(payload.summary.completeness_denominator_sources, {
+        site_total: 6,
+        purchasable: 0,
+        catalog: 0,
+        free_plus_paid: 0,
+        unknown: 4
+    });
     assert.deepEqual(payload.samples.duplicate_books, [{ book_id: "b3" }]);
 });
 

@@ -89,6 +89,24 @@ async function main() {
         "-lc",
         "node --test tests/pg-flows.test.js"
     ]);
+    run("docker", [
+        "run",
+        "--rm",
+        "--network",
+        network,
+        "-v",
+        mount,
+        "-w",
+        "/src",
+        "-e",
+        "NODE_PATH=/app/node_modules",
+        "-e",
+        `PO18_TEST_PG_URL=${pgUrl}`,
+        image,
+        "sh",
+        "-lc",
+        "node scripts/search-benchmark.js --output tmp/search-benchmark-result.json"
+    ]);
 }
 
 main()

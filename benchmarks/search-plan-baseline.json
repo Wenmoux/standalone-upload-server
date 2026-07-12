@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "dataset_rows": 50000,
+  "runs": 5,
+  "budgets_ms": {
+    "keyword": 1500,
+    "taxonomy": 500,
+    "cursor": 250
+  }
+}

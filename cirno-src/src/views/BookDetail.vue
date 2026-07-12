@@ -13,7 +13,7 @@
       <div v-else-if="loading === 1" class="detail-content">
         <section class="book-hero">
           <div class="cover-wrap">
-            <img v-if="book_info.cover" :src="book_info.cover" alt="" />
+            <img v-if="book_info.cover" :src="book_info.cover" alt="" width="160" height="220" decoding="async" fetchpriority="high" @error="book_info.cover = ''" />
             <div v-else class="empty-cover">{{ coverText }}</div>
           </div>
           <div class="book-main">
@@ -151,6 +151,9 @@
                 <div class="review-card-foot">
                   <span><i class="ri-thumb-up-line"></i>{{ review.like_count || 0 }}</span>
                   <span><i class="ri-thumb-down-line"></i>{{ review.dislike_count || 0 }}</span>
+                  <button type="button" :disabled="reportingReviewId === review.id" @click="reportReview(review)">
+                    {{ reportingReviewId === review.id ? '提交中...' : '举报' }}
+                  </button>
                 </div>
               </article>
             </div>
@@ -223,6 +226,7 @@ export default {
       reviewLoading: false,
       reviewLoaded: false,
       reviewError: '',
+      reportingReviewId: null,
       collapsedVolumes: {},
       controlsCollapsed: true,
       detailScroll: null,
@@ -473,6 +477,35 @@ export default {
       if (!review) return 'reader'
       if (review.author_telegram_username) return `@${review.author_telegram_username}`
       return review.author_nickname || review.nickname || review.author_username || 'reader'
+    },
+    async reportReview(review) {
+      if (!review || this.reportingReviewId) return
+      const rawReason = window.prompt('举报原因：spam（垃圾）、abuse（辱骂）、spoiler（剧透）、illegal（违法）、other（其他）', 'other')
+      if (rawReason === null) return
+      const reason = String(rawReason || '').trim().toLowerCase()
+      if (!['spam', 'abuse', 'spoiler', 'illegal', 'other'].includes(reason)) {
+        this.$message.warn('举报原因无效')
+        return
+      }
+      const details = window.prompt('补充说明（可选）', '')
+      if (details === null) return
+      this.reportingReviewId = review.id
+      try {
+        const response = await fetch(`/reader-api/book-reviews/${encodeURIComponent(review.id)}/report`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason, details })
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+        this.$message.success('举报已提交，感谢协助维护书评区')
+        if (data.review_status === 'under_review') await this.loadReviews(true)
+      } catch (error) {
+        this.$message.error(error && error.message ? error.message : '举报提交失败')
+      } finally {
+        this.reportingReviewId = null
+      }
     },
     readChapter(chapter) {
       if (this.isVolumeChapter(chapter)) {
@@ -1119,6 +1152,17 @@ export default {
       }
       i {
         color: var(--reader-accent-color);
+      }
+      button {
+        margin-left: auto;
+        border: 0;
+        background: transparent;
+        color: var(--reader-muted-color);
+        cursor: pointer;
+      }
+      button:disabled {
+        cursor: wait;
+        opacity: 0.6;
       }
     }
   }

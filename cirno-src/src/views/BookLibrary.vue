@@ -89,7 +89,7 @@
         <div class="library-grid" v-else>
           <div class="library-card" v-for="book in pagedBooks" :key="bookKey(book)" @click="gotoBook(book)">
             <div class="cover-wrap">
-              <img v-if="book.book_info.cover" :src="book.book_info.cover" alt="" loading="lazy" decoding="async" />
+              <img v-if="book.book_info.cover" :src="book.book_info.cover" alt="" width="132" height="176" loading="lazy" decoding="async" @error="book.book_info.cover = ''" />
               <div v-else class="empty-cover">{{ coverText(book) }}</div>
             </div>
             <div class="book-info">

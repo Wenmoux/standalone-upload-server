@@ -7,12 +7,30 @@ const PG_URL =
     process.env.PO18_PG_URL ||
     "postgres://po18:po18-change-me@127.0.0.1:5432/po18";
 
+function positiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
+    const parsed = Math.trunc(Number(value));
+    return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+}
+
+const QUERY_TIMEOUT_MS = positiveInt(process.env.PO18_PG_QUERY_TIMEOUT_MS, 30000, 1000, 10 * 60 * 1000);
+const QUERY_SLOW_MS = positiveInt(process.env.PO18_PG_SLOW_QUERY_MS, 1000, 10, QUERY_TIMEOUT_MS);
+
 const pool = new Pool({
     connectionString: PG_URL,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+    max: positiveInt(process.env.PO18_PG_POOL_MAX, 10, 1, 200),
+    idleTimeoutMillis: positiveInt(process.env.PO18_PG_IDLE_TIMEOUT_MS, 30000, 1000, 10 * 60 * 1000),
+    connectionTimeoutMillis: positiveInt(process.env.PO18_PG_CONNECT_TIMEOUT_MS, 10000, 1000, 120000),
+    query_timeout: QUERY_TIMEOUT_MS,
+    statement_timeout: QUERY_TIMEOUT_MS
 });
+
+const queryTelemetry = {
+    count: 0,
+    failures: 0,
+    timeouts: 0,
+    slow: 0,
+    durations: []
+};
 
 const MIGRATIONS_DIR = path.join(__dirname, "db", "migrations");
 const ROLLBACKS_DIR = path.join(__dirname, "db", "rollbacks");
@@ -62,7 +80,10 @@ const bookColumns = [
     "weekly_popularity",
     "readers_count",
     "daily_popularity",
-    "purchase_count"
+    "purchase_count",
+    "source_updated_at",
+    "catalog_updated_at",
+    "metadata_cached_at"
 ];
 
 const chapterColumns = [
@@ -94,7 +115,41 @@ function pick(data, columns) {
 }
 
 async function query(sql, params = []) {
-    return pool.query(sql, params);
+    const startedAt = Date.now();
+    queryTelemetry.count += 1;
+    try {
+        return await pool.query(sql, params);
+    } catch (error) {
+        queryTelemetry.failures += 1;
+        if (error?.code === "57014" || /query.*timeout|statement timeout|canceling statement/i.test(String(error?.message || ""))) {
+            queryTelemetry.timeouts += 1;
+        }
+        throw error;
+    } finally {
+        const duration = Math.max(0, Date.now() - startedAt);
+        if (duration >= QUERY_SLOW_MS) queryTelemetry.slow += 1;
+        queryTelemetry.durations.push(duration);
+        if (queryTelemetry.durations.length > 2000) queryTelemetry.durations.splice(0, queryTelemetry.durations.length - 2000);
+    }
+}
+
+function databaseQueryMetrics() {
+    const sorted = queryTelemetry.durations.slice().sort((a, b) => a - b);
+    const percentile = (ratio) => sorted.length
+        ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)]
+        : 0;
+    return {
+        count: queryTelemetry.count,
+        failures: queryTelemetry.failures,
+        timeouts: queryTelemetry.timeouts,
+        slow: queryTelemetry.slow,
+        p50_ms: percentile(0.50),
+        p95_ms: percentile(0.95),
+        p99_ms: percentile(0.99),
+        sample_count: sorted.length,
+        slow_threshold_ms: QUERY_SLOW_MS,
+        timeout_ms: QUERY_TIMEOUT_MS
+    };
 }
 
 async function listMigrationFiles() {
@@ -316,6 +371,7 @@ async function initPg() {
 module.exports = {
     pool,
     query,
+    databaseQueryMetrics,
     initPg,
     runMigrations,
     runMigrationRollback,

@@ -99,6 +99,15 @@ test("system job lease migration adds claim retry heartbeat and cancel fields", 
     assert.match(sql, /idx_system_jobs_idempotency/);
 });
 
+test("job effect migration adds an atomic idempotency ledger for charges and rewards", async () => {
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "019_job_effect_idempotency.sql"), "utf8");
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS reader_operation_ledger/);
+    assert.match(sql, /idempotency_key TEXT NOT NULL/);
+    assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_reader_operation_ledger_idempotency/);
+    assert.match(sql, /ALTER TABLE reader_transactions[\s\S]*operation_key/);
+    assert.match(sql, /ALTER TABLE reader_export_usage[\s\S]*operation_key/);
+});
+
 test("API token migration stores only hashes scopes revocation and usage metadata", async () => {
     const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "014_api_tokens.sql"), "utf8");
     assert.match(sql, /token_hash TEXT NOT NULL UNIQUE/);
@@ -133,4 +142,31 @@ test("data quality migration protects new writes without blocking legacy rows", 
     assert.match(sql, /system_jobs_status_value/);
     assert.match(sql, /NOT VALID/g);
     assert.doesNotMatch(sql, /book_key/i);
+});
+
+test("taxonomy and quality semantics migration normalizes categories and defers chapter order checks", async () => {
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "020_taxonomy_and_quality_semantics.sql"), "utf8");
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS book_taxonomy/);
+    assert.match(sql, /trg_book_metadata_taxonomy/);
+    assert.match(sql, /GENERATED ALWAYS AS/);
+    assert.match(sql, /CREATE CONSTRAINT TRIGGER trg_chapter_order_nonnegative_deferred/);
+    assert.match(sql, /DEFERRABLE INITIALLY DEFERRED/);
+});
+
+test("book manifest migration adds validated checksums without changing identity keys", async () => {
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "021_book_manifest_checksums.sql"), "utf8");
+    assert.match(sql, /book_metadata[\s\S]*manifest_checksum/);
+    assert.match(sql, /chapter_cache[\s\S]*manifest_checksum/);
+    assert.match(sql, /\^\[0-9a-f\]\{64\}\$/);
+    assert.match(sql, /idx_chapter_cache_manifest_checksum/);
+    assert.doesNotMatch(sql, /book_key/i);
+});
+
+test("review governance migration adds reports appeals and bounded vote changes", async () => {
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "022_review_governance.sql"), "utf8");
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS reader_book_review_reports/);
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS reader_book_review_appeals/);
+    assert.match(sql, /change_count INTEGER NOT NULL DEFAULT 0/);
+    assert.match(sql, /idx_reader_review_appeals_one_pending/);
+    assert.doesNotMatch(sql, /book_id\s+TEXT/i);
 });

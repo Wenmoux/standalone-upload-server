@@ -119,6 +119,9 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     } = require("../services/system-jobs");
     const { createApiTokenService } = require("../services/api-tokens");
     const { createCredentialCrypto, encryptStoredPo18Credentials } = require("../services/credential-crypto");
+    const { createUserCurrencyService } = require("../services/user-currency");
+    const { createBookManifestService } = require("../services/book-manifest");
+    const { createReviewGovernanceService } = require("../services/review-governance");
 
     await resetDatabase(query, initPg);
 
@@ -181,15 +184,16 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             const stats = await query("SELECT cache_count FROM book_stats WHERE book_id=$1", [bookId]);
             assert.equal(stats.rows[0]?.cache_count, 1000);
         }
-        const walAfter = await query(
-            "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), $1::pg_lsn)::bigint::text wal_bytes",
-            [walBefore.rows[0].start_lsn]
-        );
+        const walAfter = await query("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), $1::pg_lsn)::bigint::text wal_bytes", [
+            walBefore.rows[0].start_lsn
+        ]);
         const sorted = durations.slice().sort((a, b) => a - b);
         const percentile = (ratio) => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
         const p50 = percentile(0.5);
         const p95 = percentile(0.95);
-        console.log(`# chapter-write-benchmark batches=5 chapters_per_batch=1000 p50_ms=${p50.toFixed(1)} p95_ms=${p95.toFixed(1)} wal_bytes=${walAfter.rows[0].wal_bytes}`);
+        console.log(
+            `# chapter-write-benchmark batches=5 chapters_per_batch=1000 p50_ms=${p50.toFixed(1)} p95_ms=${p95.toFixed(1)} wal_bytes=${walAfter.rows[0].wal_bytes}`
+        );
         assert.ok(p95 < 10000, `1000 chapter batch p95 too slow: ${p95.toFixed(1)}ms`);
         await query("DELETE FROM chapter_cache WHERE platform='benchmark'");
         await query("DELETE FROM book_metadata WHERE platform='benchmark'");
@@ -201,14 +205,8 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
              VALUES ('integration-admin','DELETE','/admin-api/books/1','delete.books.:id',200,'{}'::jsonb)
              RETURNING id`
         );
-        await assert.rejects(
-            () => query("UPDATE admin_audit_logs SET reason='changed' WHERE id=$1", [inserted.rows[0].id]),
-            /append-only/
-        );
-        await assert.rejects(
-            () => query("DELETE FROM admin_audit_logs WHERE id=$1", [inserted.rows[0].id]),
-            /append-only/
-        );
+        await assert.rejects(() => query("UPDATE admin_audit_logs SET reason='changed' WHERE id=$1", [inserted.rows[0].id]), /append-only/);
+        await assert.rejects(() => query("DELETE FROM admin_audit_logs WHERE id=$1", [inserted.rows[0].id]), /append-only/);
         const remaining = await query("SELECT COUNT(*)::int count FROM admin_audit_logs WHERE id=$1", [inserted.rows[0].id]);
         assert.equal(remaining.rows[0].count, 1);
     });
@@ -260,6 +258,97 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
         await updateSystemJob(recoverable.id, { status: "succeeded", progress: 100, result: { ok: true }, finished: true });
     });
 
+    await t.test("reclaimed workers cannot repeat an export charge or share reward", async () => {
+        await seedBotUser(query, { username: "settlement-user", telegramId: "settlement-tg", copper: 500 });
+        const currency = createUserCurrencyService({
+            query,
+            pool,
+            normalizeTelegramId: (value) => String(value || "").trim(),
+            botUserSelect,
+            currencyLabel: (value) => value
+        });
+
+        const exportJob = await createSystemJob({
+            type: "bot_export_txt",
+            input: { book_id: "settlement-book", telegram_id: "settlement-tg" },
+            createdBy: "integration",
+            idempotencyKey: "integration:settlement:charge",
+            maxAttempts: 3
+        });
+        await claimSystemJob(exportJob.id, { workerId: "worker-before-crash", leaseSeconds: 30 });
+        const chargeInput = {
+            telegramId: "settlement-tg",
+            currency: "copper",
+            amount: 120,
+            type: "export_txt_fee",
+            idempotencyKey: `system-job:${exportJob.id}:export-settlement`,
+            idempotencyScope: "export-settlement",
+            idempotencyData: { book_id: "settlement-book", format: "txt" }
+        };
+        const charged = await currency.spendUserCurrency(chargeInput);
+        assert.equal(charged.repeated, false);
+        await query("UPDATE system_jobs SET lease_expires_at=CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE id=$1", [exportJob.id]);
+        const exportRecovered = await claimSystemJobs({
+            workerId: "worker-after-crash",
+            types: ["bot_export_txt"],
+            limit: 1,
+            leaseSeconds: 30
+        });
+        assert.equal(exportRecovered[0]?.id, exportJob.id);
+        const replayedCharge = await currency.spendUserCurrency(chargeInput);
+        assert.equal(replayedCharge.repeated, true);
+
+        const shareJob = await createSystemJob({
+            type: "bot_po18_bookshelf_share",
+            input: { book_id: "reward-book", telegram_id: "settlement-tg" },
+            createdBy: "integration",
+            idempotencyKey: "integration:settlement:reward",
+            maxAttempts: 3
+        });
+        await claimSystemJob(shareJob.id, { workerId: "share-worker-before-crash", leaseSeconds: 30 });
+        const rewardInput = {
+            telegramId: "settlement-tg",
+            currency: "copper",
+            delta: 1000,
+            type: "po18_bookshelf_share_reward",
+            idempotencyKey: `system-job:${shareJob.id}:po18-share-reward:reward-book`,
+            idempotencyScope: "po18-share-reward",
+            idempotencyData: { book_id: "reward-book" }
+        };
+        const rewarded = await currency.adjustUserCurrency(rewardInput);
+        assert.equal(rewarded.repeated, false);
+        await query("UPDATE system_jobs SET lease_expires_at=CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE id=$1", [shareJob.id]);
+        const shareRecovered = await claimSystemJobs({
+            workerId: "share-worker-after-crash",
+            types: ["bot_po18_bookshelf_share"],
+            limit: 1,
+            leaseSeconds: 30
+        });
+        assert.equal(shareRecovered[0]?.id, shareJob.id);
+        const replayedReward = await currency.adjustUserCurrency(rewardInput);
+        assert.equal(replayedReward.repeated, true);
+
+        const balance = await query("SELECT copper_coins FROM reader_users WHERE telegram_id='settlement-tg'");
+        assert.equal(Number(balance.rows[0].copper_coins), 1380);
+        const effects = await query(
+            `SELECT operation_scope, COUNT(*)::int count
+             FROM reader_operation_ledger
+             WHERE telegram_id='settlement-tg'
+             GROUP BY operation_scope
+             ORDER BY operation_scope`
+        );
+        assert.deepEqual(effects.rows, [
+            { operation_scope: "export-settlement", count: 1 },
+            { operation_scope: "po18-share-reward", count: 1 }
+        ]);
+        const transactions = await query(
+            "SELECT COUNT(*)::int count FROM reader_transactions WHERE telegram_id='settlement-tg' AND operation_key <> ''"
+        );
+        assert.equal(transactions.rows[0].count, 2);
+        await updateSystemJob(exportJob.id, { status: "succeeded", progress: 100, finished: true });
+        await updateSystemJob(shareJob.id, { status: "succeeded", progress: 100, finished: true });
+    });
+
     await t.test("API tokens are hashed scoped auditable and revocable", async () => {
         const service = createApiTokenService({ query, cacheTtlMs: 1000 });
         const rawToken = "integration-bot-token-secret";
@@ -304,10 +393,12 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     });
 
     await t.test("reader registration consumes a CDK", async () => {
-        await query(
-            "INSERT INTO reader_cdks(code, duration_type, duration_days, created_by) VALUES ($1,$2,$3,$4)",
-            ["PG-CDK-1", "7d", 7, "integration"]
-        );
+        await query("INSERT INTO reader_cdks(code, duration_type, duration_days, created_by) VALUES ($1,$2,$3,$4)", [
+            "PG-CDK-1",
+            "7d",
+            7,
+            "integration"
+        ]);
         const router = createReaderApiRoutes({
             query,
             currentReaderUser: async () => null,
@@ -422,15 +513,21 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             assert.equal(created.status, 200);
             const packetId = (await created.json()).packet.id;
 
-            const claims = await Promise.all(["101", "102"].map((telegramId) => fetch(`${base}/bot-api/red-packets/claim`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Bot-Token": "bot-token" },
-                body: JSON.stringify({ telegram_id: telegramId, chat_id: "chat-a", packet_id: packetId })
-            })));
+            const claims = await Promise.all(
+                ["101", "102"].map((telegramId) =>
+                    fetch(`${base}/bot-api/red-packets/claim`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "X-Bot-Token": "bot-token" },
+                        body: JSON.stringify({ telegram_id: telegramId, chat_id: "chat-a", packet_id: packetId })
+                    })
+                )
+            );
             assert.deepEqual(claims.map((response) => response.status).sort(), [200, 200]);
         });
 
-        const packet = await query("SELECT status, remaining_count, remaining_amount, claimed_count, claimed_amount FROM reader_red_packets");
+        const packet = await query(
+            "SELECT status, remaining_count, remaining_amount, claimed_count, claimed_amount FROM reader_red_packets"
+        );
         assert.deepEqual(packet.rows[0], {
             status: "claimed",
             remaining_count: 0,
@@ -438,10 +535,112 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             claimed_count: 2,
             claimed_amount: 2
         });
-        const balances = await query("SELECT telegram_id, copper_coins FROM reader_users WHERE telegram_id IS NOT NULL ORDER BY telegram_id");
-        assert.deepEqual(balances.rows.map((row) => [row.telegram_id, Number(row.copper_coins)]), [["100", 8], ["101", 1], ["102", 1]]);
+        const balances = await query(
+            "SELECT telegram_id, copper_coins FROM reader_users WHERE telegram_id IS NOT NULL ORDER BY telegram_id"
+        );
+        assert.deepEqual(
+            balances.rows.map((row) => [row.telegram_id, Number(row.copper_coins)]),
+            [
+                ["100", 8],
+                ["101", 1],
+                ["102", 1]
+            ]
+        );
         const tx = await query("SELECT type, COUNT(*)::int count FROM reader_transactions GROUP BY type ORDER BY type");
-        assert.deepEqual(tx.rows, [{ type: "hb_receive", count: 2 }, { type: "hb_send", count: 1 }]);
+        assert.deepEqual(tx.rows, [
+            { type: "hb_receive", count: 2 },
+            { type: "hb_send", count: 1 }
+        ]);
+    });
+
+    await t.test("manifest checksums and review governance execute against the migrated schema", async () => {
+        const metadata = await query(
+            `INSERT INTO book_metadata(book_id, platform, title, author, chapter_count, metadata_cached_at)
+             VALUES ('manifest-pg', 'po18', 'Manifest Integration', 'Integration Author', 2, CURRENT_TIMESTAMP)
+             RETURNING id`
+        );
+        await query(
+            `INSERT INTO chapter_cache(book_id, chapter_id, title, html, text, platform, chapter_order)
+             VALUES ('manifest-pg','manifest-1','One','<p>one</p>','one','po18',1),
+                    ('manifest-pg','manifest-2','Two','<p>two</p>','two','po18',2)`
+        );
+        const manifestService = createBookManifestService({ query, pool, appVersion: () => "integration-test" });
+        const manifest = await manifestService.exportManifest(metadata.rows[0].id);
+        assert.equal(manifest.summary.chapters, 2);
+        assert.match(manifest.checksum.value, /^[0-9a-f]{64}$/);
+
+        const firstImport = await manifestService.importManifest(manifest);
+        assert.deepEqual(firstImport.chapters, { total: 2, inserted: 0, updated: 2, unchanged: 0 });
+        const secondImport = await manifestService.importManifest(manifest);
+        assert.deepEqual(secondImport.chapters, { total: 2, inserted: 0, updated: 0, unchanged: 2 });
+        const persistedChecksums = await query(
+            `SELECT
+                (SELECT manifest_checksum FROM book_metadata WHERE id=$1) metadata_checksum,
+                COUNT(*) FILTER (WHERE manifest_checksum ~ '^[0-9a-f]{64}$')::int chapter_checksums
+             FROM chapter_cache WHERE book_id='manifest-pg'`,
+            [metadata.rows[0].id]
+        );
+        assert.equal(persistedChecksums.rows[0].metadata_checksum, manifest.checksum.value);
+        assert.equal(persistedChecksums.rows[0].chapter_checksums, 2);
+
+        const collision = await query(
+            "INSERT INTO book_metadata(book_id, platform, title) VALUES ('manifest-pg','qidian','Collision Guard') RETURNING id"
+        );
+        await assert.rejects(
+            manifestService.exportManifest(metadata.rows[0].id),
+            (error) => error.code === "BOOK_ID_COLLISION_REQUIRES_BOOK_KEY" && error.status === 409
+        );
+        await query("DELETE FROM book_metadata WHERE id=$1", [collision.rows[0].id]);
+
+        const author = await seedBotUser(query, { username: "review-author", telegramId: "review-author-tg" });
+        const reporter = await seedBotUser(query, { username: "review-reporter", telegramId: "review-reporter-tg" });
+        const review = await query(
+            `INSERT INTO reader_book_reviews(user_id, telegram_id, nickname, book_id, content, status, source)
+             VALUES ($1,$2,'Integration Author','manifest-pg','integration review','published','integration')
+             RETURNING id`,
+            [author.id, author.telegram_id]
+        );
+        const adminPassword = hashPassword("integration-admin-password");
+        const admin = await query(
+            `INSERT INTO admin_users(username, password_hash, salt)
+             VALUES ('review-integration-admin',$1,$2) RETURNING id`,
+            [adminPassword.hash, adminPassword.salt]
+        );
+        const governance = createReviewGovernanceService({ query, pool, autoReviewThreshold: 1, dailyReportLimit: 5 });
+        const reported = await governance.reportReview({
+            userId: reporter.id,
+            reviewId: review.rows[0].id,
+            reason: "spam",
+            details: "integration report"
+        });
+        assert.equal(reported.review_status, "under_review");
+        const appealed = await governance.appealReview({
+            userId: author.id,
+            reviewId: review.rows[0].id,
+            content: "这是一次真实数据库集成申诉。"
+        });
+        const hidden = await governance.resolveReport({
+            reportId: reported.report.id,
+            adminId: admin.rows[0].id,
+            action: "hide",
+            note: "integration moderation"
+        });
+        assert.equal(hidden.review_status, "hidden");
+        const restored = await governance.resolveAppeal({
+            appealId: appealed.appeal.id,
+            adminId: admin.rows[0].id,
+            action: "accept",
+            note: "integration appeal accepted"
+        });
+        assert.equal(restored.review_status, "published");
+        const reviewState = await query("SELECT status FROM reader_book_reviews WHERE id=$1", [review.rows[0].id]);
+        assert.equal(reviewState.rows[0].status, "published");
+        const vote = await query(
+            `INSERT INTO reader_book_review_votes(review_id, user_id, telegram_id, vote)
+             VALUES ($1,$2,$3,'like') RETURNING change_count`,
+            [review.rows[0].id, reporter.id, reporter.telegram_id]
+        );
+        assert.equal(vote.rows[0].change_count, 0);
     });
 
     await t.test("backup route writes a real postgres dump and system job", async () => {
@@ -461,24 +660,30 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
         });
 
         let dumpFile = "";
-        await withApp(router, async (base) => {
-            const response = await fetch(`${base}/admin-api/backup`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type: "postgres" })
-            });
-            assert.equal(response.status, 200);
-            const body = await response.json();
-            assert.equal(body.success, true);
-            assert.equal(body.backup.type, "postgres");
-            assert.ok(body.backup.bytes > 0);
-            assert.match(body.backup.sha256, /^[0-9a-f]{64}$/);
-            assert.ok(body.backup.archive_entries > 0);
-            dumpFile = path.join(backupRoot, body.backup.file);
-            await fs.access(dumpFile);
-        }, () => ({ adminUser: { id: 1, username: "integration-admin" } }));
+        await withApp(
+            router,
+            async (base) => {
+                const response = await fetch(`${base}/admin-api/backup`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ type: "postgres" })
+                });
+                assert.equal(response.status, 200);
+                const body = await response.json();
+                assert.equal(body.success, true);
+                assert.equal(body.backup.type, "postgres");
+                assert.ok(body.backup.bytes > 0);
+                assert.match(body.backup.sha256, /^[0-9a-f]{64}$/);
+                assert.ok(body.backup.archive_entries > 0);
+                dumpFile = path.join(backupRoot, body.backup.file);
+                await fs.access(dumpFile);
+            },
+            () => ({ adminUser: { id: 1, username: "integration-admin" } })
+        );
 
-        const job = await query("SELECT type, status, progress FROM system_jobs WHERE type=$1 ORDER BY id DESC LIMIT 1", ["backup:postgres"]);
+        const job = await query("SELECT type, status, progress FROM system_jobs WHERE type=$1 ORDER BY id DESC LIMIT 1", [
+            "backup:postgres"
+        ]);
         assert.deepEqual(job.rows[0], { type: "backup:postgres", status: "succeeded", progress: 100 });
 
         const databaseName = `po18_restore_drill_${process.pid}`;
@@ -491,7 +696,9 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
         try {
             await admin.query(`DROP DATABASE IF EXISTS ${databaseName}`);
             await admin.query(`CREATE DATABASE ${databaseName}`);
-            await execFileAsync("pg_restore", ["--exit-on-error", "--no-owner", "--no-acl", "--dbname", targetUrl.toString(), dumpFile], { timeout: 120000 });
+            await execFileAsync("pg_restore", ["--exit-on-error", "--no-owner", "--no-acl", "--dbname", targetUrl.toString(), dumpFile], {
+                timeout: 120000
+            });
             const restored = new Client({ connectionString: targetUrl.toString() });
             await restored.connect();
             try {
@@ -503,7 +710,11 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
                 await restored.end();
             }
         } finally {
-            await admin.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid <> pg_backend_pid()", [databaseName]).catch(() => {});
+            await admin
+                .query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid <> pg_backend_pid()", [
+                    databaseName
+                ])
+                .catch(() => {});
             await admin.query(`DROP DATABASE IF EXISTS ${databaseName}`).catch(() => {});
             await admin.end();
         }

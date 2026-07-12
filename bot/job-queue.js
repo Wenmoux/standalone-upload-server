@@ -69,7 +69,7 @@ function createJobQueue(options = {}) {
                         if (shouldStart === false) return;
                     }
                     await options.onStart?.(job);
-                    const result = await job.task(job.signal);
+                    const result = await job.task(job.signal, job);
                     await options.onSuccess?.(job, Date.now() - startedAt, result);
                 } catch (err) {
                     await options.onError?.(job, err, Date.now() - startedAt);

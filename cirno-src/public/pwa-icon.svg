@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="晚风阅读">
+  <rect width="512" height="512" rx="112" fill="#1b88ee"/>
+  <path d="M112 138c55-12 103 2 144 40 41-38 89-52 144-40v238c-55-12-103 2-144 40-41-38-89-52-144-40V138Z" fill="#fff"/>
+  <path d="M256 178v238M148 194c40-4 70 5 90 24M364 194c-40-4-70 5-90 24" fill="none" stroke="#1b88ee" stroke-linecap="round" stroke-width="18"/>
+</svg>

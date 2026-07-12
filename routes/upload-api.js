@@ -14,6 +14,31 @@ function createUploadApiRoutes(options = {}) {
         chapterListOrderSql,
         recordEvent
     } = options;
+    const cacheLookupTtlMs = Math.max(0, Number(options.cacheLookupTtlMs ?? process.env.PO18_CHECK_CACHE_TTL_MS ?? 5000));
+    const cacheLookupMaxEntries = Math.max(1, Number(options.cacheLookupMaxEntries ?? process.env.PO18_CHECK_CACHE_MAX_ENTRIES ?? 500));
+    const cacheLookups = new Map();
+
+    function readCachedLookup(bookId) {
+        const row = cacheLookups.get(bookId);
+        if (!row || row.expiresAt <= Date.now()) {
+            cacheLookups.delete(bookId);
+            return null;
+        }
+        cacheLookups.delete(bookId);
+        cacheLookups.set(bookId, row);
+        return row.payload;
+    }
+
+    function writeCachedLookup(bookId, payload) {
+        if (!cacheLookupTtlMs) return;
+        cacheLookups.delete(bookId);
+        cacheLookups.set(bookId, { payload, expiresAt: Date.now() + cacheLookupTtlMs });
+        while (cacheLookups.size > cacheLookupMaxEntries) cacheLookups.delete(cacheLookups.keys().next().value);
+    }
+
+    function invalidateCachedLookup(bookId) {
+        cacheLookups.delete(String(bookId || ""));
+    }
 
     router.get("/api/parse/chapter-content", (req, res) => res.status(405).json({ error: "Method Not Allowed" }));
 
@@ -32,6 +57,7 @@ function createUploadApiRoutes(options = {}) {
 
             if ((fromUserScript && (html || text || safePgBool(req.body?.is_volume ?? req.body?.isVolume, false))) || isQidianOrderOnly) {
                 const saved = await saveChapter(req.body);
+                invalidateCachedLookup(bookId);
                 const safeHtml = cleanPgText(html);
                 const safeText = cleanPgText(text);
                 if (saved?.orderOnly) {
@@ -100,6 +126,9 @@ function createUploadApiRoutes(options = {}) {
         try {
             const { bookId } = req.body || {};
             if (!bookId) return res.status(400).json({ error: "Missing bookId" });
+            const safeBookId = String(bookId);
+            const cachedPayload = readCachedLookup(safeBookId);
+            if (cachedPayload) return res.json(cachedPayload);
             const cached = await query(
                 `WITH book_platform AS (
                     SELECT platform
@@ -112,19 +141,21 @@ function createUploadApiRoutes(options = {}) {
                  FROM chapter_cache
                  WHERE book_id = $1
                  ORDER BY ${chapterListOrderSql("(SELECT platform FROM book_platform)")}`,
-                [String(bookId)]
+                [safeBookId]
             );
             const chapters = cached.rows.map((row) => ({
                 chapterId: String(row.chapter_id),
                 chapterOrder: row.chapter_order === null || row.chapter_order === undefined ? null : Number(row.chapter_order)
             }));
             const chapterIds = chapters.map((chapter) => chapter.chapterId);
-            return res.json({
+            const payload = {
                 cached: cached.rows.length > 0,
                 chapterIds,
                 cachedChapters: chapterIds,
                 chapters
-            });
+            };
+            writeCachedLookup(safeBookId, payload);
+            return res.json(payload);
         } catch (err) {
             next(err);
         }
@@ -133,6 +164,7 @@ function createUploadApiRoutes(options = {}) {
     router.delete("/api/chapters/:bookId", requireUploadApi, async (req, res, next) => {
         try {
             const result = await query("DELETE FROM chapter_cache WHERE book_id = $1", [String(req.params.bookId)]);
+            invalidateCachedLookup(req.params.bookId);
             await recordEvent({
                 eventType: "chapter",
                 action: "delete_book_chapters",

@@ -32,3 +32,17 @@ test("source health does not open the circuit for non-transient failures", () =>
     circuit.recordFailure(Object.assign(new Error("not found"), { status: 404 }), { transient: false });
     assert.equal(circuit.snapshot().state, "closed");
 });
+
+test("source health separates auth rate-limit and parse failures with latency quantiles", () => {
+    const circuit = createSourceHealthCircuit({ source: "po18" });
+    circuit.recordSuccess(200, { durationMs: 10 });
+    circuit.recordFailure(Object.assign(new Error("cookie invalid"), { status: 403 }), { durationMs: 20 });
+    circuit.recordFailure(Object.assign(new Error("请求频繁"), { status: 429 }), { transient: true, durationMs: 30 });
+    circuit.recordFailure(Object.assign(new Error("parse structure changed"), { code: "PARSE_FAILED" }), { durationMs: 40 });
+    const snapshot = circuit.snapshot();
+    assert.equal(snapshot.authFailures, 1);
+    assert.equal(snapshot.rateLimits, 1);
+    assert.equal(snapshot.parseFailures, 1);
+    assert.equal(snapshot.latencyP50Ms, 20);
+    assert.equal(snapshot.latencyP95Ms, 40);
+});

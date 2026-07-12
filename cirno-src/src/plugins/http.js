@@ -1,4 +1,12 @@
 import axios from 'axios'
+import {
+  clearReaderSession,
+  cachedReaderUser,
+  getReaderSession,
+  markReaderSession,
+  updateReaderSession
+} from '@/utils/reader-session'
+import { getOfflineChapter, rememberOfflineProgress, rememberRecentChapter } from '@/utils/reader-offline'
 
 axios.defaults.timeout = 30000
 axios.defaults.baseURL = ''
@@ -8,6 +16,22 @@ let vm = null
 
 const ok = data => ({ code: 100000, data, tip: 'ok' })
 const fail = tip => Promise.reject({ code: -1, tip })
+
+function readerInfoFromUser(user = {}, fallbackAccount = '') {
+  return {
+    reader_id: user.id || 0,
+    reader_name: user.nickname || user.username || fallbackAccount,
+    account: user.username || fallbackAccount,
+    avatar_thumb_url: user.avatar_url || '',
+    membership_expires_at: user.membership_expires_at || null,
+    membership_permanent: !!user.membership_permanent,
+    library_access: user.library_access !== false,
+    copper_coins: user.copper_coins || 0,
+    silver_coins: user.silver_coins || 0,
+    sign_cycle_day: user.sign_cycle_day || 0,
+    last_sign_date: user.last_sign_date || null
+  }
+}
 
 function textFromHtml(html = '') {
   return String(html || '')
@@ -106,6 +130,38 @@ function normalizeChapter(row = {}) {
   }
 }
 
+function readerChapterInfo(chapter = {}) {
+  const isIhuaben = isIhuabenChapter(chapter)
+  if (chapter.is_volume || chapter.isVolume) {
+    return {
+      chapter_id: String(chapter.chapter_id || ''),
+      chapter_title: chapter.title || chapter.chapter_id || '',
+      txt_content: '',
+      html_content: '',
+      author_say: '',
+      auth_access: 1,
+      unit_hlb: 0,
+      buy_amount: 0,
+      is_local_plain: true,
+      is_volume: true
+    }
+  }
+  return {
+    chapter_id: String(chapter.chapter_id || ''),
+    chapter_title: chapter.title || chapter.chapter_id || '',
+    txt_content: isIhuaben ? '' : chapter.text || textFromHtml(chapter.html),
+    html_content: chapter.html || '',
+    author_say: '',
+    auth_access: 1,
+    unit_hlb: 0,
+    buy_amount: 0,
+    is_local_plain: true,
+    is_ihuaben: isIhuaben,
+    platform: chapter.platform || chapter.book_platform || '',
+    is_volume: false
+  }
+}
+
 async function localApi(url, options = {}) {
   const res = await fetch(url, {
     credentials: 'include',
@@ -113,7 +169,12 @@ async function localApi(url, options = {}) {
     ...options
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw data
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearReaderSession()
+    const error = Object.assign(new Error(data.error || data.message || `请求失败 (${res.status})`), data)
+    error.status = res.status
+    throw error
+  }
   return data
 }
 
@@ -129,49 +190,24 @@ async function get(obj = {}) {
           body: JSON.stringify({ username: p.login_name, password: p.passwd })
         })
         const user = data.user || {}
+        markReaderSession(user)
         return ok({
-          login_token: 'local-session',
-          reader_info: {
-            reader_id: user.id || 0,
-            reader_name: user.nickname || user.username || p.login_name,
-            account: user.username || p.login_name,
-            avatar_thumb_url: user.avatar_url || '',
-            membership_expires_at: user.membership_expires_at || null,
-            membership_permanent: !!user.membership_permanent,
-            library_access: user.library_access !== false,
-            copper_coins: user.copper_coins || 0,
-            silver_coins: user.silver_coins || 0,
-            sign_cycle_day: user.sign_cycle_day || 0,
-            last_sign_date: user.last_sign_date || null
-          },
+          reader_info: readerInfoFromUser(user, p.login_name),
           prop_info: { rest_hlb: 0, rest_recommend: 0, rest_month_ticket: 0 }
         })
       }
       case '/reader/get_my_info': {
-        const me = await localApi('/reader-auth/me')
-        if (!me.user) throw { error: '请先登录' }
-        const user = me.user
+        const user = await getReaderSession()
+        if (!user) throw { error: '请先登录' }
         return ok({
-          reader_info: {
-            reader_id: user.id || 0,
-            reader_name: user.nickname || user.username || '本地读者',
-            account: user.username || '',
-            avatar_thumb_url: user.avatar_url || '',
-            membership_expires_at: user.membership_expires_at || null,
-            membership_permanent: !!user.membership_permanent,
-            library_access: user.library_access !== false,
-            copper_coins: user.copper_coins || 0,
-            silver_coins: user.silver_coins || 0,
-            sign_cycle_day: user.sign_cycle_day || 0,
-            last_sign_date: user.last_sign_date || null
-          },
+          reader_info: readerInfoFromUser(user),
           prop_info: { rest_hlb: 0, rest_recommend: 0, rest_month_ticket: 0 }
         })
       }
       case '/task/get_sign_record': {
-        const me = await localApi('/reader-auth/me')
+        const user = await getReaderSession()
         const today = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
-        const signed = me.user && me.user.last_sign_date && String(me.user.last_sign_date).slice(0, 10) === today
+        const signed = user && user.last_sign_date && String(user.last_sign_date).slice(0, 10) === today
         const list = Array.from({ length: 7 }, () => ({ is_signed: '0' }))
         const dayArr = [6, 0, 1, 2, 3, 4, 5]
         list[dayArr[new Date().getDay()]].is_signed = signed ? '1' : '0'
@@ -179,21 +215,10 @@ async function get(obj = {}) {
       }
       case '/reader/get_task_bonus_with_sign_recommend': {
         const data = await localApi('/reader-auth/sign', { method: 'POST' })
+        updateReaderSession(data.user || {})
         return ok({
           bonus: { copper: data.reward.copper, silver: data.reward.silver, sign_day: data.reward.day },
-          reader_info: {
-            reader_id: data.user.id || 0,
-            reader_name: data.user.nickname || data.user.username || '本地读者',
-            account: data.user.username || '',
-            avatar_thumb_url: data.user.avatar_url || '',
-            membership_expires_at: data.user.membership_expires_at || null,
-            membership_permanent: !!data.user.membership_permanent,
-            library_access: data.user.library_access !== false,
-            copper_coins: data.user.copper_coins || 0,
-            silver_coins: data.user.silver_coins || 0,
-            sign_cycle_day: data.user.sign_cycle_day || 0,
-            last_sign_date: data.user.last_sign_date || null
-          },
+          reader_info: readerInfoFromUser(data.user || {}),
           prop_info: { rest_hlb: 0, rest_recommend: 0, rest_month_ticket: 0 }
         })
       }
@@ -288,43 +313,30 @@ async function get(obj = {}) {
       case '/chapter/get_cpt_ifm': {
         const bookId = window.__cirnoCurrentBookId || p.book_id || ''
         const chapterId = p.chapter_id
-        const data = await localApi(
-          `/reader-api/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(chapterId)}`
-        )
-        const c = data.chapter || {}
-        const isIhuaben = isIhuabenChapter(c)
-        if (c.is_volume || c.isVolume) {
-          return ok({
-            chapter_info: {
-              chapter_id: String(c.chapter_id || ''),
-              chapter_title: c.title || c.chapter_id || '',
-              txt_content: '',
-              html_content: '',
-              author_say: '',
-              auth_access: 1,
-              unit_hlb: 0,
-              buy_amount: 0,
-              is_local_plain: true,
-              is_volume: true
-            }
-          })
-        }
-        return ok({
-          chapter_info: {
-            chapter_id: String(c.chapter_id || ''),
-            chapter_title: c.title || c.chapter_id || '',
-            txt_content: isIhuaben ? '' : c.text || textFromHtml(c.html),
-            html_content: c.html || '',
-            author_say: '',
-            auth_access: 1,
-            unit_hlb: 0,
-            buy_amount: 0,
-            is_local_plain: true,
-            is_ihuaben: isIhuaben,
-            platform: c.platform || c.book_platform || '',
-            is_volume: false
+        const reader = cachedReaderUser()
+        const ownerId = String(reader?.id || '')
+        try {
+          const data = await localApi(
+            `/reader-api/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(chapterId)}`
+          )
+          const chapterInfo = readerChapterInfo(data.chapter || {})
+          if (ownerId && !chapterInfo.is_volume) {
+            rememberRecentChapter({
+              ownerId,
+              bookId,
+              bookTitle: window.__cirnoCurrentBookTitle || bookId,
+              chapterId,
+              chapterTitle: chapterInfo.chapter_title,
+              chapter: chapterInfo
+            }).catch(() => {})
           }
-        })
+          return ok({ chapter_info: chapterInfo })
+        } catch (error) {
+          if (!ownerId || (error.status && Number(error.status) < 500)) throw error
+          const cached = await getOfflineChapter(ownerId, bookId, chapterId).catch(() => null)
+          if (!cached?.chapter) throw error
+          return ok({ chapter_info: { ...cached.chapter, auth_access: 1, offline: true } })
+        }
       }
       case '/chapter/get_tsukkomi_num': {
         return ok({ tsukkomi_num_info: [] })
@@ -333,16 +345,29 @@ async function get(obj = {}) {
         return ok({ tsukkomi_list: [] })
       }
       case '/bookshelf/set_last_read_chapter': {
-        await localApi('/reader-api/me/history', {
-          method: 'POST',
-          body: JSON.stringify({
+        try {
+          await localApi('/reader-api/me/history', {
+            method: 'POST',
+            body: JSON.stringify({
+              bookId: p.book_id,
+              chapterId: p.last_read_chapter_id,
+              progress: 0,
+              readingSeconds: p.reading_seconds || 0
+            })
+          })
+          return ok({})
+        } catch (error) {
+          if (error.status && Number(error.status) < 500) throw error
+          const reader = cachedReaderUser()
+          rememberOfflineProgress({
+            ownerId: reader?.id,
             bookId: p.book_id,
             chapterId: p.last_read_chapter_id,
             progress: 0,
             readingSeconds: p.reading_seconds || 0
           })
-        }).catch(() => null)
-        return ok({})
+          return ok({ offline: true })
+        }
       }
       case '/chapter_buy':
       case '/chapter/like_tsukkomi':
@@ -374,6 +399,7 @@ async function post(obj = {}) {
         method: 'POST',
         body: JSON.stringify(body)
       })
+      markReaderSession(data.user || {})
       return ok(data)
     }
     if (obj.url === '/bookshelf/add') {

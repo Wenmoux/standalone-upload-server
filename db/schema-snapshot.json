@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "latest": "022_review_governance",
+  "migration_count": 20,
+  "aggregate_sha256": "005ec010b892b236e8a7926679330ac595a02442e5e51344cc4f65e23c045eb2",
+  "migrations": [
+    { "file": "001_baseline.sql", "sha256": "9035245dd6ed6a8dbb79ebb334c2848811f35a1cef2a229e7eb7c1d9145d1af4" },
+    { "file": "004_trgm_indexes.sql", "sha256": "600118e5c01e46e2d974e4a3600242db19c81812618cfc43fa56dedac4b0238c" },
+    { "file": "005_system_jobs.sql", "sha256": "8a32049512726d61fa43d02deb9e41b698a861f1108ac5caf9dde2ccc96cbf02" },
+    { "file": "006_book_stats.sql", "sha256": "c01c76f630afd7f28a939f7e79c671995c7629000336449c7b0dcb48047d400c" },
+    { "file": "007_bot_audit_logs.sql", "sha256": "c506f28da73a5536ffbd90971bc37f9576617ab4ab7b74e32efc3063db9ba750" },
+    { "file": "008_reader_search_requests.sql", "sha256": "5c6a3cd9088fda1916d226ed963d6b2fb50cb04b06e3ac19a80c8e5b54419cb2" },
+    { "file": "009_book_reviews.sql", "sha256": "2cb8993de9d215dbd8097077482c50dd7c08a5dcfab409a646b6efd53438f000" },
+    { "file": "010_word_cloud_indexes.sql", "sha256": "84730eeabd98c6bf634d812fcbf164a7dffdab4dd90de0edb442b85529dc6642" },
+    { "file": "011_chapter_stats_incremental.sql", "sha256": "5578f53e06d2b93103313ab10ee55bdc67254d59be129555506c5d113bf2082b" },
+    { "file": "012_admin_audit_logs.sql", "sha256": "fba3152bec67616fe93ca99dbe0c42d0cb9aee6d258d588e423e2a2ee420b32e" },
+    { "file": "013_system_job_leases.sql", "sha256": "4dda96e59bb23a1e34a9a9fe3ab7e21dd6c4c86ee8e1e86abad2d5699f89ea56" },
+    { "file": "014_api_tokens.sql", "sha256": "72e5a03cc96010ec317bf56b7cb55f6ebca63220011358cbef9c2aaa4a975293" },
+    { "file": "015_admin_roles.sql", "sha256": "3136a2b784600ff2776bd736ca44c13e7a1bd299a719bcb32887a4780312aa4c" },
+    { "file": "016_search_request_workflow.sql", "sha256": "dc47221dd10f5fefdb1f308e58bc0ba116b8666b77e25412f326734171c73e72" },
+    { "file": "017_reader_rum.sql", "sha256": "25003a282cbe732bf1ba8e98b71d4275fbfa6734c4e25c5ae636e31d2976de05" },
+    { "file": "018_data_quality_guards.sql", "sha256": "ee0aee4428869d464f009da3127ef7fddd89731a62d491acb43cb9dd990bc0d8" },
+    { "file": "019_job_effect_idempotency.sql", "sha256": "e7e1d0621f80ca17a3cf21116c52623d7bec4d730c8aa942d7225d77ca18636f" },
+    { "file": "020_taxonomy_and_quality_semantics.sql", "sha256": "ef92480704649ad50249f66418bb3bcc1f1fc45e5959eb110dc8123996594ffc" },
+    { "file": "021_book_manifest_checksums.sql", "sha256": "b95c314cb1a1376980138c49f059b069a1fa2ddc4cbe0c003481b5a9ccd93db5" },
+    { "file": "022_review_governance.sql", "sha256": "b96e3dd542e8df2c3b06e4c87158523b9f16bd5ac1e759bc6cb9fb6e136f1feb" }
+  ]
+}

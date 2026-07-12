@@ -22,19 +22,55 @@ function createTelegramPollingRuntime(deps = {}) {
     let lastStartupError = "";
     let lastPollOkAt = 0;
     let lastPollError = "";
+    let pollRequests = 0;
+    let pollFailures = 0;
+    let updatesReceived = 0;
+    const pollDurations = [];
+
+    function pollPercentile(ratio) {
+        if (!pollDurations.length) return 0;
+        const sorted = pollDurations.slice().sort((a, b) => a - b);
+        return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
+    }
 
     function state() {
-        return { botUser, lastStartupOkAt, lastStartupError, lastPollOkAt, lastPollError };
+        return {
+            botUser,
+            lastStartupOkAt,
+            lastStartupError,
+            lastPollOkAt,
+            lastPollError,
+            polling: {
+                requests_total: pollRequests,
+                failures_total: pollFailures,
+                updates_total: updatesReceived,
+                latency_p50_ms: pollPercentile(0.5),
+                latency_p95_ms: pollPercentile(0.95)
+            }
+        };
     }
 
     async function pollOnce() {
-        const updates = await telegram("getUpdates", {
-            offset,
-            timeout: pollTimeout,
-            allowed_updates: allowedUpdates
-        });
+        const startedAt = Date.now();
+        pollRequests += 1;
+        let updates;
+        try {
+            updates = await telegram("getUpdates", {
+                offset,
+                timeout: pollTimeout,
+                allowed_updates: allowedUpdates
+            });
+        } catch (error) {
+            pollFailures += 1;
+            lastPollError = error.message || String(error);
+            throw error;
+        } finally {
+            pollDurations.push(Math.max(0, Date.now() - startedAt));
+            if (pollDurations.length > 500) pollDurations.splice(0, pollDurations.length - 500);
+        }
         lastPollOkAt = Date.now();
         lastPollError = "";
+        updatesReceived += (updates || []).length;
         for (const update of updates || []) {
             offset = Number(update.update_id || 0) + 1;
             try {

@@ -6,6 +6,7 @@ function botHealthPayload(options = {}) {
         staleMs = 120000,
         stateProvider = () => ({}),
         client,
+        telegramClient,
         botTaskQueue,
         rateLimiter,
         telegramApiBase = ""
@@ -27,6 +28,8 @@ function botHealthPayload(options = {}) {
         last_poll_ok_at: state.lastPollOkAt ? new Date(state.lastPollOkAt).toISOString() : null,
         last_poll_error: state.lastPollError || "",
         poll_age_ms: pollAgeMs,
+        polling: state.polling || {},
+        telegram: typeof telegramClient?.stats === "function" ? telegramClient.stats() : undefined,
         background_tasks: botTaskQueue?.stats ? botTaskQueue.stats() : undefined,
         rate_limits: rateLimiter?.stats ? rateLimiter.stats() : undefined,
         client: typeof client?.stats === "function" ? client.stats() : undefined

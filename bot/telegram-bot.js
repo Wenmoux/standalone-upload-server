@@ -262,7 +262,16 @@ function getCommandRegistry() {
         handleCancelJob
     });
     registerSearchCommands(registry, { withSearchCooldown, withInfoCooldown, handleSearch, handleHot, handleWordCloud, handleRandom, handleInfo });
-    registerSocialCommands(registry, { handleMyFav, handleRedPacket, handleClaimRedPacket, handleCrowd, handleReview, handleReviews });
+    registerSocialCommands(registry, {
+        handleMyFav,
+        handleRedPacket,
+        handleClaimRedPacket,
+        handleCrowd,
+        handleReview,
+        handleReviews,
+        handleReportReview,
+        handleAppealReview
+    });
     registerIntegrationCommands(registry, {
         withPikpakCooldown,
         withBookshelfCooldown,
@@ -468,7 +477,9 @@ const {
     handleMyFav,
     handleReview,
     handleReviews,
-    handleReviewVote
+    handleReviewVote,
+    handleReportReview,
+    handleAppealReview
 } = createSocialHandlers({
     client,
     crowdVoteCost: CROWD_VOTE_COST,
@@ -734,11 +745,17 @@ async function sendExport(chat, from, bookId, format, _signal, exportOptions = {
             throw exportErr;
         }
 
+        const settlementOptions = exportOptions.settlementKey ? {
+            idempotencyKey: exportOptions.settlementKey,
+            idempotencyScope: "export-settlement",
+            bookId: result.book.book_id
+        } : {};
+
         async function settleSuccessfulExport() {
             if (paidBook) {
                 if (canUseDailyExport) {
                     try {
-                        const claimed = await client.claimFreeExport(from.id, result.book.book_id, format);
+                        const claimed = await client.claimFreeExport(from.id, result.book.book_id, format, settlementOptions);
                         return { kind: "daily", usage: claimed.usage || null };
                     } catch (err) {
                         if (err.status !== 409) throw err;
@@ -746,7 +763,7 @@ async function sendExport(chat, from, bookId, format, _signal, exportOptions = {
                 }
                 if (canUseExtraExport) {
                     try {
-                        const claimed = await client.claimExtraExport(from.id, result.book.book_id, format);
+                        const claimed = await client.claimExtraExport(from.id, result.book.book_id, format, settlementOptions);
                         return { kind: "extra", usage: claimed.usage || null };
                     } catch (err) {
                         if (err.status !== 409) throw err;
@@ -763,7 +780,8 @@ async function sendExport(chat, from, bookId, format, _signal, exportOptions = {
                     quote.amount,
                     `export_${format}_fee`,
                     `${result.book.book_id} ${result.chapters} chapters paid=${quote.paidChapters}`,
-                    "telegram_bot"
+                    "telegram_bot",
+                    settlementOptions
                 );
                 return { kind: "currency", quote };
             }
@@ -1021,6 +1039,7 @@ startBotHealthServer({
     startedAt: STARTED_AT,
     telegramApiBase: TELEGRAM_API_BASE,
     client,
+    telegramClient,
     botTaskQueue,
     rateLimiter,
     stateProvider: botRuntime.state

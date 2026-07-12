@@ -152,6 +152,16 @@
   background: #f3f6fa !important;
   box-shadow: 0 5px 14px rgba(15, 23, 42, 0.12) !important;
 }
+.search-modal-wrap .search-cover.cover-fallback {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px !important;
+  color: #64748b !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  text-align: center !important;
+}
 .search-modal-wrap .search-info {
   min-width: 0 !important;
 }

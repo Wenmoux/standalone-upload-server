@@ -4,12 +4,21 @@ const RANK_MAX_PAGE_LIMIT = 300;
 const RANK_DEFAULT_PAGE_LIMIT = 80;
 
 const RANK_SORTS = {
-    overall: { label: "综合热度", metric: "heat" },
-    updated: { label: "最近更新", metric: "updated_at" },
-    cache: { label: "缓存最多", metric: "cache_count" },
-    words: { label: "字数最多", metric: "word_count" },
-    chapters: { label: "章节最多", metric: "chapter_count" }
+    overall: { label: "综合热度", metric: "heat", definition: "站点人气、收藏、评论、读者、购买、赞与众筹的固定权重和" },
+    updated: { label: "最近更新", metric: "updated_at", definition: "元信息 updated_at，缺失时依次使用 latest_chapter_date、created_at" },
+    cache: { label: "缓存最多", metric: "cache_count", definition: "book_stats 中当前可用章节缓存数量" },
+    words: { label: "字数最多", metric: "word_count", definition: "元信息 word_count，章节数作为同分项" },
+    chapters: { label: "章节最多", metric: "chapter_count", definition: "total/subscribed/chapter_count 三者最大值" }
 };
+const RANK_DEFINITIONS = Object.freeze({
+    eligibility: "同一 book_id 取优先元信息且 cache_count >= 1",
+    platform: "book_metadata.platform 的数据库有效值，展示名来自后台平台映射",
+    category: "优先使用 category；缺失时使用首个规范化标签；仍缺失为‘未分类’",
+    updated_at: "COALESCE(updated_at, latest_chapter_date, created_at)",
+    cache_count: "book_stats.cache_count",
+    popularity: "站点原始 total/monthly/weekly/daily_popularity 等字段，不跨站换算",
+    heat_formula: "total + monthly*2 + weekly*3 + daily*4 + favorites*5 + comments*8 + readers + purchases*10 + likes*20 + supporters*30 + floor(crowd_silver/10)"
+});
 
 function positiveMs(value, fallback, min = 0) {
     const parsed = Number(value);
@@ -321,6 +330,7 @@ function createRankService(options = {}) {
         });
         const generatedAt = new Date();
         const totalCount = Number(rows[0]?.total_count || rows.length || 0);
+        const latestDataAtMs = rows.reduce((latest, row) => Math.max(latest, timestamp(row.updated_at || row.latest_chapter_date || row.created_at)), 0);
         const rankings = Object.fromEntries(
             Object.keys(RANK_SORTS).map((key) => [key, [...rows].sort(compare(key)).slice(0, 30).map(publicBook)])
         );
@@ -329,12 +339,18 @@ function createRankService(options = {}) {
                 generatedAt: generatedAt.toISOString(),
                 cacheTtlMs,
                 refreshIntervalMs,
+                calculationCycleMs: refreshIntervalMs || cacheTtlMs,
+                refreshMode: refreshIntervalMs > 0 ? "scheduled-and-on-demand" : "cache-expiry-and-on-demand",
                 sourceLimit: limit,
                 returned: rows.length,
+                sampleCount: rows.length,
+                eligibleCount: totalCount,
+                latestDataAt: latestDataAtMs ? new Date(latestDataAtMs).toISOString() : null,
                 total: totalCount,
                 truncated: totalCount > rows.length
             },
             sorts: RANK_SORTS,
+            definitions: RANK_DEFINITIONS,
             rows,
             rankings,
             sites: groupRows(rows, (row) => row.platform, (row) => row.platform_label),
@@ -378,13 +394,17 @@ function createRankService(options = {}) {
             cacheAgeMs: ageMs,
             cacheTtlMs,
             refreshIntervalMs,
+            calculationCycleMs: refreshIntervalMs || cacheTtlMs,
             sourceLimit: payload?.meta?.sourceLimit || sourceLimit(process.env.PO18_RANK_SOURCE_LIMIT),
             returned: payload?.meta?.returned || 0,
             total: payload?.meta?.total || 0,
+            sampleCount: payload?.meta?.sampleCount || 0,
+            latestDataAt: payload?.meta?.latestDataAt || null,
             truncated: !!payload?.meta?.truncated,
             sitesCount: payload?.sites?.length || 0,
             categoriesCount: payload?.categories?.length || 0,
             sorts: RANK_SORTS,
+            definitions: RANK_DEFINITIONS,
             sites: (payload?.sites || []).slice(0, 12),
             categories: (payload?.categories || []).slice(0, 12),
             leaders: Object.fromEntries(Object.keys(RANK_SORTS).map((key) => [key, (payload?.rankings?.[key] || []).slice(0, 5)]))
@@ -422,6 +442,7 @@ function createRankService(options = {}) {
                 total: filtered.length
             },
             sorts: payload.sorts,
+            definitions: payload.definitions,
             sites: payload.sites,
             categories: payload.categories,
             leaders: payload.rankings,
@@ -469,6 +490,7 @@ function createRankService(options = {}) {
 }
 
 module.exports = {
+    RANK_DEFINITIONS,
     RANK_SORTS,
     createRankService,
     normalizePlatformKey,

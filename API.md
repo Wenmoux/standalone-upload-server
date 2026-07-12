@@ -21,6 +21,68 @@ GET /api-docs
 - 远端 WebDAV/S3 备份支持 `PO18_BACKUP_ENCRYPTION_KEY`。配置后上传前使用 AES-256-GCM 加密，远端文件增加 `.enc` 后缀，密钥不会写入数据库或备份元数据。
 - 现有 API 路径、请求字段和响应字段未重命名或删除。
 
+## v2.0 7 月 11 日报告收口扩展
+
+### Book Manifest
+
+```http
+GET  /admin-api/books/:metadataId/manifest?include_content=1
+POST /admin-api/books/manifests/validate
+POST /admin-api/books/manifests/import
+```
+
+- 格式固定为 `po18-reader-book` version `1`，包含 `generated_at`、来源应用/身份、元信息、章节、汇总和 SHA-256。
+- 每章有独立 checksum，整包还有 checksum；导入会跳过 checksum 未变化的章节。
+- 导入请求使用 `{ "manifest": {...}, "confirmation": "IMPORT platform:book_id" }`。
+- 旧身份模型发生跨平台同号碰撞时返回 `BOOK_ID_COLLISION_REQUIRES_BOOK_KEY`，不会静默导入。
+
+### 书评举报、申诉与审核
+
+```http
+POST /reader-api/book-reviews/:reviewId/report
+POST /reader-api/book-reviews/:reviewId/appeals
+GET  /reader-api/book-review-appeals
+
+POST /bot-api/book-reviews/:reviewId/report
+POST /bot-api/book-reviews/:reviewId/appeals
+
+GET  /admin-api/review-moderation?kind=reports|appeals&status=pending&page=1&limit=50
+POST /admin-api/review-moderation/reports/:reportId/resolve
+POST /admin-api/review-moderation/appeals/:appealId/resolve
+```
+
+- 举报 `reason`：`spam | abuse | spoiler | illegal | other`，`details` 最多 2000 字。
+- 独立举报数达到 `PO18_REVIEW_REPORT_THRESHOLD`（默认 3）时，书评进入 `under_review` 并从公开列表移除。
+- 举报处理 `action`：`hide | restore | dismiss`；申诉处理：`accept | reject`。moderator 或 owner 才能处理。
+- 书评作者只能对 `hidden/under_review` 内容申诉；处理说明和动作进入后台审计。
+
+### 备份恢复演练
+
+```http
+POST /admin-api/backup/drill
+Content-Type: application/json
+
+{"file":"po18-pg-YYYYMMDD-HHMMSS.dump"}
+```
+
+省略 `file` 时使用最新 PostgreSQL 备份。服务会创建临时数据库、恢复、检查迁移/书籍/章节行数并删除临时库；任务与最后成功时间可在系统页和 `/metrics` 查看。
+
+### 搜索、榜单与运行契约
+
+- `GET /reader-api/search` 支持 `fast=1`/`no_total=1`、`cursor` 和 `next_cursor`；fast 模式返回估算 `total`、`has_more`，不执行精确 `COUNT(*)`。
+- 标签和分类使用 `book_taxonomy.normalized_value` 精确匹配。
+- 榜单 `meta` 新增 `calculationCycleMs`、`refreshMode`、`sampleCount`、`eligibleCount`、`latestDataAt`，并返回 `definitions` 与每种排序的 `definition`。
+- `/openapi.json` 会把已注册 Ajv 请求契约绑定到对应 request body，并为搜索、Manifest、审核队列提供明确响应 Schema。
+
+### 新增迁移
+
+- `019_job_effect_idempotency`
+- `020_taxonomy_and_quality_semantics`
+- `021_book_manifest_checksums`
+- `022_review_governance`
+
+四个迁移均有对应 rollback；未引入 `book_key`，也未更改原有平台无感 API 的请求/响应字段。
+
 ## 5. v2.0 管理、安全和可观测性扩展
 
 以下均为新增接口或新增可选字段；原有接口路径、请求字段和响应字段未重命名或删除。
