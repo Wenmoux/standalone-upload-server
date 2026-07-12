@@ -281,14 +281,15 @@
 - [x] 普通 Setup 配置导出移除数据库 URL、密码、Token、Cookie 与加密密钥；完整秘密导出需要显式参数和确认短语。
 - [x] Crawler 解析器新增脱敏 HTML fixture，覆盖登录、验证、404、分页、免费/付费、分卷占位、插章与缺失章节 ID。
 - [x] `main` 推送自动触发 GitHub Actions，在远端完成 PostgreSQL/Docker 验证并更新 Docker Hub 移动标签与源码指纹标签。
+- [x] Node 测试由跨平台脚本显式枚举文件，不再依赖 Node 20 不支持的引号 glob；官方 Actions 升级到 Node 24 运行时版本。
 
 ## 当前验证
 
-- [x] 本轮 `node --test tests/*.test.js`：307 通过、1 个 PostgreSQL 集成入口因本机未配置 `PO18_TEST_PG_URL` 跳过、0 失败。
-- [x] c8 覆盖率：语句/行 71.38%，分支 52.52%，函数 75.37%，均高于当前 CI 基线。
+- [x] 本轮 Node 20 `npm test`：309 通过、1 个 PostgreSQL 集成入口因本机未配置 `PO18_TEST_PG_URL` 跳过、0 失败。
+- [x] Node 20 c8 覆盖率：语句/行 71.38%，分支 53.29%，函数 70.19%，均高于当前 CI 基线。
 - [x] Admin 构建：通过，主入口 JS gzip 45.93 KiB，其余视图按路由异步加载。
 - [x] Reader 构建：通过；主入口 JS gzip 46.12 KiB，公共 CSS 16.59 KiB；简繁转换词典为按需独立 chunk。
-- [x] UTF-8、迁移/Schema 漂移、ESLint、Prettier 门禁通过；Docker context 325 文件、16.41 MiB，低于 80 MiB。
+- [x] UTF-8、迁移/Schema 漂移、ESLint、Prettier 门禁通过；Docker context 326 文件、16.42 MiB，低于 80 MiB。
 - [x] 根项目生产依赖审计：0 漏洞。
 - [x] Admin 生产依赖审计：0 漏洞。
 - [x] Reader 生产依赖审计：0 漏洞。

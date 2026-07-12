@@ -17,6 +17,12 @@
             "options": {
                 "tabWidth": 2
             }
+        },
+        {
+            "files": [".github/workflows/ci.yml"],
+            "options": {
+                "tabWidth": 2
+            }
         }
     ]
 }

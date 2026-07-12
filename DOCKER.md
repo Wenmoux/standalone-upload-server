@@ -195,7 +195,7 @@ The Docker build and git ignore rules exclude local runtime data, including `.en
 
 推送 `main` 后，`.github/workflows/release.yml` 会在 GitHub Actions 中执行测试、真实 PostgreSQL、搜索计划基准、前端构建和镜像冒烟，然后推送不可变 `revision/source-hash` 标签并更新 Docker Hub 的 `wenmoux/reader:v2.0`，最后按 registry digest 再冒烟。本机不需要安装 Docker。
 
-工作流需要在 GitHub 仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`。GitHub HTTPS 推送令牌只用于 Git 命令行认证，不要写入远端 URL、仓库文件或工作流。
+工作流需要在 GitHub 仓库 Secrets 中配置 `DOCKERHUB_TOKEN`；`DOCKERHUB_USERNAME` 可选，未配置时使用 `wenmoux`。该 Token 必须具有 Docker Hub 仓库 `wenmoux/reader` 的 Read & Write 权限。GitHub HTTPS 推送令牌只用于 Git 命令行认证，不要写入远端 URL、仓库文件或工作流。
 
 推送与 `package.json` 完全对应的 tag（例如 `v2.0.0`）时，工作流进入正式发布模式。正式发布同时产生不可变 semver 与 `revision/source-hash` 标签，生成 SBOM、Cosign 签名和 attestation；`v2.0` 仍是兼容移动标签。
 

@@ -127,4 +127,9 @@ test("GitHub workflow publishes main pushes and keeps tag releases conditional",
     assert.match(workflow, /PO18_RELEASE: \$\{\{ github\.ref_type == 'tag'/);
     assert.match(workflow, /Push source tag and moving channel tag/);
     assert.match(workflow, /if: github\.ref_type == 'tag'/);
+    assert.match(workflow, /actions\/checkout@v7/);
+    assert.match(workflow, /actions\/setup-node@v6/);
+    assert.match(workflow, /docker\/setup-buildx-action@v4/);
+    assert.match(workflow, /docker\/login-action@v4/);
+    assert.match(workflow, /Repository secret DOCKERHUB_TOKEN is required/);
 });

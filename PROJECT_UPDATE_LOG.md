@@ -15,7 +15,8 @@
 - 后台新增 Book Manifest 导出、校验和增量导入，逐章/整包 SHA-256；跨平台同 `book_id` 冲突会明确拒绝，不静默串书。
 - 书评新增举报、阈值自动审核、moderator 处理、作者申诉、发评/投票频率限制和最多改票一次；Reader、Bot 和后台均有入口。
 - 新增迁移 `019`–`022` 及 rollback、迁移链 Schema snapshot、分路由 Body/Ajv 契约和关键 OpenAPI 响应 Schema。
-- 本轮全量及覆盖率门禁 307 通过、1 项真实 PG 环境缺省跳过、0 失败；覆盖率语句/行 71.38%、分支 52.52%、函数 75.37%；Admin/Reader 构建及 UTF-8、Schema、lint、format、Docker context 门禁通过。
+- Node 测试改为跨平台显式枚举文件，修复 GitHub Node 20 不展开引号 glob 导致的 0% 覆盖率；工作流官方 Actions 同步升级到 Node 24 运行时版本。
+- 本轮 Node 20 全量及覆盖率门禁 309 通过、1 项真实 PG 环境缺省跳过、0 失败；覆盖率语句/行 71.38%、分支 53.29%、函数 70.19%；Admin/Reader 构建及 UTF-8、Schema、lint、format、Docker context 门禁通过。
 - 按确认边界，仅保留 `book_key` 身份迁移和全端平台感知 API 切换未实施。
 
 ## 2026-07-12：EPUB 样式二与导出交互

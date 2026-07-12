@@ -25,7 +25,7 @@
 | Docker、备份与监控 | 已实现 | 固定基础镜像 digest、子进程监管、流式加密远端备份、临时库恢复演练、Prometheus 指标和告警规则 |
 | P2 功能 | 已实现 | 缺书闭环、来源/质量中心、Bot 任务卡片、书评治理、PWA 离线、校验和 Manifest 增量恢复 |
 
-本轮验证：Node 全量及覆盖率门禁共 308 项，其中 307 通过、0 失败，1 项真实 PostgreSQL 入口因本机未配置 `PO18_TEST_PG_URL` 跳过；覆盖率 statements/lines 71.38%、branches 52.52%、functions 75.37%；Admin 与 Reader 生产构建通过；UTF-8、Schema 漂移、ESLint、Prettier 和 Docker context 门禁通过。真实 PostgreSQL、搜索 EXPLAIN 与 digest Docker smoke 已进入 `main` 推送触发的 GitHub 发布工作流，由远端 Docker 环境执行并更新 Docker Hub `wenmoux/reader:v2.0`。
+本轮验证：Node 20 全量及覆盖率门禁共 310 项，其中 309 通过、0 失败，1 项真实 PostgreSQL 入口因本机未配置 `PO18_TEST_PG_URL` 跳过；覆盖率 statements/lines 71.38%、branches 53.29%、functions 70.19%；Admin 与 Reader 生产构建通过；UTF-8、Schema 漂移、ESLint、Prettier 和 Docker context 门禁通过。真实 PostgreSQL、搜索 EXPLAIN 与 digest Docker smoke 已进入 `main` 推送触发的 GitHub 发布工作流，由远端 Docker 环境执行并更新 Docker Hub `wenmoux/reader:v2.0`。
 
 ## 1. 执行摘要
 
