@@ -11,7 +11,7 @@ const {
     githubCommandEscape,
     sourceContentHash
 } = require("../scripts/docker-build");
-const { selectPushTags } = require("../scripts/docker-push");
+const { pushFailureSummary, selectPushTags } = require("../scripts/docker-push");
 const { createImageManifest, createReleaseManifest, parseManifestDigest } = require("../scripts/docker-release-manifest");
 const { REQUIRED_CONTEXT_FILES, ignored, walk } = require("../scripts/check-build-context");
 const { pgFailureSummary } = require("../scripts/run-pg-integration");
@@ -121,6 +121,16 @@ test("push selection retains every build tag when a movable tag is provided", ()
         selectPushTags({ tags: ["example/reader:v2.0.0", "example/reader:sha-abc-source", "example/reader:v2.0"] }, "example/reader:v2.0"),
         ["example/reader:v2.0.0", "example/reader:sha-abc-source", "example/reader:v2.0"]
     );
+});
+
+test("Docker push failures expose the registry response without terminal colors", () => {
+    const input = Array.from({ length: 80 }, (_, index) => `\u001b[31mpush line ${index + 1}\u001b[0m`).join("\n");
+    const summary = pushFailureSummary(input, "denied: requested access to the resource is denied");
+    assert.doesNotMatch(summary, /\u001b/);
+    assert.doesNotMatch(summary, /push line 1(?:\D|$)/);
+    assert.match(summary, /push line 80/);
+    assert.match(summary, /requested access/);
+    assert.ok(summary.split("\n").length <= 60);
 });
 
 test("release manifest binds source identity to a registry digest", () => {
