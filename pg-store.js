@@ -14,6 +14,12 @@ function positiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
 
 const QUERY_TIMEOUT_MS = positiveInt(process.env.PO18_PG_QUERY_TIMEOUT_MS, 30000, 1000, 10 * 60 * 1000);
 const QUERY_SLOW_MS = positiveInt(process.env.PO18_PG_SLOW_QUERY_MS, 1000, 10, QUERY_TIMEOUT_MS);
+const MIGRATION_TIMEOUT_MS = positiveInt(
+    process.env.PO18_PG_MIGRATION_TIMEOUT_MS,
+    10 * 60 * 1000,
+    QUERY_TIMEOUT_MS,
+    60 * 60 * 1000
+);
 
 const pool = new Pool({
     connectionString: PG_URL,
@@ -277,19 +283,21 @@ async function runMigrations() {
             }
 
             const started = Date.now();
-            await client.query("BEGIN");
+            console.log(`[pg-migrate] applying ${migration.version} (timeout ${MIGRATION_TIMEOUT_MS}ms)`);
+            await migrationQuery(client, "BEGIN");
             try {
-                await client.query(sql);
-                await client.query(
+                await executeMigrationSql(client, sql);
+                await migrationQuery(
+                    client,
                     `INSERT INTO schema_migrations(version, name, checksum, duration_ms, app_version)
                      VALUES ($1, $2, $3, $4, $5)`,
                     [migration.version, migration.name, checksum, Date.now() - started, String(process.env.PO18_APP_VERSION || "").slice(0, 120)]
                 );
-                await client.query("COMMIT");
+                await migrationQuery(client, "COMMIT");
                 executed.push(migration.version);
                 console.log(`[pg-migrate] applied ${migration.version}`);
             } catch (err) {
-                await client.query("ROLLBACK");
+                await migrationQuery(client, "ROLLBACK").catch(() => {});
                 throw err;
             }
         }
@@ -304,6 +312,15 @@ async function runMigrations() {
         if (lockHeld) await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]).catch(() => {});
         client.release();
     }
+}
+
+function migrationQuery(client, text, values = []) {
+    return client.query({ text, values, query_timeout: MIGRATION_TIMEOUT_MS });
+}
+
+async function executeMigrationSql(client, sql) {
+    await migrationQuery(client, "SELECT set_config('statement_timeout', $1, true)", [String(MIGRATION_TIMEOUT_MS)]);
+    return migrationQuery(client, sql);
 }
 
 async function runMigrationRollback({ steps = 1, toVersion = "", confirm = "" } = {}) {
@@ -380,6 +397,9 @@ module.exports = {
     checksumSql,
     verifyMigrationChecksum,
     adoptLegacyBaseline,
+    migrationQuery,
+    executeMigrationSql,
+    MIGRATION_TIMEOUT_MS,
     bookColumns,
     chapterColumns,
     pick,

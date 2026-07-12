@@ -2,7 +2,16 @@ const assert = require("assert/strict");
 const fs = require("fs/promises");
 const path = require("path");
 const test = require("node:test");
-const { adoptLegacyBaseline, checksumSql, listMigrationFiles, listRollbackFiles, verifyMigrationChecksum } = require("../pg-store");
+const {
+    MIGRATION_TIMEOUT_MS,
+    adoptLegacyBaseline,
+    checksumSql,
+    databaseQueryMetrics,
+    executeMigrationSql,
+    listMigrationFiles,
+    listRollbackFiles,
+    verifyMigrationChecksum
+} = require("../pg-store");
 
 test("migration files use sortable versioned names", async () => {
     const files = await listMigrationFiles();
@@ -26,6 +35,30 @@ test("baseline migration owns initial schema and initPg only invokes migrations"
     assert.match(baseline, /CREATE TABLE IF NOT EXISTS chapter_cache/);
     assert.match(baseline, /CREATE TABLE IF NOT EXISTS reader_users/);
     assert.match(store, /async function initPg\(\) \{\s+await runMigrations\(\);\s+\}/);
+    assert.match(store, /await migrationQuery\(client, "BEGIN"\);\s+try \{\s+await executeMigrationSql\(client, sql\)/);
+});
+
+test("migrations use a local ten-minute timeout without changing normal query limits", async () => {
+    const calls = [];
+    const client = {
+        async query(config) {
+            calls.push(config);
+            return { rows: [] };
+        }
+    };
+
+    await executeMigrationSql(client, "SELECT pg_sleep(1)");
+
+    assert.equal(MIGRATION_TIMEOUT_MS, 10 * 60 * 1000);
+    assert.equal(databaseQueryMetrics().timeout_ms, 30000);
+    assert.deepEqual(calls, [
+        {
+            text: "SELECT set_config('statement_timeout', $1, true)",
+            values: ["600000"],
+            query_timeout: 600000
+        },
+        { text: "SELECT pg_sleep(1)", values: [], query_timeout: 600000 }
+    ]);
 });
 
 test("legacy migration history adopts the consolidated baseline without executing it", async () => {
