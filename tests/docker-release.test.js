@@ -14,6 +14,7 @@ const {
 const { selectPushTags } = require("../scripts/docker-push");
 const { createImageManifest, createReleaseManifest, parseManifestDigest } = require("../scripts/docker-release-manifest");
 const { REQUIRED_CONTEXT_FILES, ignored, walk } = require("../scripts/check-build-context");
+const { pgFailureSummary } = require("../scripts/run-pg-integration");
 
 const HASH = "a".repeat(64);
 
@@ -77,6 +78,15 @@ test("Docker context keeps every runtime build input required by PWA and shared 
     const contextFiles = new Set(walk(path.join(__dirname, "..")).map((file) => file.path));
     for (const required of REQUIRED_CONTEXT_FILES) assert.equal(contextFiles.has(required), true, required);
     assert.equal(ignored("cirno-src/scripts/reader-pwa-plugin.mjs"), false);
+});
+
+test("PostgreSQL CI failures keep the actionable tail and remove terminal colors", () => {
+    const input = Array.from({ length: 80 }, (_, index) => `\u001b[31mpg line ${index + 1}\u001b[0m`).join("\n");
+    const summary = pgFailureSummary(input);
+    assert.doesNotMatch(summary, /\u001b/);
+    assert.doesNotMatch(summary, /pg line 1(?:\D|$)/);
+    assert.match(summary, /pg line 80/);
+    assert.ok(summary.split("\n").length <= 60);
 });
 
 test("source hash excludes generated release metadata", () => {

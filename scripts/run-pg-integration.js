@@ -22,7 +22,27 @@ function run(command, args, options = {}) {
         const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
         throw new Error(output || `${command} ${args.join(" ")} failed with ${result.status}`);
     }
+    if (options.capture && options.print) {
+        if (result.stdout) process.stdout.write(result.stdout);
+        if (result.stderr) process.stderr.write(result.stderr);
+    }
     return result.stdout || "";
+}
+
+function githubCommandEscape(value) {
+    return String(value || "")
+        .replace(/%/g, "%25")
+        .replace(/\r/g, "%0D")
+        .replace(/\n/g, "%0A");
+}
+
+function pgFailureSummary(value = "") {
+    const lines = String(value || "")
+        .replace(/\u001b\[[0-9;]*m/g, "")
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .filter(Boolean);
+    return lines.slice(-60).join("\n").slice(-9000) || "PostgreSQL integration failed without diagnostic output";
 }
 
 function cleanup() {
@@ -67,51 +87,67 @@ async function main() {
     if (!ready) throw new Error("temporary PostgreSQL did not become ready");
 
     const mount = `${path.resolve(cwd)}:/src`;
-    run("docker", [
-        "run",
-        "--rm",
-        "--network",
-        network,
-        "-v",
-        mount,
-        "-w",
-        "/src",
-        "-e",
-        "NODE_PATH=/app/node_modules",
-        "-e",
-        `PO18_TEST_PG_URL=${pgUrl}`,
-        "-e",
-        `PO18_PG_URL=${pgUrl}`,
-        "-e",
-        "PO18_BACKUP_DIR=/tmp/po18-backups",
-        image,
-        "sh",
-        "-lc",
-        "node --test tests/pg-flows.test.js"
-    ]);
-    run("docker", [
-        "run",
-        "--rm",
-        "--network",
-        network,
-        "-v",
-        mount,
-        "-w",
-        "/src",
-        "-e",
-        "NODE_PATH=/app/node_modules",
-        "-e",
-        `PO18_TEST_PG_URL=${pgUrl}`,
-        image,
-        "sh",
-        "-lc",
-        "node scripts/search-benchmark.js --output tmp/search-benchmark-result.json"
-    ]);
+    run(
+        "docker",
+        [
+            "run",
+            "--rm",
+            "--network",
+            network,
+            "-v",
+            mount,
+            "-w",
+            "/src",
+            "-e",
+            "NODE_PATH=/app/node_modules",
+            "-e",
+            `PO18_TEST_PG_URL=${pgUrl}`,
+            "-e",
+            `PO18_PG_URL=${pgUrl}`,
+            "-e",
+            "PO18_BACKUP_DIR=/tmp/po18-backups",
+            image,
+            "sh",
+            "-lc",
+            "node --test tests/pg-flows.test.js"
+        ],
+        { capture: true, print: true }
+    );
+    run(
+        "docker",
+        [
+            "run",
+            "--rm",
+            "--network",
+            network,
+            "-v",
+            mount,
+            "-w",
+            "/src",
+            "-e",
+            "NODE_PATH=/app/node_modules",
+            "-e",
+            `PO18_TEST_PG_URL=${pgUrl}`,
+            image,
+            "sh",
+            "-lc",
+            "node scripts/search-benchmark.js --output tmp/search-benchmark-result.json"
+        ],
+        { capture: true, print: true }
+    );
 }
 
-main()
-    .catch((err) => {
-        console.error(err.message || String(err));
-        process.exitCode = 1;
-    })
-    .finally(cleanup);
+if (require.main === module) {
+    main()
+        .catch((err) => {
+            const message = err.message || String(err);
+            console.error(message);
+            if (String(process.env.GITHUB_ACTIONS || "").toLowerCase() === "true") {
+                console.error(`::error title=PostgreSQL integration failed::${githubCommandEscape(pgFailureSummary(message))}`);
+            }
+            process.exitCode = 1;
+        })
+        .finally(cleanup);
+}
+
+module.exports = { cleanup, githubCommandEscape, main, pgFailureSummary, run };
