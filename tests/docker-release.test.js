@@ -13,6 +13,7 @@ const {
 } = require("../scripts/docker-build");
 const { selectPushTags } = require("../scripts/docker-push");
 const { createImageManifest, createReleaseManifest, parseManifestDigest } = require("../scripts/docker-release-manifest");
+const { REQUIRED_CONTEXT_FILES, ignored, walk } = require("../scripts/check-build-context");
 
 const HASH = "a".repeat(64);
 
@@ -70,6 +71,12 @@ test("GitHub Docker failures expose a bounded escaped diagnostic annotation", ()
     assert.match(summary, /build line 60/);
     assert.ok(summary.split("\n").length <= 40);
     assert.equal(githubCommandEscape("one%\ntwo\r"), "one%25%0Atwo%0D");
+});
+
+test("Docker context keeps every runtime build input required by PWA and shared UI", () => {
+    const contextFiles = new Set(walk(path.join(__dirname, "..")).map((file) => file.path));
+    for (const required of REQUIRED_CONTEXT_FILES) assert.equal(contextFiles.has(required), true, required);
+    assert.equal(ignored("cirno-src/scripts/reader-pwa-plugin.mjs"), false);
 });
 
 test("source hash excludes generated release metadata", () => {

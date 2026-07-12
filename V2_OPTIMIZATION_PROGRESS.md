@@ -289,7 +289,7 @@
 - [x] Node 20 c8 覆盖率：语句/行 71.38%，分支 53.29%，函数 70.19%，均高于当前 CI 基线。
 - [x] Admin 构建：通过，主入口 JS gzip 45.93 KiB，其余视图按路由异步加载。
 - [x] Reader 构建：通过；主入口 JS gzip 46.12 KiB，公共 CSS 16.59 KiB；简繁转换词典为按需独立 chunk。
-- [x] UTF-8、迁移/Schema 漂移、ESLint、Prettier 门禁通过；Docker context 326 文件、16.42 MiB，低于 80 MiB。
+- [x] UTF-8、迁移/Schema 漂移、ESLint、Prettier 门禁通过；Docker context 327 文件、16.42 MiB，低于 80 MiB，并强制校验 PWA/共享 UI 构建输入未被排除。
 - [x] 根项目生产依赖审计：0 漏洞。
 - [x] Admin 生产依赖审计：0 漏洞。
 - [x] Reader 生产依赖审计：0 漏洞。

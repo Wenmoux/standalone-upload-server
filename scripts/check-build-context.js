@@ -4,6 +4,13 @@ const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const MAX_CONTEXT_BYTES = Number(process.env.PO18_CONTEXT_MAX_BYTES || 80 * 1024 * 1024);
 const TOP_LIMIT = Number(process.env.PO18_CONTEXT_TOP_LIMIT || 20);
+const REQUIRED_CONTEXT_FILES = Object.freeze([
+    "cirno-src/scripts/reader-pwa-plugin.mjs",
+    "cirno-src/public/manifest.webmanifest",
+    "cirno-src/public/pwa-icon-192.png",
+    "cirno-src/public/pwa-icon-512.png",
+    "ui/design-tokens.css"
+]);
 
 function posix(relativePath) {
     return relativePath.split(path.sep).join("/");
@@ -11,7 +18,8 @@ function posix(relativePath) {
 
 function readDockerIgnore() {
     const file = path.join(ROOT, ".dockerignore");
-    return fs.readFileSync(file, "utf8")
+    return fs
+        .readFileSync(file, "utf8")
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter((line) => line && !line.startsWith("#"))
@@ -69,18 +77,29 @@ function formatBytes(bytes) {
     return `${bytes} B`;
 }
 
-const files = walk(ROOT);
-const total = files.reduce((sum, file) => sum + file.bytes, 0);
-const top = [...files].sort((a, b) => b.bytes - a.bytes).slice(0, TOP_LIMIT);
+function main() {
+    const files = walk(ROOT);
+    const total = files.reduce((sum, file) => sum + file.bytes, 0);
+    const top = [...files].sort((a, b) => b.bytes - a.bytes).slice(0, TOP_LIMIT);
+    const paths = new Set(files.map((file) => file.path));
+    const missing = REQUIRED_CONTEXT_FILES.filter((file) => !paths.has(file));
 
-console.log(`Docker build context estimate: ${files.length} files, ${formatBytes(total)}`);
-console.log(`Limit: ${formatBytes(MAX_CONTEXT_BYTES)}`);
-console.log("Largest included files:");
-for (const file of top) {
-    console.log(`${formatBytes(file.bytes).padStart(10)}  ${file.path}`);
+    console.log(`Docker build context estimate: ${files.length} files, ${formatBytes(total)}`);
+    console.log(`Limit: ${formatBytes(MAX_CONTEXT_BYTES)}`);
+    console.log("Largest included files:");
+    for (const file of top) {
+        console.log(`${formatBytes(file.bytes).padStart(10)}  ${file.path}`);
+    }
+    if (missing.length) {
+        console.error(`Required Docker build inputs are excluded: ${missing.join(", ")}`);
+        process.exitCode = 1;
+    }
+    if (total > MAX_CONTEXT_BYTES) {
+        console.error(`Build context is too large: ${formatBytes(total)} > ${formatBytes(MAX_CONTEXT_BYTES)}`);
+        process.exitCode = 1;
+    }
 }
 
-if (total > MAX_CONTEXT_BYTES) {
-    console.error(`Build context is too large: ${formatBytes(total)} > ${formatBytes(MAX_CONTEXT_BYTES)}`);
-    process.exit(1);
-}
+if (require.main === module) main();
+
+module.exports = { REQUIRED_CONTEXT_FILES, formatBytes, ignored, matcher, readDockerIgnore, walk };
