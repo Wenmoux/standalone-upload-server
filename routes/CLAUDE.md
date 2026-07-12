@@ -9,7 +9,7 @@
 CLAUDE.md: 本模块的语义地图，约束路由边界、鉴权落点和服务依赖。
 admin-auth.js: Admin 认证与管理员账号路由，承接登录/session、访问角色及 owner 约束。
 admin-backups.js: Admin 备份路由，把创建、校验、上传、恢复、演练和远端操作映射到备份服务与任务中心。
-admin-config.js: Admin 配置路由，暴露 Telegram、平台、导出和 EPUB Style2 模板/资源配置。
+admin-config.js: Admin 配置路由，暴露 Telegram 类型开关、owner 全员通知、平台、导出和 EPUB Style2 模板/资源配置。
 admin-content.js: Admin 内容域组合路由，挂载维护、用户和书库子路由并处理其余后台内容/配置接口。
 admin-crawler.js: PO18 爬虫管理路由，提供配置、运行、暂停、恢复、停止和 Cookie 测试入口。
 admin-library.js: Admin 书库路由，负责书籍/章节 CRUD、筛选导出、书评及目录查询的 HTTP 适配。
@@ -18,7 +18,7 @@ admin-manifests.js: Admin Book Manifest 路由，提供单书导出、包验证�
 admin-system.js: Admin 系统路由，聚合状态、诊断、日志、概览、任务与安全审计入口。
 admin-users.js: Admin 用户与经济管理路由，覆盖 owner 专属 Reader/Bot 管理员切换、用户、CDK、流水、搜索需求及 CSV 导出。
 bot-api.js: Bot API 组合与书籍域路由，在统一 Bot Token 边界下挂载系统、用户、搜索、导出配置和书评能力。
-bot-api-system.js: Bot 内部系统路由，处理持久任务登记/状态回写、审计、搜索需求与命令配置读取。
+bot-api-system.js: Bot 内部系统路由，处理持久任务登记/状态回写、管理员广播入队、注册用户收件人分页、审计、搜索需求与命令配置读取。
 bot-api-users.js: Bot 内部用户路由，把 Telegram 身份、签到、任务、转账、兑换与流水请求映射到用户经济服务。
 health.js: 运维路由，提供 liveness/readiness/deep health、版本、Prometheus 文本和 Admin 指标摘要。
 openapi.js: OpenAPI 入口路由，按请求实时生成 Express 端点索引并提供轻量文档页。

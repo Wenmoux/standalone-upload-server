@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Fetch/URLSearchParams、server-pg 的 Bot/Reader/Upload HTTP 契约和环境中的服务地址与 Bot Token
- * [OUTPUT]: 对外提供 PgBotClient 统一 HTTP 客户端，以及 Telegram 用户显示名和邀请参数解析工具
+ * [OUTPUT]: 对外提供 PgBotClient 统一 HTTP 客户端、管理员广播任务/收件人分页，以及 Telegram 用户显示名和邀请参数解析工具
  * [POS]: bot 到 server-pg 的唯一业务数据访问层，封装鉴权、超时、缓存、幂等键与分页聚合，禁止直连 PostgreSQL
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -137,6 +137,18 @@ class PgBotClient {
 
     async health() {
         return this.request("/bot-api/health");
+    }
+
+    async createBroadcast(telegramId, message, chatId = "") {
+        return this.request("/bot-api/broadcasts", {
+            method: "POST",
+            body: JSON.stringify({ telegram_id: String(telegramId || ""), chat_id: String(chatId || ""), message: String(message || "") })
+        });
+    }
+
+    async broadcastRecipients(afterId = 0, limit = 100) {
+        const query = new URLSearchParams({ after_id: String(afterId || 0), limit: String(limit || 100) });
+        return this.request(`/bot-api/broadcasts/recipients?${query}`);
     }
 
     async commandSettings() {

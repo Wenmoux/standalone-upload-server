@@ -25,7 +25,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
 - `bot-export-errors.test.js`: 导出错误分类与面向用户消息。
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。
-- `bot-runtime-modules.test.js`: Bot 运行模块装配、搜索缓存、短期书评草稿与依赖边界。
+- `bot-runtime-modules.test.js`: Bot 运行模块装配、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
 - `bot-search-platforms.test.js`: 搜索平台参数和别名解析。
 - `bot-search-social-handlers.test.js`: 搜索与社交处理器交互契约，覆盖群聊 ForceReply 书评草稿隔离、校验、失败保留与取消。
 - `bot-task-runtime.test.js`: 持久任务领取、执行、续租和完成语义。
@@ -77,7 +77,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `search-benchmark.test.js`: 搜索基准预算和结果解析。
 - `share-handlers.test.js`: TXT/EPUB 分享、样式选择与投递流程。
 - `source-health.test.js`: 内容来源熔断与健康评分。
-- `telegram-push.test.js`: Telegram 推送队列、批次和失败恢复。
+- `telegram-push.test.js`: Telegram 推送类型、注册用户收件人分页、批次和失败恢复。
 - `test-runner-script.test.js`: 根测试发现器和覆盖率门槛。
 - `tts.test.js`: TTS 供应商、分段与代理安全。
 - `upload-api-routes.test.js`: 上传鉴权、元数据、章节和删除路由。

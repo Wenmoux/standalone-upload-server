@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 bot 内客户端、命令/领域处理器、自动推送取消置顶策略、任务运行时、Telegram polling/health 与环境配置
- * [OUTPUT]: 提供 Telegram Bot 进程组合入口，启动命令同步、系统推送取消置顶、任务恢复、长轮询和健康服务
+ * [INPUT]: 依赖 bot 内客户端、命令/领域处理器、管理员广播、自动推送取消置顶策略、任务运行时、Telegram polling/health 与环境配置
+ * [OUTPUT]: 提供 Telegram Bot 进程组合入口，启动命令同步、全员通知、系统推送取消置顶、任务恢复、长轮询和健康服务
  * [POS]: bot 的唯一组合根，负责依赖注入和进程生命周期；可拆领域逻辑不得继续沉积于此
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -31,7 +31,7 @@ const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const { EPUB_EXPORT_STYLE_CHOICES, epubStyleSelectionMarkup, normalizeEpubStyleChoice } = require("./epub-style-picker");
 const { createTaskSchedulers } = require("./task-schedulers");
-const { createReviewDraftStore, createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
+const { createBroadcastDraftStore, createReviewDraftStore, createSearchCache, helpLinesFromCommands: buildHelpLinesFromCommands } = require("./bot-session");
 const { createTelegramPollingRuntime } = require("./polling-runtime");
 const { createAutomaticPushUnpinHandler } = require("./automatic-push-unpin");
 const { createPo18AccountHandlers } = require("./po18-account-handlers");
@@ -39,6 +39,7 @@ const { createShareHandlers } = require("./share-handlers");
 const { createTaskStatusHandlers } = require("./task-status-handlers");
 const { createSearchHandlers } = require("./search-handlers");
 const { createSocialHandlers } = require("./social-handlers");
+const { createBroadcastHandlers } = require("./broadcast-handlers");
 const {
     meText,
     registerText,
@@ -196,9 +197,12 @@ if (!TELEGRAM_TOKEN) {
 let botUser = null;
 const searchCache = createSearchCache({ maxSize: Number(process.env.TELEGRAM_SEARCH_CACHE_MAX || 200) });
 const reviewDrafts = createReviewDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 1000 });
+const broadcastDrafts = createBroadcastDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 200, maxLength: 3000 });
 const privateExportStarts = new Map();
 let commandRegistry = null;
 let persistentJobsRecovered = false;
+let broadcastRecoveryTimer = null;
+let broadcastRecoveryRunning = false;
 const commandSettingsState = { at: 0, payload: null };
 
 const {
@@ -237,7 +241,8 @@ const {
     sendExport,
     handleMyBookshelf,
     handleShare,
-    handleShareBookshelf
+    handleShareBookshelf,
+    sendRegisteredUserBroadcast: (...args) => broadcastHandlers.sendRegisteredUserBroadcast(...args)
 });
 
 const { handleTasks, handleTask, handleCancelJob } = createTaskStatusHandlers({
@@ -265,6 +270,7 @@ function getCommandRegistry() {
         handleSign,
         handleRedeem,
         handleGive,
+        handleBroadcast,
         handleTop,
         handleTransactions,
         handleTasks,
@@ -515,6 +521,23 @@ const {
     reviewPromptActions,
     reviewVoteActions
 });
+
+const broadcastHandlers = createBroadcastHandlers({
+    client,
+    ensureRegistered,
+    sendMessage,
+    editMessage,
+    escapeHtml,
+    drafts: broadcastDrafts,
+    delay
+});
+const {
+    broadcastDraftContext,
+    handleBroadcast,
+    handleBroadcastCancel,
+    handleBroadcastConfirm,
+    handleBroadcastDraft
+} = broadcastHandlers;
 
 async function handleRedeem(message, args) {
     await ensureRegistered(message.from);
@@ -869,6 +892,11 @@ async function sendExport(chat, from, bookId, format, _signal, exportOptions = {
 async function handleMessage(message) {
     const text = message.text || message.caption || "";
     if (!text) return;
+    const broadcastDraft = broadcastDraftContext(message, text);
+    if (broadcastDraft) {
+        const action = /^(?:取消|\/cancel(?:@\w+)?)$/i.test(text.trim()) ? "broadcast_draft_cancel" : "broadcast_preview";
+        return withBotAudit(message, "/broadcast", action, {}, () => handleBroadcastDraft(message, text));
+    }
     const reviewDraft = reviewDraftContext(message, text);
     if (reviewDraft) {
         const action = /^(?:取消|\/cancel(?:@\w+)?)$/i.test(text.trim())
@@ -919,8 +947,22 @@ async function handleCallback(query) {
     if (!message) return answerCallback(query.id);
     const callbackMessage = { chat: message.chat, from: query.from };
     const [action, a, ...rest] = String(query.data || "").split("|");
-    if (!["like", "dislike", "cvote", "sreq", "rvup", "rvdn", "reviewcancel"].includes(action)) await answerCallback(query.id);
+    if (!["like", "dislike", "cvote", "sreq", "rvup", "rvdn", "reviewcancel", "broadcastsend", "broadcastcancel"].includes(action)) await answerCallback(query.id);
     if (action === "noop") return;
+    if (action === "broadcastsend") {
+        try {
+            const tip = await withBotAudit(callbackMessage, "/broadcast", "broadcast_publish", {}, () =>
+                handleBroadcastConfirm(callbackMessage, a, { chatId: message.chat.id, messageId: message.message_id })
+            );
+            return answerCallback(query.id, tip || "已入队");
+        } catch (err) {
+            return answerCallback(query.id, err.message || "发布失败");
+        }
+    }
+    if (action === "broadcastcancel") {
+        const tip = await handleBroadcastCancel(callbackMessage, a, { chatId: message.chat.id, messageId: message.message_id });
+        return answerCallback(query.id, tip);
+    }
     if (action === "info") return withBotAudit(callbackMessage, "/info", "info_callback", { book_id: a }, () => withCooldown(callbackMessage, "info", BOT_INFO_COOLDOWN_MS, "详情", () => handleInfo(callbackMessage, a, { chatId: message.chat.id, messageId: message.message_id })));
     if (action === "fav") {
         return withBotAudit(callbackMessage, "/myfav", "favorite_add", { book_id: a }, async () => {
@@ -1040,6 +1082,18 @@ async function syncBotCommands() {
     }
 }
 
+async function recoverBroadcastJobs() {
+    if (broadcastRecoveryRunning) return 0;
+    const queue = botTaskQueue.stats();
+    if (Number(queue.running || 0) > 0 || Number(queue.queued || 0) > 0) return 0;
+    broadcastRecoveryRunning = true;
+    try {
+        return await recoverPersistentJobs(["bot_registered_user_broadcast"], recoverSystemJob, { limit: 1 });
+    } finally {
+        broadcastRecoveryRunning = false;
+    }
+}
+
 const botRuntime = createTelegramPollingRuntime({
     telegram,
     handleUpdate,
@@ -1063,6 +1117,13 @@ const botRuntime = createTelegramPollingRuntime({
                     persistentJobsRecovered = false;
                     console.warn(`[bot-task] recovery failed: ${err.message || String(err)}`);
                 });
+        }
+        if (!broadcastRecoveryTimer) {
+            recoverBroadcastJobs().catch((err) => console.warn(`[bot-task] broadcast recovery failed: ${err.message || String(err)}`));
+            broadcastRecoveryTimer = setInterval(() => {
+                recoverBroadcastJobs().catch((err) => console.warn(`[bot-task] broadcast recovery failed: ${err.message || String(err)}`));
+            }, Math.max(2000, Number(process.env.TELEGRAM_BROADCAST_POLL_MS || 5000)));
+            broadcastRecoveryTimer.unref?.();
         }
     }
 });

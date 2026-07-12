@@ -917,6 +917,8 @@ GET /admin-api/events?limit=80
 GET  /admin-api/config/telegram
 PUT  /admin-api/config/telegram
 POST /admin-api/config/telegram/test
+POST /admin-api/config/telegram/daily-report/test
+POST /admin-api/config/telegram/broadcast
 ```
 
 保存请求：
@@ -924,6 +926,7 @@ POST /admin-api/config/telegram/test
 ```json
 {
     "enabled": true,
+    "pushTypes": ["metadata", "chapter", "daily", "review"],
     "botToken": "123456:ABC",
     "chatId": "-1001234567890"
 }
@@ -931,8 +934,10 @@ POST /admin-api/config/telegram/test
 
 说明：
 
-- 只有新章节插入/更新事件会尝试推送。
+- `pushTypes` 可独立控制元信息、章节、日报和新书评的频道推送；书评开关关闭时不影响书评本身发布。
 - Bot Token 和 Chat ID 存在 PostgreSQL 的 `admin_config`。
+- 全员通知仅 owner 可从后台发布，请求体为 `{ "message": "通知", "confirm": "PUSH" }`；接口立即返回 `bot_registered_user_broadcast` 任务号，Bot Worker 随后只私聊已注册、未封禁且绑定 Telegram 的用户。
+- 全员通知最长 3000 字，单个用户屏蔽 Bot 会计入失败统计但不会中断批次；只记录 Telegram API 是否接受发送，不追踪用户是否查看，已经发出的消息无法撤回。
 
 ### 9. 备份接口
 
@@ -988,6 +993,7 @@ GET  /admin-api/config/telegram
 PUT  /admin-api/config/telegram
 POST /admin-api/config/telegram/test
 POST /admin-api/config/telegram/daily-report/test
+POST /admin-api/config/telegram/broadcast
 GET  /admin-api/config/platforms
 PUT  /admin-api/config/platforms
 GET  /admin-api/config/export
@@ -1309,6 +1315,17 @@ Content-Type: application/json
 - 同一用户、同一搜索词、同一平台和类型只保留一条，重复提交会更新 `updated_at` 并返回 `already_exists: true`。
 - 后台反馈统计页通过 `GET /admin-api/search-requests?limit=120` 展示聚合后的缺书需求列表。
 
+### Bot 全员通知
+
+```http
+POST /bot-api/broadcasts
+GET  /bot-api/broadcasts/recipients?after_id=0&limit=100
+```
+
+- 发布接口同时受内部 Bot Token 与 `reader_users.is_admin` 约束，普通注册用户返回 `403`。
+- `/broadcast [通知内容]` 通过 ForceReply 或命令参数生成预览，管理员点击确认后才创建持久任务。
+- 收件人分页接口只供 Bot Worker 使用，排除封禁用户和未绑定 Telegram 的账号。
+
 ### Bot 书评发布与投票
 
 ```http
@@ -1340,7 +1357,7 @@ Content-Type: application/json
 规则：
 
 - 发布书评需要 Lv.2 及以上，默认消耗 `100` 铜。
-- 发布成功后会尝试推送到后台 Telegram 配置中的 `telegram_chat_id`。
+- 发布成功后仅在 Telegram 总开关开启且 `pushTypes` 包含 `review` 时推送到 `telegram_chat_id`。
 - 频道按钮投票：`like` 给书评作者 `+100` 铜，`dislike` 给书评作者 `-1` 铜。
 - 同一用户对同一书评只能保留一个态度；重复点击不重复结算，改投只结算净变化。
 

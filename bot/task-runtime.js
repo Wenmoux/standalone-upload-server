@@ -152,7 +152,7 @@ function createBotTaskRuntime(deps = {}) {
             console.log(`[bot-task] start ${job.name}`);
             const created = await ensureSystemJob(job);
             updateTrackedSystemJob(job, { status: "running", progress: 10, started: true });
-            if (created?.id) await sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")} 开始执行。\n任务 #${created.id}`).catch(() => {});
+            if (created?.id && job.chatId) await sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")} 开始执行。\n任务 #${created.id}`).catch(() => {});
             if (job.systemJobId && typeof client.heartbeatSystemJob === "function") {
                 job.heartbeatTimer = setInterval(async () => {
                     const current = await client.heartbeatSystemJob(job.systemJobId, {
@@ -238,12 +238,12 @@ function createBotTaskRuntime(deps = {}) {
         }
     };
 
-    async function recoverPersistentJobs(types, factory) {
+    async function recoverPersistentJobs(types, factory, options = {}) {
         if (typeof client.claimSystemJobs !== "function" || typeof factory !== "function") return 0;
         const rows = await client.claimSystemJobs({
             worker_id: workerId,
             types,
-            limit: Math.max(1, concurrency * 4),
+            limit: Math.max(1, Math.min(20, Number(options.limit || concurrency * 4))),
             lease_seconds: leaseSeconds
         }).catch((err) => {
             console.warn(`[bot-task] recovery claim failed: ${err.message || String(err)}`);

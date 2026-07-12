@@ -111,10 +111,14 @@
 - `PO18_BOT_API_TIMEOUT_MS`：Bot 调 server 默认 `30000`。
 - `PO18_BOT_EXPORT_PAGE_SIZE`：正文分页，默认 `100`，范围 `20–500`。
 - `PO18_BOT_JOB_LEASE_SECONDS`、`PO18_BOT_JOB_HEARTBEAT_MS`：持久任务租约与心跳。
+- `TELEGRAM_BROADCAST_POLL_MS`：Bot 领取后台全员通知任务的轮询间隔，默认 `5000`，最小 `2000`。
+- `TELEGRAM_BROADCAST_SEND_DELAY_MS`：注册用户私聊之间的限速间隔，默认 `60` 毫秒，运行时最低 `35` 毫秒。
 - `PO18_BOT_EXPORT_UNLOCK_COST`、`PO18_BOT_EXPORT_FREE_COPPER_COST`、`PO18_BOT_EXPORT_PAID_CHAPTER_SILVER_COST`：导出定价默认值；后台配置可覆盖。
 - `PIKPAK_WEBDAV_URL`、`PIKPAK_WEBDAV_USERNAME`、`PIKPAK_WEBDAV_PASSWORD`、`PIKPAK_WEBDAV_ROOT`：可选导出目标。
 
 Telegram 搜索、详情、导出、书架和 PikPak 还有独立 cooldown；除非确认滥用或限流问题，不建议一次性覆盖全部默认值。
+
+后台 Telegram `pushTypes` 支持 `metadata`、`chapter`、`daily`、`review`。这些选项只控制频道/群组同步；全员通知是单独的 owner/Bot 管理员高风险操作，收件人固定为已注册、未封禁且绑定 Telegram 的用户。
 
 ## 单容器进程监管
 

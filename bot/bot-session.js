@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖命令注册表的已配置命令快照、进程内时间源及 Telegram 会话身份
- * [OUTPUT]: 对外提供有界搜索查询缓存、短期书评草稿状态与按命令分组生成的帮助文本
- * [POS]: bot 会话辅助层，在 Telegram 回调长度约束下保存短期交互上下文并投影命令元数据
+ * [OUTPUT]: 对外提供有界搜索查询缓存、短期书评/管理员广播草稿状态与按命令分组生成的帮助文本
+ * [POS]: bot 会话辅助层，在 Telegram 回调长度约束下保存隔离的短期交互上下文并投影命令元数据
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createSearchCache(options = {}) {
@@ -108,6 +108,66 @@ function createReviewDraftStore(options = {}) {
     };
 }
 
+function createBroadcastDraftStore(options = {}) {
+    const maxSize = Math.max(1, Math.trunc(Number(options.maxSize || 200)));
+    const ttlMs = Math.max(1000, Math.trunc(Number(options.ttlMs || 10 * 60 * 1000)));
+    const maxLength = Math.max(1, Math.min(3500, Math.trunc(Number(options.maxLength || 3000))));
+    const now = typeof options.now === "function" ? options.now : Date.now;
+    const drafts = new Map();
+    let sequence = 0;
+
+    function keyOf(chatId, userId) {
+        return `${String(chatId || "")}:${String(userId || "")}`;
+    }
+
+    function prune() {
+        const cutoff = now() - ttlMs;
+        for (const [key, draft] of drafts) if (draft.createdAt <= cutoff) drafts.delete(key);
+        while (drafts.size > maxSize) drafts.delete(drafts.keys().next().value);
+    }
+
+    function get({ chatId, userId } = {}) {
+        prune();
+        return drafts.get(keyOf(chatId, userId)) || null;
+    }
+
+    function begin({ chatId, userId, promptMessageId = "" } = {}) {
+        const draft = {
+            chatId: String(chatId || ""),
+            userId: String(userId || ""),
+            promptMessageId: String(promptMessageId || ""),
+            token: (++sequence).toString(36),
+            content: "",
+            createdAt: now()
+        };
+        drafts.delete(keyOf(chatId, userId));
+        drafts.set(keyOf(chatId, userId), draft);
+        prune();
+        return draft;
+    }
+
+    function capture({ chatId, userId, content } = {}) {
+        const text = String(content || "").trim();
+        const length = Array.from(text).length;
+        if (!length) return { status: "empty", length, maxLength };
+        if (length > maxLength) return { status: "too_long", length, maxLength };
+        const current = get({ chatId, userId }) || begin({ chatId, userId });
+        current.content = text;
+        current.createdAt = now();
+        return { status: "ready", length, maxLength, draft: current };
+    }
+
+    function consume({ chatId, userId, token = "" } = {}) {
+        const key = keyOf(chatId, userId);
+        const draft = get({ chatId, userId });
+        if (!draft || (token && draft.token !== String(token))) return null;
+        drafts.delete(key);
+        return draft;
+    }
+
+    return { begin, cancel: consume, capture, consume, get, size: () => (prune(), drafts.size) };
+}
+
 function helpLinesFromCommands(registry, escapeHtml = (value) => String(value ?? "")) {
     const grouped = new Map();
     for (const command of registry.configuredCommands()) {
@@ -127,4 +187,4 @@ function helpLinesFromCommands(registry, escapeHtml = (value) => String(value ??
     return lines;
 }
 
-module.exports = { createReviewDraftStore, createSearchCache, helpLinesFromCommands };
+module.exports = { createBroadcastDraftStore, createReviewDraftStore, createSearchCache, helpLinesFromCommands };

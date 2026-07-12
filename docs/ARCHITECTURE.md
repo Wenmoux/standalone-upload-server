@@ -45,7 +45,7 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
 | Admin | `admin-ui/` | Vue 3 管理后台，构建后发布到 `public/` |
 | Setup | `docker/control-panel.js` | 无数据库时的初始化向导，以及运行后的配置/状态/日志入口 |
 | Reader | `cirno-src/` | Vue 3 阅读器；`reader-server.js` 提供静态文件并代理 Reader API |
-| Bot | `bot/telegram-bot.js` 与模块 | Telegram polling、命令、任务编排、TXT/EPUB 构建和外部同步 |
+| Bot | `bot/telegram-bot.js` 与模块 | Telegram polling、命令、持久任务编排、注册用户全员通知、TXT/EPUB 构建和外部同步 |
 | 数据库 | `pg-store.js`、`db/` | Pool、迁移、rollback、schema snapshot 和数据模型 |
 | 运维 | `docker/`、`scripts/`、`monitoring/` | 入口、监管、备份、状态、构建、发布和告警 |
 
@@ -74,7 +74,7 @@ Reader server 只代理 `/reader-auth` 和 `/reader-api` 到 `3100`。上传与 
 - 系统任务、任务租约、幂等副作用账本、来源健康和审计。
 - Admin 配置、API Token、备份、Manifest 和数据质量。
 
-长任务先写入 `system_jobs`，Worker claim 后维护租约与心跳。扣费、免费额度和奖励通过 operation ledger 保证重试不重复结算。
+长任务先写入 `system_jobs`，Worker claim 后维护租约与心跳。全员通知也走该边界：Admin/Bot 只负责创建任务，Bot Worker 分页读取合格收件人并限速私聊；任务最多执行一次，避免部分送达后自动重试造成整批重复。扣费、免费额度和奖励通过 operation ledger 保证重试不重复结算。
 
 ## 迁移与启动
 

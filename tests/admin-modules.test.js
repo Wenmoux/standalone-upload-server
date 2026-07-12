@@ -329,6 +329,7 @@ test("admin config routes read and update telegram, platform and export settings
     const writes = [];
     const style2AssetCalls = [];
     const telegramPosts = [];
+    const broadcastJobs = [];
     const router = createAdminConfigRoutes({
         requireAdmin: adminOnly,
         configGet: async (key) => stored[key] || "",
@@ -385,6 +386,11 @@ test("admin config routes read and update telegram, platform and export settings
             }
         },
         sendDailyReport: async () => ({ sent: 1 }),
+        countRegisteredUserRecipients: async () => 8,
+        createSystemJob: async (input) => {
+            broadcastJobs.push(input);
+            return { id: 99, status: "queued" };
+        },
         postJson: async (url, body) => {
             telegramPosts.push({ url, body });
             return "{}";
@@ -396,6 +402,7 @@ test("admin config routes read and update telegram, platform and export settings
         const telegramBody = await telegram.json();
         assert.equal(telegramBody.loginBotId, "123456");
         assert.equal(telegramBody.dailyReportRecipients, 3);
+        assert.equal(telegramBody.broadcastRecipients, 8);
 
         const updateTelegram = await fetch(`${base}/admin-api/config/telegram`, {
             method: "PUT",
@@ -463,6 +470,21 @@ test("admin config routes read and update telegram, platform and export settings
             headers: { "X-Test-Admin": "1" }
         });
         assert.equal((await daily.json()).sent, 1);
+
+        const rejectedBroadcast = await fetch(`${base}/admin-api/config/telegram/broadcast`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ message: "维护通知", confirm: "wrong" })
+        });
+        assert.equal(rejectedBroadcast.status, 400);
+        const broadcast = await fetch(`${base}/admin-api/config/telegram/broadcast`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ message: "维护通知", confirm: "PUSH" })
+        });
+        const broadcastBody = await broadcast.json();
+        assert.equal(broadcastBody.job.id, 99);
+        assert.equal(broadcastBody.recipients, 8);
     });
 
     assert.ok(writes.some((item) => item.key === "telegram_push_types" && item.value === '["daily"]'));
@@ -470,6 +492,8 @@ test("admin config routes read and update telegram, platform and export settings
     assert.ok(writes.some((item) => item.key === "bot_export_unlock_cost" && item.value === "11"));
     assert.ok(writes.some((item) => item.key === "bot_epub_style_config" && item.value === '{"styleId":"crane"}'));
     assert.equal(telegramPosts[0].body.chat_id, "chat-2");
+    assert.equal(broadcastJobs[0].type, "bot_registered_user_broadcast");
+    assert.equal(broadcastJobs[0].maxAttempts, 1);
     assert.equal(hasTelegramSystemPushMarker(telegramPosts[0].body.text), true);
     assert.deepEqual(style2AssetCalls, [
         { action: "send", slot: "title-background" },

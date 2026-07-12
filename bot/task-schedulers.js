@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 botTaskQueue、Telegram 消息接口和导出、书架同步、共享领域执行器
- * [OUTPUT]: 对外提供持久 Bot 任务类型、幂等任务构造与导出/同步/共享调度和恢复工厂
+ * [INPUT]: 依赖 botTaskQueue、Telegram 消息接口和导出、书架同步、共享、注册用户广播领域执行器
+ * [OUTPUT]: 对外提供持久 Bot 任务类型、幂等任务构造与导出/同步/共享/全员通知调度和恢复工厂
  * [POS]: bot 任务域的声明式调度层，统一任务类型、互斥键、持久输入和实际执行函数之间的映射
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -20,7 +20,8 @@ function createTaskSchedulers(deps = {}) {
         sendExport,
         handleMyBookshelf,
         handleShare,
-        handleShareBookshelf
+        handleShareBookshelf,
+        sendRegisteredUserBroadcast
     } = deps;
 
     function exportJob(chat, from, bookId, format, exportOptions = {}) {
@@ -118,6 +119,27 @@ function createTaskSchedulers(deps = {}) {
         };
     }
 
+    function broadcastJob(input = {}) {
+        const content = String(input.message || "").trim();
+        if (!content) return null;
+        return {
+            name: `broadcast:${input.job_id || Date.now()}`,
+            label: "全员通知",
+            chatId: String(input.chat_id || ""),
+            systemJobType: "bot_registered_user_broadcast",
+            systemJobCreatedBy: String(input.created_by || "telegram_bot"),
+            systemJobInput: {
+                message: content,
+                chat_id: String(input.chat_id || ""),
+                telegram_id: String(input.telegram_id || ""),
+                source: input.source || "bot"
+            },
+            maxAttempts: 1,
+            lockKey: "broadcast:registered-users",
+            task: (signal) => sendRegisteredUserBroadcast(content, signal)
+        };
+    }
+
     function scheduleExport(chat, from, bookId, format, exportOptions = {}) {
         const job = exportJob(chat, from, bookId, format, exportOptions);
         if (!job) return sendMessage(typeof chat === "object" ? chat.id : chat, `用法：/export${format} 书号`);
@@ -154,6 +176,8 @@ function createTaskSchedulers(deps = {}) {
             job = shareJob(message, input.book_id);
         } else if (row.type === "bot_po18_bookshelf_share") {
             job = shareBookshelfJob(message);
+        } else if (row.type === "bot_registered_user_broadcast") {
+            job = broadcastJob({ ...input, job_id: row.id, created_by: row.created_by });
         }
         if (!job) return null;
         job.systemJobId = row.id;

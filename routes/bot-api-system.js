@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Express、Bot Token Scope、system-jobs/bot-audit/config 服务与搜索需求写入能力
- * [OUTPUT]: 对外提供 Bot 健康、持久任务登记/更新、审计、搜索需求和命令配置内部路由
- * [POS]: routes 的 Bot 系统协作边界，让 Worker 通过 HTTP 管理任务生命周期而不直连数据库
+ * [INPUT]: 依赖 Express、Bot Token Scope、system-jobs/bot-audit/config、管理员身份与注册用户广播收件人服务
+ * [OUTPUT]: 对外提供 Bot 健康、持久任务登记/更新、管理员广播、审计、搜索需求和命令配置内部路由
+ * [POS]: routes 的 Bot 系统协作边界，让 Worker 通过 HTTP 管理任务生命周期和全员通知收件人而不直连数据库
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -43,8 +43,44 @@ function createBotApiSystemRoutes(deps = {}) {
     const cancelSystemJob = deps.cancelSystemJob;
     const recordBotAuditLog = deps.recordBotAuditLog;
     const botCommandSettings = deps.botCommandSettings || (async () => ({ commands: [] }));
+    const findBotUserByTelegramId = deps.findBotUserByTelegramId;
+    const registeredUserRecipients = deps.registeredUserRecipients;
 
     router.get("/bot-api/health", requireBotApi, (req, res) => res.json({ ok: true }));
+
+    router.post("/bot-api/broadcasts", requireBotApi, async (req, res, next) => {
+        try {
+            if (typeof createSystemJob !== "function" || typeof findBotUserByTelegramId !== "function") {
+                return res.status(503).json({ error: "broadcast service unavailable" });
+            }
+            const telegramId = String(req.body?.telegram_id || req.body?.telegramId || "").trim();
+            const chatId = String(req.body?.chat_id || req.body?.chatId || "").trim();
+            const message = String(req.body?.message || "").trim();
+            if (!telegramId) return res.status(400).json({ error: "telegram_id is required" });
+            if (!message) return res.status(400).json({ error: "通知内容不能为空" });
+            if (Array.from(message).length > 3000) return res.status(400).json({ error: "通知内容最多 3000 字" });
+            const user = await findBotUserByTelegramId(telegramId);
+            if (!user?.is_admin || user?.is_banned) return res.status(403).json({ error: "只有管理员可以发布全员通知" });
+            const job = await createSystemJob({
+                type: "bot_registered_user_broadcast",
+                input: { message, telegram_id: telegramId, chat_id: chatId, source: "bot" },
+                createdBy: `telegram:${telegramId}`,
+                maxAttempts: 1
+            });
+            res.json({ success: true, job });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/bot-api/broadcasts/recipients", requireBotApi, async (req, res, next) => {
+        try {
+            if (typeof registeredUserRecipients !== "function") return res.status(503).json({ error: "broadcast recipients unavailable" });
+            res.json(await registeredUserRecipients({ afterId: req.query.after_id || req.query.afterId, limit: req.query.limit }));
+        } catch (err) {
+            next(err);
+        }
+    });
 
     router.get("/bot-api/jobs", requireBotApi, async (req, res, next) => {
         try {

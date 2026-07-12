@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Express、根级 Telegram 推送标记、Admin 权限、config/bot-settings/EPUB Style2 服务与输入校验
- * [OUTPUT]: 对外提供 平台、Telegram、导出计价、Bot 命令和 EPUB 模板/资源配置路由
- * [POS]: routes 的 Admin 配置边界，把持久配置能力分组为受角色保护的 HTTP 契约
+ * [INPUT]: 依赖 Express、根级 Telegram 推送标记、Admin 权限、config/system-jobs/bot-settings/EPUB Style2 服务与输入校验
+ * [OUTPUT]: 对外提供 平台、Telegram 全员通知、导出计价、Bot 命令和 EPUB 模板/资源配置路由
+ * [POS]: routes 的 Admin 配置边界，把持久配置与高风险全员通知能力分组为受 owner 保护的 HTTP 契约
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -27,6 +27,8 @@ function createAdminConfigRoutes(options = {}) {
     const epubStyle2Assets = options.epubStyle2Assets;
     const sendDailyReport = options.sendDailyReport || (async () => ({ skipped: "not_configured" }));
     const postJson = options.postJson || (async () => {});
+    const createSystemJob = options.createSystemJob;
+    const countRegisteredUserRecipients = options.countRegisteredUserRecipients || (async () => 0);
 
     router.get("/admin-api/config/telegram", requireAdmin, async (req, res, next) => {
         try {
@@ -49,6 +51,7 @@ function createAdminConfigRoutes(options = {}) {
                 dailyReportAdminIds: reportConfig.adminIds,
                 dailyReportRecipients: reportRecipients.length,
                 dailyReportLastDate: reportConfig.lastDate,
+                broadcastRecipients: await countRegisteredUserRecipients(),
                 loginEnabled: !!loginBotId,
                 loginBotId,
                 loginTokenSource: storedToken ? "admin_config" : fallbackToken ? "env" : "",
@@ -111,6 +114,26 @@ function createAdminConfigRoutes(options = {}) {
             const result = await sendDailyReport({ force: true });
             if (result.skipped) return res.status(400).json({ error: result.skipped });
             res.json({ success: true, ...result });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.post("/admin-api/config/telegram/broadcast", requireAdmin, async (req, res, next) => {
+        try {
+            if (typeof createSystemJob !== "function") return res.status(503).json({ error: "全员通知任务服务未启用" });
+            const message = String(req.body?.message || "").trim();
+            if (String(req.body?.confirm || "").trim() !== "PUSH") return res.status(400).json({ error: "确认短语不匹配", expectedConfirm: "PUSH" });
+            if (!message) return res.status(400).json({ error: "通知内容不能为空" });
+            if (Array.from(message).length > 3000) return res.status(400).json({ error: "通知内容最多 3000 字" });
+            const actor = req.session?.adminUser?.username || "admin";
+            const job = await createSystemJob({
+                type: "bot_registered_user_broadcast",
+                input: { message, source: "admin", requested_by: actor },
+                createdBy: `admin:${actor}`,
+                maxAttempts: 1
+            });
+            res.json({ success: true, job, recipients: await countRegisteredUserRecipients() });
         } catch (err) {
             next(err);
         }

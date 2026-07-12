@@ -369,10 +369,12 @@ const userCurrencyService = createUserCurrencyService({
 });
 const {
     channelDailyReportRecipients,
+    countRegisteredUserRecipients,
     dailyReportConfig,
     dailyReportRecipients,
     notifyTelegram,
     postJson,
+    registeredUserRecipients,
     sendDirectMessage,
     sendDailyReport,
     startDailyReportScheduler,
@@ -513,7 +515,9 @@ const adminConfigRoutes = createAdminConfigRoutes({
     exportPricingPayload,
     epubStyle2Assets,
     sendDailyReport,
-    postJson
+    postJson,
+    createSystemJob,
+    countRegisteredUserRecipients
 });
 const adminCrawlerRoutes = createAdminCrawlerRoutes({
     requireAdmin,
@@ -642,6 +646,7 @@ const botApiRoutes = createBotApiRoutes({
     updateSystemJob,
     listSystemJobs,
     cancelSystemJob,
+    registeredUserRecipients,
     botCommandSettings: botSettingsService.botCommandSettings,
     recordBotAuditLog: botAuditService.recordBotAuditLog
 });
@@ -1032,10 +1037,15 @@ function bookReviewChannelMarkup(review = {}) {
 
 async function pushBookReviewToChannel({ review, book } = {}) {
     if (!review?.id) return { skipped: "missing_review" };
-    const [token, chatId] = await Promise.all([
+    const [pushConfig, token, chatId] = await Promise.all([
+        telegramPushConfig(),
         telegramLoginBotToken(),
         configGet("telegram_chat_id")
     ]);
+    if (!pushConfig.enabled || !pushConfig.pushTypes.includes("review")) {
+        await updateBookReviewChannelMessage(review.id, { status: "skipped", error: "review push disabled" }).catch(() => {});
+        return { skipped: "review_push_disabled" };
+    }
     if (!token || !chatId) {
         await updateBookReviewChannelMessage(review.id, { status: "skipped", error: "missing telegram_bot_token or telegram_chat_id" }).catch(() => {});
         return { skipped: "missing_channel_config" };

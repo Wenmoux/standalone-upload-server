@@ -38,4 +38,5 @@ test("command catalog exposes implemented word cloud aliases and numeric give sy
     assert.equal(catalog.get("/cloud").command, "/cloud");
     assert.equal(catalog.get("/cloud").primaryCommand, "/wordcloud");
     assert.equal(catalog.get("/give").help, "/give TelegramID 铜币 100");
+    assert.equal(catalog.get("/broadcast").adminOnly, true);
 });

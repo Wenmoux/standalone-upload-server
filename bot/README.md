@@ -41,8 +41,11 @@ npm run bot
 | `/task 任务号` | 查看任务进度和结果 |
 | `/canceljob 任务号` | 取消排队中或运行中的任务 |
 | `/give TelegramID 铜币 100` | 管理员发币；也支持“银币” |
+| `/broadcast [通知内容]` | 管理员发布全员通知；预览确认后进入后台任务 |
 
 余额入口是 `/me`，流水入口是 `/tx`；不存在 `/wallet` 命令。
+
+`/broadcast` 只允许 `reader_users.is_admin=true` 的 Bot 管理员使用。可以直接附带内容，也可以按 ForceReply 提示输入；两种方式都会先显示预览并要求按钮确认。服务端再次校验管理员身份后才创建 `bot_registered_user_broadcast`，Worker 每 5 秒领取任务，分页、限速私聊已注册且绑定 Telegram 的未封禁用户。部分用户屏蔽 Bot 只计入失败统计，不中断其余发送。
 
 ### 搜书与导出
 
@@ -75,7 +78,7 @@ npm run bot
 
 ### 频道同步与自动取消置顶
 
-系统发往频道的元信息、章节、日报、新书评和后台测试消息都会携带不可见的内部标记。频道关联讨论群自动置顶这些转发副本后，Bot 只在同时满足“Telegram 自动转发 + 内部标记”时，按该副本的精确 `message_id` 调用取消置顶；人工群消息、人工频道帖和未标记消息不会被处理。
+系统按后台 `pushTypes` 发往频道的元信息、章节、日报、新书评和后台测试消息都会携带不可见的内部标记；新书评由独立的“书评”选项控制。频道关联讨论群自动置顶这些转发副本后，Bot 只在同时满足“Telegram 自动转发 + 内部标记”时，按该副本的精确 `message_id` 调用取消置顶；人工群消息、人工频道帖和未标记消息不会被处理。
 
 Bot 必须加入关联讨论群，并具有 `can_pin_messages` 管理权限。权限不足只会记录 `automatic push unpin failed` 警告，不影响原推送发送，也不会退化为取消最近一条置顶。
 
@@ -95,7 +98,7 @@ Bot 必须加入关联讨论群，并具有 `can_pin_messages` 管理权限。�
 
 TXT/EPUB 导出先从 `/reader-api/books/:bookId/chapters?includeContent=1` 分页读取本地缓存正文；没有缓存且用户已绑定有效 PO18 会话时，才尝试拉取已购章节。生成文件只存在于任务临时目录，发送完成后由运行时清理。
 
-`bot_export_txt`、`bot_export_epub`、书架同步和共享上传都会写入服务端 `system_jobs`：
+`bot_export_txt`、`bot_export_epub`、书架同步、共享上传和 `bot_registered_user_broadcast` 都会写入服务端 `system_jobs`：
 
 - 相同用户和书籍的重复任务由幂等键与本地锁抑制。
 - 可重试网络错误按退避策略重试，并持续续租任务 lease。

@@ -16,6 +16,7 @@ const BOT_COMMAND_CATALOG = [
     { command: "/task", group: "任务", description: "查看任务详情", help: "/task 任务号" },
     { command: "/canceljob", group: "任务", description: "取消排队或运行任务", help: "/canceljob 任务号" },
     { command: "/give", group: "账户", description: "管理员发币", help: "/give TelegramID 铜币 100", adminOnly: true },
+    { command: "/broadcast", group: "账户", description: "管理员发布全员通知", help: "/broadcast [通知内容]", adminOnly: true },
     { command: "/search", group: "搜书", description: "搜索书籍", help: "/search 关键词 [-qd|-fq]" },
     { command: "/hot", group: "搜书", description: "热门书籍", help: "/hot [-qd|-fq]" },
     { command: "/wordcloud", group: "搜书", description: "热搜词云", help: "/wordcloud [-qd|-fq]", aliases: ["/cloud"] },

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供Bot 运行模块装配与依赖边界的自动化回归断言
+ * [OUTPUT]: 提供Bot 运行模块装配、管理员广播草稿/投递与依赖边界的自动化回归断言
  * [POS]: tests 的Bot 运行模块装配与依赖边界守卫，防止实现或部署契约在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -8,7 +8,8 @@ const assert = require("assert/strict");
 const fs = require("fs/promises");
 const path = require("path");
 const test = require("node:test");
-const { createReviewDraftStore, createSearchCache, helpLinesFromCommands } = require("../bot/bot-session");
+const { createBroadcastDraftStore, createReviewDraftStore, createSearchCache, helpLinesFromCommands } = require("../bot/bot-session");
+const { createBroadcastHandlers } = require("../bot/broadcast-handlers");
 const { meText, registerText, signSuccessText, startHelpText, walletText } = require("../bot/account-formatters");
 const { botHealthPayload } = require("../bot/health-server");
 const { createTelegramPollingRuntime } = require("../bot/polling-runtime");
@@ -126,6 +127,46 @@ test("review draft store isolates users, validates Unicode length and expires bo
     drafts.begin({ chatId: "group-1", userId: "user-1", bookId: "667518" });
     currentTime += 1001;
     assert.equal(drafts.get({ chatId: "group-1", userId: "user-1" }), null);
+});
+
+test("broadcast drafts isolate administrators and are consumed once", () => {
+    const drafts = createBroadcastDraftStore({ ttlMs: 60_000, maxLength: 5 });
+    drafts.begin({ chatId: "c1", userId: "u1", promptMessageId: 9 });
+    assert.equal(drafts.get({ chatId: "c1", userId: "u2" }), null);
+    assert.equal(drafts.capture({ chatId: "c1", userId: "u1", content: "123456" }).status, "too_long");
+    const ready = drafts.capture({ chatId: "c1", userId: "u1", content: "通知" });
+    assert.equal(ready.status, "ready");
+    assert.equal(drafts.consume({ chatId: "c1", userId: "u1", token: ready.draft.token }).content, "通知");
+    assert.equal(drafts.consume({ chatId: "c1", userId: "u1", token: ready.draft.token }), null);
+});
+
+test("broadcast handler only allows admins and records bounded delivery failures", async () => {
+    const sent = [];
+    const drafts = createBroadcastDraftStore();
+    const handlers = createBroadcastHandlers({
+        client: {
+            createBroadcast: async () => ({ job: { id: 7 } }),
+            broadcastRecipients: async () => ({
+                rows: [{ id: 1, telegram_id: "100" }, { id: 2, telegram_id: "200" }],
+                has_more: false
+            })
+        },
+        ensureRegistered: async (from) => ({ is_admin: from.id === 1 }),
+        sendMessage: async (chatId, text) => {
+            sent.push({ chatId: String(chatId), text });
+            if (String(chatId) === "200") throw new Error("blocked");
+            return { message_id: 1 };
+        },
+        editMessage: async () => {},
+        escapeHtml: (value) => String(value).replace(/</g, "&lt;"),
+        drafts,
+        delay: async () => {},
+        sendDelayMs: 0
+    });
+    await assert.rejects(() => handlers.handleBroadcast({ chat: { id: 1 }, from: { id: 2 } }, "hello"), /只有管理员/);
+    const result = await handlers.sendRegisteredUserBroadcast("<公告>");
+    assert.deepEqual({ targeted: result.targeted, sent: result.sent, failed: result.failed }, { targeted: 2, sent: 1, failed: 1 });
+    assert.match(sent[0].text, /&lt;公告>/);
 });
 
 test("bot account formatters keep wallet and status copy stable", () => {
@@ -268,7 +309,8 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         sendExport: async (...args) => { exports.push(args); },
         handleMyBookshelf: async () => {},
         handleShare: async () => {},
-        handleShareBookshelf: async () => {}
+        handleShareBookshelf: async () => {},
+        sendRegisteredUserBroadcast: async () => ({ sent: 1 })
     });
 
     assert.equal(schedulers.scheduleExport({ id: "c1", type: "group" }, { id: 42 }, "b1", "txt"), true);
@@ -294,4 +336,14 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         telegram_id: "99",
         chat_id: "c2"
     });
+
+    const broadcast = schedulers.recoverSystemJob({
+        id: 77,
+        type: "bot_registered_user_broadcast",
+        created_by: "admin:root",
+        input_json: { message: "维护通知", source: "admin" }
+    });
+    assert.equal(broadcast.systemJobType, "bot_registered_user_broadcast");
+    assert.equal(broadcast.lockKey, "broadcast:registered-users");
+    assert.equal(broadcast.maxAttempts, 1);
 });

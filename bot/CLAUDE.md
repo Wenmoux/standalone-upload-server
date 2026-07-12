@@ -2,7 +2,7 @@
 
 > L2 | 父级: [../CLAUDE.md](../CLAUDE.md)
 
-Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgBotClient` 访问 server API；耗时导出、书架同步和共享任务写入 `system_jobs` 后由可恢复 Worker 执行，模块内禁止建立数据库连接。
+Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgBotClient` 访问 server API；耗时导出、书架同步、共享和注册用户全员通知写入 `system_jobs` 后由可恢复 Worker 执行，模块内禁止建立数据库连接。
 
 ## 成员清单
 
@@ -11,7 +11,8 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `commands/`: 按账户、搜索、导出、社交和外部集成拆分的命令注册器；命令名需与 `command-catalog.js` 同步。
 `epub-styles/`: EPUB 视觉插件与资源契约；生成器注册四种样式，Telegram 只暴露前三种直选按钮。
 `account-formatters.js`: 把账户、签到、流水与排行榜领域数据转换为 Telegram HTML，隔离展示规则与请求逻辑。
-`bot-session.js`: 提供有界搜索查询缓存、按聊天与用户隔离的短期书评草稿，以及按配置生成的帮助文本，避免分页回调携带过长原始查询或群聊输入串线。
+`bot-session.js`: 提供有界搜索查询缓存、按聊天与用户隔离的短期书评/管理员广播草稿，以及按配置生成的帮助文本，避免分页回调携带过长原始查询或群聊输入串线。
+`broadcast-handlers.js`: 管理员全员通知交互与批量投递器，执行身份复核、草稿确认、收件人分页、限速发送和失败统计。
 `command-catalog.js`: 命令名称、分组、帮助、别名和管理员标记的单一元数据源，驱动后台配置与帮助展示。
 `command-registry.js`: 注册、别名解析、启停配置和 Telegram command list 的运行时注册表，不实现具体业务。
 `epub-builder.js`: 组装 EPUB 2 容器、封面、XHTML、目录、资源与样式插件，是所有 EPUB 外壳逻辑的唯一实现。
@@ -34,7 +35,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `share-handlers.js`: 编排单书/书架共享、上传进度与奖励结算，通过幂等任务避免重复奖励。
 `social-handlers.js`: 实现收藏列表、红包、众筹、按钮进入且 ForceReply 收集的书评发布、举报和申诉交互层。
 `task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、重试、恢复、取消和审计。
-`task-schedulers.js`: 定义导出、书架同步和共享任务的持久类型、幂等键、互斥键与恢复工厂。
+`task-schedulers.js`: 定义导出、书架同步、共享和全员通知任务的持久类型、幂等键、互斥键与恢复工厂。
 `task-status-handlers.js`: 提供 `/tasks`、`/task`、`/canceljob` 的状态查询与权限边界。
 `telegram.js`: Telegram HTTP API 客户端，统一请求超时、消息编辑、文件发送和文本截断。
 `telegram-bot.js`: Bot 组合根，注入客户端、自动推送取消置顶策略、注册器、处理器、任务运行时、polling 与健康服务；不应继续吸收可拆领域逻辑。

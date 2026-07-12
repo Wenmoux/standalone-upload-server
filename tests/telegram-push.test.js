@@ -18,7 +18,7 @@ const {
 
 test("telegram helpers parse push types, report time and HTML safely", () => {
     assert.equal(telegramHtml(`a&<>"'`), "a&amp;&lt;&gt;&quot;&#39;");
-    assert.deepEqual(parseTelegramPushTypes('["chapter","daily","chapter"]'), ["chapter", "daily"]);
+    assert.deepEqual(parseTelegramPushTypes('["chapter","daily","review","chapter"]'), ["chapter", "daily", "review"]);
     assert.deepEqual(parseTelegramPushTypes({ metadata: true, daily_report: 1, chapter: false }), ["metadata", "daily"]);
     assert.deepEqual(splitChatIds("100, 200;300\n400"), ["100", "200", "300", "400"]);
     assert.deepEqual(parseDailyReportTime("9:05"), { value: "09:05", hour: 9, minute: 5 });
@@ -28,6 +28,22 @@ test("telegram helpers parse push types, report time and HTML safely", () => {
         originalChapterUrl({ book_id: "123", chapter_id: "456" }, { detail_url: "https://www.po18.tw/books/123/articles" }),
         "https://www.po18.tw/books/123/articles/456"
     );
+});
+
+test("telegram service pages only non-banned registered recipients with Telegram ids", async () => {
+    const calls = [];
+    const service = createTelegramPushService({
+        query: async (sql, params) => {
+            calls.push({ sql, params });
+            if (/COUNT\(DISTINCT telegram_id\)/.test(sql)) return { rows: [{ count: 2 }] };
+            return { rows: [{ id: 11, telegram_id: "100" }, { id: 12, telegram_id: "200" }, { id: 13, telegram_id: "300" }] };
+        }
+    });
+    const page = await service.registeredUserRecipients({ afterId: 10, limit: 2 });
+    assert.deepEqual(page, { rows: [{ id: 11, telegram_id: "100" }, { id: 12, telegram_id: "200" }], has_more: true });
+    assert.equal(await service.countRegisteredUserRecipients(), 2);
+    assert.match(calls[0].sql, /is_banned/);
+    assert.deepEqual(calls[0].params, [10, 3]);
 });
 
 test("telegram service sends chapter push and marks event sent", async () => {

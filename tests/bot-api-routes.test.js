@@ -46,6 +46,40 @@ test("bot api routes expose health behind bot middleware", async () => {
     });
 });
 
+test("bot broadcast routes require a registered administrator and page eligible recipients", async () => {
+    const jobs = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        findBotUserByTelegramId: async (id) => ({ telegram_id: String(id), is_admin: String(id) === "42", is_banned: false }),
+        createSystemJob: async (input) => {
+            jobs.push(input);
+            return { id: 9, status: "queued" };
+        },
+        registeredUserRecipients: async (input) => ({ rows: [{ id: 3, telegram_id: "300" }], has_more: false, input })
+    });
+    await withApp(router, async (base) => {
+        const forbidden = await fetch(`${base}/bot-api/broadcasts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "7", message: "hello" })
+        });
+        assert.equal(forbidden.status, 403);
+        const created = await fetch(`${base}/bot-api/broadcasts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "42", chat_id: "42", message: "hello" })
+        });
+        assert.equal(created.status, 200);
+        assert.equal((await created.json()).job.id, 9);
+        const recipients = await fetch(`${base}/bot-api/broadcasts/recipients?after_id=2&limit=50`, { headers: { "X-Test-Bot": "1" } });
+        const payload = await recipients.json();
+        assert.equal(payload.rows[0].telegram_id, "300");
+        assert.equal(payload.input.afterId, "2");
+    });
+    assert.equal(jobs[0].type, "bot_registered_user_broadcast");
+    assert.equal(jobs[0].maxAttempts, 1);
+});
+
 test("bot job routes list and cancel only the telegram user's own jobs", async () => {
     const calls = [];
     const router = createBotApiRoutes({

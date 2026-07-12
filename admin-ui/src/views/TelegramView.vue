@@ -76,12 +76,34 @@
 
     <section class="panel">
       <div class="section">
+        <div class="section-head">
+          <div><p class="section-title">全员消息推送</p><p class="section-desc">通过 Bot 私聊推送给已注册、未封禁且绑定 Telegram 的用户；任务在后台限速执行。</p></div>
+        </div>
+        <div class="dashboard">
+          <StatCard label="预计收件人" :value="number(status.broadcastRecipients || 0)">实际发送时重新读取有效用户</StatCard>
+          <StatCard label="发布方式" value="后台任务">只统计发送成功/失败，不追踪已读</StatCard>
+        </div>
+        <label class="field" style="margin-top: 14px">
+          <span>通知内容（最多 3000 字）</span>
+          <textarea v-model="broadcastMessage" rows="7" maxlength="3000" placeholder="输入要推送给注册用户的消息"></textarea>
+        </label>
+        <div class="button-row" style="margin-top: 14px">
+          <button type="button" :disabled="broadcastSending || !broadcastMessage.trim()" @click="publishBroadcast">
+            {{ broadcastSending ? "正在入队…" : "发布全员通知" }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section">
         <div class="section-head"><div><p class="section-title">Telegram 推送</p><p class="section-desc">选择推送到指定频道或群组的更新内容。</p></div></div>
         <label class="check-row"><input v-model="form.enabled" type="checkbox" /><span>启用频道推送</span></label>
         <div class="tag-row" style="margin: 10px 0">
           <label class="check-row"><input v-model="form.pushMetadata" type="checkbox" /><span>元信息</span></label>
           <label class="check-row"><input v-model="form.pushChapter" type="checkbox" /><span>章节更新</span></label>
           <label class="check-row"><input v-model="form.pushDaily" type="checkbox" /><span>日报</span></label>
+          <label class="check-row"><input v-model="form.pushReview" type="checkbox" /><span>书评</span></label>
         </div>
         <div class="split">
           <label class="field"><span>Bot Token</span><input v-model.trim="form.botToken" placeholder="123456:ABC..." /></label>
@@ -199,9 +221,9 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、EpubStyleEditor/StatCard、Bot/Telegram/导出 Admin API 与全局提示服务
- * [OUTPUT]: 提供 Bot 状态与命令、Telegram 推送/日报、连接测试及 TXT/EPUB 导出配置页面
- * [POS]: admin-ui/src/views 的 Telegram 与导出配置组合页，EPUB 细节委托 EpubStyleEditor
+ * [INPUT]: 依赖 Vue、EpubStyleEditor/StatCard、Bot/Telegram/全员通知/导出 Admin API 与全局提示和确认服务
+ * [OUTPUT]: 提供 Bot 状态与命令、注册用户全员通知、Telegram 类型推送/日报、连接测试及 TXT/EPUB 导出配置页面
+ * [POS]: admin-ui/src/views 的 Telegram 运营与导出配置组合页，高风险广播经全局确认后进入任务中心，EPUB 细节委托 EpubStyleEditor
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { computed, inject, onMounted, reactive, ref } from "vue";
@@ -211,16 +233,20 @@ import { api } from "../services/api";
 import { number } from "../utils/format";
 
 const toast = inject("toast", () => {});
+const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const origin = window.location.origin;
 const status = ref({});
 const botOverview = ref({});
 const botCommands = ref([]);
+const broadcastMessage = ref("");
+const broadcastSending = ref(false);
 const commandSaving = ref(false);
 const form = reactive({
   enabled: false,
   pushMetadata: false,
   pushChapter: false,
   pushDaily: false,
+  pushReview: false,
   botToken: "",
   chatId: "",
   dailyReportEnabled: true,
@@ -323,6 +349,7 @@ async function loadTelegram() {
   form.pushMetadata = pushTypes.includes("metadata");
   form.pushChapter = pushTypes.includes("chapter");
   form.pushDaily = pushTypes.includes("daily");
+  form.pushReview = pushTypes.includes("review");
   form.botToken = data.botToken || "";
   form.chatId = data.chatId || "";
   form.dailyReportEnabled = data.dailyReportEnabled !== false;
@@ -334,7 +361,8 @@ async function saveTelegram() {
   const pushTypes = [
     ["metadata", form.pushMetadata],
     ["chapter", form.pushChapter],
-    ["daily", form.pushDaily]
+    ["daily", form.pushDaily],
+    ["review", form.pushReview]
   ]
     .filter(([, enabled]) => enabled)
     .map(([type]) => type);
@@ -396,6 +424,32 @@ async function testDailyReport() {
   const data = await api("/admin-api/config/telegram/daily-report/test", { method: "POST" });
   toast(`日报已发送：${number(data.sent || 0)}/${number(data.recipients || 0)}`);
   await loadTelegram();
+}
+
+async function publishBroadcast() {
+  const message = broadcastMessage.value.trim();
+  if (!message) return toast("请输入通知内容");
+  const confirmation = await confirmAction({
+    title: "确认发布全员通知",
+    message: `将私聊推送给约 ${number(status.value.broadcastRecipients || 0)} 名注册用户。发送后无法撤回，不追踪是否已读。`,
+    confirmLabel: "确认发布",
+    requireReason: false,
+    phrase: "PUSH"
+  });
+  if (!confirmation.confirmed) return;
+  broadcastSending.value = true;
+  try {
+    const data = await api("/admin-api/config/telegram/broadcast", {
+      method: "POST",
+      body: JSON.stringify({ message, confirm: "PUSH" })
+    });
+    broadcastMessage.value = "";
+    toast(`全员通知已入队：任务 #${data.job?.id || "-"}，预计 ${number(data.recipients || 0)} 人`);
+  } catch (err) {
+    toast(err.message || String(err));
+  } finally {
+    broadcastSending.value = false;
+  }
 }
 
 async function copyDomain() {

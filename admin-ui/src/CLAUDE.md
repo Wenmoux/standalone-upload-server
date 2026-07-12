@@ -33,7 +33,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `views/Po18CrawlerView.vue`: PO18 遍历任务控制台，维护 Cookie/计划参数并控制运行、暂停、恢复和停止。
 `views/QualityView.vue`: 数据质量诊断页，展示异常聚合并预览、执行章节顺序修复。
 `views/SystemView.vue`: 系统运维中心，覆盖状态、日志、备份/恢复、远端备份、指标、管理员、API Token、诊断与重启。
-`views/TelegramView.vue`: Telegram 与导出配置中心，维护 Bot 命令、频道/日报、EPUB 样式和连接测试。
+`views/TelegramView.vue`: Telegram 运营与导出配置中心，维护 Bot 命令、注册用户全员通知、频道类型/日报、EPUB 样式和连接测试。
 `views/TransactionsView.vue`: 货币流水查询页，按用户、币种和类型分页检索交易记录。
 `views/UsersView.vue`: Reader 用户管理页，维护账号、会员与余额，并让 owner 通过专用审计动作设置或取消 Reader/Bot 管理员。
 

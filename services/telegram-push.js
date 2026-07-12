@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Node HTTPS、根级系统推送标记契约、config 平台标签、事件查询器与 Telegram Bot API 配置
- * [OUTPUT]: 对外提供带跨进程标记的 Telegram 推送服务、类型过滤、消息转义、原文链接和日报时间窗口函数
- * [POS]: services 的 Telegram 通知适配层，把上传事件转为可由 Bot 安全识别的群组推送与日报消息
+ * [OUTPUT]: 对外提供带跨进程标记的 Telegram 推送服务、注册用户收件人分页/计数、类型过滤、消息转义、原文链接和日报时间窗口函数
+ * [POS]: services 的 Telegram 通知适配层，把上传事件与注册用户范围转为可由 Bot 安全消费的群组推送、日报及全员通知边界
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const https = require("https");
@@ -26,7 +26,12 @@ const TELEGRAM_PUSH_TYPE_ALIASES = {
     daily: "daily",
     daily_report: "daily",
     dailyreport: "daily",
-    "日报": "daily"
+    "日报": "daily",
+    review: "review",
+    reviews: "review",
+    book_review: "review",
+    book_reviews: "review",
+    "书评": "review"
 };
 
 function telegramHtml(value) {
@@ -419,6 +424,33 @@ function createTelegramPushService(options = {}) {
         return [...new Set(result.rows.map((row) => String(row.telegram_id || "").trim()).filter(Boolean))];
     }
 
+    async function registeredUserRecipients({ afterId = 0, limit = 100 } = {}) {
+        const safeAfterId = Math.max(0, Math.trunc(Number(afterId || 0)));
+        const safeLimit = Math.max(1, Math.min(500, Math.trunc(Number(limit || 100))));
+        const result = await query(
+            `SELECT id, telegram_id
+             FROM reader_users
+             WHERE id > $1
+               AND COALESCE(is_banned, FALSE) = FALSE
+               AND COALESCE(telegram_id, '') <> ''
+             ORDER BY id ASC
+             LIMIT $2`,
+            [safeAfterId, safeLimit + 1]
+        );
+        const rows = result.rows.slice(0, safeLimit).map((row) => ({ id: Number(row.id), telegram_id: String(row.telegram_id || "").trim() }));
+        return { rows, has_more: result.rows.length > safeLimit };
+    }
+
+    async function countRegisteredUserRecipients() {
+        const result = await query(
+            `SELECT COUNT(DISTINCT telegram_id)::int count
+             FROM reader_users
+             WHERE COALESCE(is_banned, FALSE) = FALSE
+               AND COALESCE(telegram_id, '') <> ''`
+        );
+        return Number(result.rows[0]?.count || 0);
+    }
+
     async function channelDailyReportRecipients() {
         const [pushConfig, chatId] = await Promise.all([
             telegramPushConfig(),
@@ -567,12 +599,14 @@ function createTelegramPushService(options = {}) {
     return {
         channelDailyReportRecipients,
         collectDailyReport,
+        countRegisteredUserRecipients,
         dailyReportConfig,
         dailyReportRecipients,
         formatDailyReport,
         maybeSendDailyReport,
         notifyTelegram,
         postJson: sendJson,
+        registeredUserRecipients,
         sendDirectMessage,
         sendDailyReport,
         startDailyReportScheduler,
