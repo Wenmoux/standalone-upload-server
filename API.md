@@ -557,6 +557,8 @@ X-PO18-Upload-Token: <PO18_UPLOAD_API_TOKEN>
 
 `POST /api/parse/check-cache` 是只读缓存检查接口，不要求上传 token。
 
+批次响应以逐项落库结果为准：全部成功返回 `200` 与 `success: true`；部分成功返回 `207`、`success: false`、`partial: true`；全部失败返回 `500`、`success: false` 并携带首个 `error`。应用启动迁移尚未提交时，所有业务接口返回 `503`、`code: "SERVICE_STARTING"` 和 `Retry-After`，客户端应等待后重试，不能把收到 JSON 等同于上传成功。
+
 请求：
 
 ```json
@@ -1374,7 +1376,7 @@ GET /health/deep
 说明：
 
 - `live` 只检查进程存活。
-- `ready` / `status` 检查数据库、schema 和连接池状态。
+- `ready` / `status` 检查应用启动、数据库、schema 和连接池状态；迁移或启动初始化未完成时返回 `503`。
 - `version` 返回服务名、镜像 tag、Node 版本和平台信息。
 - `deep` 检查数据库、schema、磁盘写入、reader、bot、Telegram API、`upload-api-token` 和 `bot-api-token`。其中 token、Bot、Telegram API 属于 optional/skipped 检查，不影响 required health。
 - setup-only 初始化面板也暴露 `GET /health/live`、`GET /health/ready`、`GET /health/version`，用于无数据库配置时的 Docker/冒烟检查；这些健康接口不需要 setup token。

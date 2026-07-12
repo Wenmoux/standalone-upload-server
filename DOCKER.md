@@ -181,7 +181,7 @@ server 在连接数据库后按文件名顺序执行 `db/migrations/*.sql`：
 [pg-migrate] applied 020_taxonomy_and_quality_semantics
 ```
 
-这表示迁移保护正常工作。`020` 包含生成列、taxonomy 回填和索引，大库可能持续数分钟。迁移期间不要滚动启动多个副本或反复重启。
+这表示迁移保护正常工作。`020` 包含生成列、taxonomy 回填和索引，大库可能持续数分钟。3100 端口会先提供存活/就绪探测，但在日志出现 `[startup] database initialized` 前，业务接口统一返回带 `Retry-After` 的 `503`，避免请求读写尚未提交的新 Schema。迁移期间不要滚动启动多个副本或反复重启。
 
 迁移备份、状态检查和 rollback 见 [db/MIGRATIONS.md](db/MIGRATIONS.md)。
 
@@ -206,7 +206,7 @@ docker compose -f docker-compose.hub.yml logs -f server-pg reader bot
 | 端点 | 含义 |
 | --- | --- |
 | `/health/live` | 进程存活 |
-| `/health/ready` | 数据库、schema 和服务就绪 |
+| `/health/ready` | 数据库、schema 和应用启动状态；迁移/初始化未完成时为 `503` |
 | `/health/version` | 构建版本、revision、镜像和源码指纹 |
 | `/health/deep` | 数据库、磁盘、Reader、Bot、Telegram 等深度检查 |
 

@@ -77,6 +77,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `search-benchmark.test.js`: 搜索基准预算和结果解析。
 - `share-handlers.test.js`: TXT/EPUB 分享、样式选择与投递流程。
 - `source-health.test.js`: 内容来源熔断与健康评分。
+- `startup-gate.test.js`: 数据库迁移及应用初始化期间的业务流量拒绝、健康放行与就绪切换契约。
 - `telegram-push.test.js`: Telegram 推送类型、注册用户收件人分页、批次和失败恢复。
 - `test-runner-script.test.js`: 根测试发现器和覆盖率门槛。
 - `tts.test.js`: TTS 供应商、分段与代理安全。

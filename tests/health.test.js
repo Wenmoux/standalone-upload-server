@@ -43,7 +43,23 @@ test("health ready payload includes database, schema and pool state", async () =
     assert.equal(ready.payload.service, "test-server");
     assert.equal(ready.payload.db.ok, true);
     assert.equal(ready.payload.schema.ok, true);
+    assert.equal(ready.payload.startup.ok, true);
     assert.deepEqual(ready.payload.pool, { total: 2, idle: 1, waiting: 0 });
+});
+
+test("health readiness stays unavailable while migrations are still initializing", async () => {
+    const health = createHealthService({
+        requiredTables: ["book_metadata"],
+        startupState: () => ({ ready: false, phase: "database_initializing", detail: "migration in progress" }),
+        query: async (sql) => /information_schema\.tables/.test(sql)
+            ? { rows: [{ table_name: "book_metadata" }] }
+            : { rows: [{ ok: 1 }] }
+    });
+    const ready = await health.collectReadyHealth();
+    assert.equal(ready.statusCode, 503);
+    assert.equal(ready.payload.ok, false);
+    assert.equal(ready.payload.startup.ok, false);
+    assert.equal(ready.payload.startup.detail, "migration in progress");
 });
 
 test("health masks telegram bot token in diagnostic URL", () => {

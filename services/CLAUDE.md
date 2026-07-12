@@ -51,6 +51,7 @@ remote-backups.js: WebDAV/S3/R2 远端备份适配器，负责签名上传、加
 review-governance.js: 书评治理领域服务，处理举报阈值、隐藏状态、申诉和审核决议事务。
 schema-validation.js: Ajv 请求契约注册表与中间件，在路由前执行 body Schema 校验并输出紧凑错误。
 source-health.js: 外部来源健康熔断器，跟踪连续失败、重试、打开窗口和 Prometheus 状态。
+startup-gate.js: 应用启动流量闸门，以显式生命周期状态阻止迁移提交前的业务请求，并为健康检查保留可观测通道。
 system-jobs.js: PostgreSQL 持久任务原语，提供创建、认领、心跳、租约、取消、完成及指标聚合。
 telegram-push.js: Telegram 通知服务，统一多 Chat 推送、注册用户收件人分页/计数、消息转义、来源链接、书评等类型过滤与日报时间窗。
 tts.js: TTS 提供商适配层，封装 Edge、火山、阿里云、Azure、ElevenLabs 与 Cartesia 的请求和重试语义。

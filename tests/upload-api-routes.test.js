@@ -219,16 +219,29 @@ test("upload API batches metadata and stops on database connection errors", asyn
             headers: { "Content-Type": "application/json", "X-Upload-Token": "upload-token" },
             body: JSON.stringify({ books: [{ bookId: "ok" }, {}, { bookId: "db-down" }, { bookId: "skipped" }] })
         });
-        assert.equal(response.status, 200);
+        assert.equal(response.status, 207);
         const body = await response.json();
+        assert.equal(body.success, false);
+        assert.equal(body.partial, true);
         assert.deepEqual(body.stats, {
             success: 1,
             failed: 2,
             errors: ["unknown: Missing bookId", "db-down: connection lost"]
         });
+
+        const failed = await fetch(`${base}/api/metadata/batch`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Upload-Token": "upload-token" },
+            body: JSON.stringify({ books: [{ bookId: "db-down" }] })
+        });
+        assert.equal(failed.status, 500);
+        const failedBody = await failed.json();
+        assert.equal(failedBody.success, false);
+        assert.equal(failedBody.partial, false);
+        assert.equal(failedBody.error, "db-down: connection lost");
     });
 
-    assert.deepEqual(seen, ["ok", "db-down"]);
+    assert.deepEqual(seen, ["ok", "db-down", "db-down"]);
 });
 
 test("upload API checks cache and deletes book chapters", async () => {

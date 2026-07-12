@@ -194,7 +194,7 @@ docker exec po18-app tail -n 200 /config/runtime.log
 主要端点：
 
 - `GET /health/live`：进程存活。
-- `GET /health/ready`：数据库、schema 与服务就绪。
+- `GET /health/ready`：数据库、schema 与应用启动就绪；迁移提交前返回 `503`，此时业务接口同样拒绝流量。
 - `GET /health/version`：镜像、版本、revision 和源码指纹。
 - `GET /health/deep`：数据库、磁盘、Reader、Bot 和 Telegram 深度检查。
 - `GET /metrics`：需要 `Authorization: Bearer <PO18_METRICS_TOKEN>`。

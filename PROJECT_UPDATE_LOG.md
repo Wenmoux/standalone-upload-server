@@ -2,9 +2,15 @@
 
 > 文档状态：持续维护的阶段级变更记录，不是部署手册。当前运行事实依次以代码/测试、运行时 `/openapi.json`、[README](README.md)、[Docker 手册](DOCKER.md)、[当前文档索引](docs/README.md)、[API 说明](API.md) 和 [迁移手册](db/MIGRATIONS.md) 为准。
 
-更新时间：2026-07-12
+更新时间：2026-07-13
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
+
+## 2026-07-13：启动迁移流量闸门与元信息真实结果
+
+- server 仍可先开放 3100 健康探测，但数据库迁移、Token、管理员和调度初始化完成前，所有业务请求统一返回 `503 SERVICE_STARTING` 与 `Retry-After`；`/health/ready` 同步保持未就绪。
+- 修复 020 迁移事务提交前元信息请求可能撞到旧 Schema、报 `source_updated_at does not exist` 的竞态；搜索和下载使用旧字段不受影响，但失败的元信息必须在服务就绪后重新上传。
+- `POST /api/metadata/batch` 不再固定返回假成功：全部成功为 `200`，部分成功为 `207`，全部失败为 `500`，顶层 `success` 严格反映逐项落库结果。
 
 ## 2026-07-12：运行文档、部署契约与迁移手册校准
 

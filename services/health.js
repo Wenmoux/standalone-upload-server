@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖文件系统、注入的数据库检查器、外部健康 URL、Telegram 探测器与生产安全配置
- * [OUTPUT]: 对外提供深度健康服务、必需表清单、检查结果格式化、超时信号和安全脱敏函数
- * [POS]: services 的就绪性诊断内核，区分必需与可选依赖并向 health 路由返回结构化状态
+ * [INPUT]: 依赖文件系统、注入的数据库检查器、应用启动状态、外部健康 URL、Telegram 探测器与生产安全配置
+ * [OUTPUT]: 对外提供深度健康服务、启动/Schema/依赖检查、必需表清单、结果格式化、超时信号和安全脱敏函数
+ * [POS]: services 的就绪性诊断内核，以启动闸门和必需依赖共同决定流量可用性并返回结构化状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs/promises");
@@ -122,6 +122,14 @@ function createHealthService(options = {}) {
         }
     }
 
+    function startupHealthCheck() {
+        const state = valueOf(options.startupState) || { ready: true, phase: "ready", detail: "Startup state is not externally managed" };
+        return checkResult("application startup", state.ready !== false, {
+            required: true,
+            detail: state.detail || state.phase || ""
+        });
+    }
+
     async function schemaHealthCheck() {
         const started = Date.now();
         try {
@@ -193,11 +201,13 @@ function createHealthService(options = {}) {
 
     async function collectReadyHealth() {
         const [db, schema] = await Promise.all([databaseHealthCheck(), schemaHealthCheck()]);
-        const ok = db.ok && schema.ok;
+        const startup = startupHealthCheck();
+        const ok = startup.ok && db.ok && schema.ok;
         return {
             statusCode: ok ? 200 : 503,
             payload: healthPayload(serviceName, {
                 ok,
+                startup,
                 db,
                 schema,
                 pool: {
@@ -216,7 +226,7 @@ function createHealthService(options = {}) {
         const credentialEncryption = valueOf(options.credentialEncryption) || {};
         const botConfigured = !!(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN);
         const checks = await Promise.all([
-            Promise.resolve(checkResult(serviceName, true, { required: true, detail: "process alive" })),
+            Promise.resolve(startupHealthCheck()),
             databaseHealthCheck(),
             schemaHealthCheck(),
             diskWritableHealthCheck(),
@@ -314,6 +324,7 @@ function createHealthService(options = {}) {
         maskedTelegramUrl,
         requiredTables,
         schemaHealthCheck,
+        startupHealthCheck,
         telegramApiHealthCheck,
         timeoutSignal
     };

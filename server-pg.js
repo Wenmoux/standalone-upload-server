@@ -1,7 +1,7 @@
 ﻿/**
- * [INPUT]: 依赖 Express/PostgreSQL、根级 Telegram 推送标记、routes/services 领域模块、Admin 静态产物及 /config 配置
- * [OUTPUT]: 启动 3100 端口的 Admin/Setup/Reader/Bot/Upload/健康/OpenAPI 组合服务与后台调度器
- * [POS]: 项目后端唯一组合根，负责依赖注入和生命周期，不把领域规则复制到入口层
+ * [INPUT]: 依赖 Express/PostgreSQL、启动流量闸门、根级 Telegram 推送标记、routes/services 领域模块、Admin 静态产物及 /config 配置
+ * [OUTPUT]: 启动 3100 端口的组合服务，并在迁移及初始化完成前仅开放健康检查、拒绝业务流量
+ * [POS]: 项目后端唯一组合根，负责依赖注入、迁移就绪状态与生命周期，不把领域规则复制到入口层
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -50,6 +50,7 @@ const {
     restoreBackupPayload
 } = require("./services/backups");
 const { createHealthService } = require("./services/health");
+const { createStartupGate } = require("./services/startup-gate");
 const { createRankService } = require("./services/rank");
 const { createDataQualityService } = require("./services/data-quality");
 const { createBookManifestService } = require("./services/book-manifest");
@@ -144,6 +145,7 @@ const STARTUP_DB_RETRY_MS = Number.isFinite(Number(process.env.PO18_STARTUP_DB_R
     ? Math.max(1000, Number(process.env.PO18_STARTUP_DB_RETRY_MS))
     : 5000;
 const app = express();
+const startupGate = createStartupGate({ retryAfterSeconds: Math.ceil(STARTUP_DB_RETRY_MS / 1000) });
 app.set("trust proxy", trustProxySetting());
 const sessionStore = new PgSessionStore({
     pool,
@@ -298,6 +300,7 @@ const healthService = createHealthService({
     uploadApiToken: () => UPLOAD_API_TOKEN,
     botApiToken: () => process.env.PO18_BOT_API_TOKEN || "",
     credentialEncryption: () => ({ configured: credentialCrypto.configured, activeKeyId: credentialCrypto.activeKeyId }),
+    startupState: startupGate.snapshot,
     telegramTokenProvider: async () => {
         try {
             return await telegramLoginBotToken();
@@ -733,6 +736,7 @@ app.use("/reader-api/tts", ttsRateLimiter);
 app.use(["/api/parse/chapter-content", "/api/metadata/batch"], uploadRateLimiter);
 installRouteBodyParsers(app, express);
 app.use(createRequestSchemaValidation());
+app.use(startupGate.middleware);
 app.use(["/reader-api", "/reader-auth"], (req, res, next) => {
     delete req.headers["if-none-match"];
     delete req.headers["if-modified-since"];
@@ -1165,17 +1169,21 @@ async function bootApplication() {
 }
 
 function bootApplicationWithRetry(attempt = 1) {
+    startupGate.markWaiting(attempt > 1 ? `Database initialization retry ${attempt}` : "Database migrations and startup initialization are in progress");
     bootApplication()
         .then(() => {
+            startupGate.markReady();
             console.log("[startup] database initialized");
         })
         .catch((err) => {
             const message = err.message || String(err);
             if (isPgConnectionError(err)) {
+                startupGate.markWaiting("Database unavailable; startup will retry");
                 console.warn(`[startup] database unavailable (${message}); retrying in ${STARTUP_DB_RETRY_MS}ms`);
                 setTimeout(() => bootApplicationWithRetry(attempt + 1), STARTUP_DB_RETRY_MS).unref();
                 return;
             }
+            startupGate.markFailed("Application startup failed; inspect server logs");
             console.error(`[startup] ${message}`);
         });
 }

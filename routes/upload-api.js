@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Express、Upload Token、book-chapters/events 服务、缓存查询和请求校验
- * [OUTPUT]: 对外提供 油猴兼容的元数据/章节批量写入、缓存检查与受控删除路由
- * [POS]: routes 的外部上传协议边界，保留历史字段兼容并把真实写入收敛到领域服务
+ * [OUTPUT]: 对外提供油猴兼容的元数据/章节批量写入、逐项失败汇总、缓存检查与受控删除路由
+ * [POS]: routes 的外部上传协议边界，保留历史字段兼容并以真实批次结果约束客户端成功语义
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -122,7 +122,11 @@ function createUploadApiRoutes(options = {}) {
                     if (isPgConnectionError(err)) break;
                 }
             }
-            res.json({ success: true, stats });
+            const success = stats.failed === 0;
+            const status = success ? 200 : (stats.success > 0 ? 207 : 500);
+            const payload = { success, partial: !success && stats.success > 0, stats };
+            if (!success && stats.success === 0) payload.error = stats.errors[0] || "Metadata batch upload failed";
+            res.status(status).json(payload);
         } catch (err) {
             next(err);
         }
