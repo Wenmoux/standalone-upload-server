@@ -20,6 +20,7 @@
 - `local-library-upload-ui.js`: 本地书库上传工具的独立 UI 资源与交互实现。
 - `migrate-rollback.js`: 加载 `/config` 配置后调用 pg-store 执行显式迁移回滚。
 - `publish-admin-ui.mjs`: 清理旧 Admin assets 并复制当前 dist 到根 `public/`，保留 Reader/书源等非 Admin 兼容文件。
+- `purge-fanqie-chapter-cache.js`: 在表级写锁保护的单事务中清理番茄平台正文缓存，保留元信息并返回受影响书籍 ID。
 - `release-docker.ps1`: Windows 本地发布辅助入口；实际默认发布由 GitHub Actions 承担。
 - `release-docker.sh`: POSIX 本地发布辅助入口；复用相同镜像标签和校验语义。
 - `repair-chapter-order-by-source-catalog.js`: 按已抓取来源目录生成并应用章节排序修复。

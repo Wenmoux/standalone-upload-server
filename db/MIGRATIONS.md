@@ -52,6 +52,14 @@ docker exec po18-app sh -lc 'set -a; . /config/app.env; set +a; psql "$PO18_PG_U
 
 回滚 CLI 已通过项目配置加载器读取 `PO18_CONFIG_FILE`（默认 `/config/app.env`），不需要再手工 source；自定义配置路径时显式传入 `PO18_CONFIG_FILE`。
 
+番茄正文缓存维护 CLI 同样会自动加载该配置。确认备份可用后，一键删除 `fanqie`、`fq`、`tomato` 的 `chapter_cache` 行并保留 `book_metadata`：
+
+```bash
+docker exec po18-app npm run db:purge-fanqie-cache
+```
+
+成功时输出 `{"success":true,"deletedChapters":数量,"bookIds":["书籍ID"]}`。脚本使用单事务和表级写锁；锁等待超过 30 秒会安全回滚，可避开上传高峰后重试。平台为空的历史章节只有在元信息能唯一证明属于番茄时才会删除，同号的其他平台缓存不会被连带清理。
+
 ## 4. 发布前检查与备份
 
 先确认磁盘空间、数据库连通性和当前 migration 状态：

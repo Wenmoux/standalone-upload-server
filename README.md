@@ -227,6 +227,14 @@ npm run check:schema
 npm run lint
 ```
 
+删除番茄平台正文缓存、保留书籍元信息，并返回受影响书籍 ID：
+
+```bash
+docker exec po18-app npm run db:purge-fanqie-cache
+```
+
+该命令识别 `fanqie`、`fq`、`tomato`，事务成功后只输出一行 JSON 汇总；执行前应先完成数据库备份。Compose 部署可改用 `docker compose -f docker-compose.hub.yml exec server-pg npm run db:purge-fanqie-cache`。
+
 发布默认流程是命令行提交并推送 `main`，由 GitHub Actions 更新 Docker Hub；不要把 Docker Hub Token 或 GitHub Token 写入仓库、远端 URL 或命令历史。
 
 ## 目录结构
