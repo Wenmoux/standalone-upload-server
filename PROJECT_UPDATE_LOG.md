@@ -2,9 +2,15 @@
 
 > 文档状态：持续维护的阶段级变更记录，不是部署手册。当前运行事实依次以代码/测试、运行时 `/openapi.json`、[README](README.md)、[Docker 手册](DOCKER.md)、[当前文档索引](docs/README.md)、[API 说明](API.md) 和 [迁移手册](db/MIGRATIONS.md) 为准。
 
-更新时间：2026-07-13
+更新时间：2026-07-14
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
+
+## 2026-07-14：全平台章节顺序独立更新
+
+- `POST /api/parse/chapter-content` 的 order-only 路径从起点专用扩展为所有平台通用；请求可省略 `platform`，服务端沿用已缓存章节的平台。
+- order-only 仍要求章节已缓存和正整数 `chapterOrder`，事务内只更新顺序与时间，不覆盖平台、标题、HTML 或正文。
+- 成功响应新增稳定的 `success`、`orderUpdated`、`chapterId`、`chapterOrder` 字段，同时保留旧兼容字段，上传脚本可直接判断是否发生真实顺序变化。
 
 ## 2026-07-13：启动迁移流量闸门与元信息真实结果
 

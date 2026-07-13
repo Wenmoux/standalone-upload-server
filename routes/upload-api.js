@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Express、Upload Token、book-chapters/events 服务、缓存查询和请求校验
- * [OUTPUT]: 对外提供油猴兼容的元数据/章节批量写入、逐项失败汇总、缓存检查与受控删除路由
- * [POS]: routes 的外部上传协议边界，保留历史字段兼容并以真实批次结果约束客户端成功语义
+ * [OUTPUT]: 对外提供油猴兼容的元数据/章节批量写入、全平台仅顺序更新、逐项失败汇总、缓存检查与受控删除路由
+ * [POS]: routes 的外部上传协议边界，保留历史字段兼容并把显式 order-only 请求交给章节服务安全裁决
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -53,21 +53,22 @@ function createUploadApiRoutes(options = {}) {
             const { bookId, chapterId, html, text, title, fromUserScript, cacheOnly } = req.body || {};
             if (!bookId || !chapterId) return res.status(400).json({ error: "Missing bookId or chapterId" });
 
-            const platformKey = String(req.body?.platform || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
-            const isQidianOrderOnly = ["qidian", "qd"].includes(platformKey)
-                && (
-                    safePgBool(req.body?.orderOnly, false)
-                    || safePgBool(req.body?.updateOrderOnly, false)
-                    || safePgBool(req.body?.skipContentUpdate, false)
-                );
+            const orderOnlyRequested =
+                safePgBool(req.body?.orderOnly, false) ||
+                safePgBool(req.body?.updateOrderOnly, false) ||
+                safePgBool(req.body?.skipContentUpdate, false);
 
-            if ((fromUserScript && (html || text || safePgBool(req.body?.is_volume ?? req.body?.isVolume, false))) || isQidianOrderOnly) {
+            if ((fromUserScript && (html || text || safePgBool(req.body?.is_volume ?? req.body?.isVolume, false))) || orderOnlyRequested) {
                 const saved = await saveChapter(req.body);
                 invalidateCachedLookup(bookId);
                 const safeHtml = cleanPgText(html);
                 const safeText = cleanPgText(text);
                 if (saved?.orderOnly) {
                     return res.json({
+                        success: true,
+                        orderUpdated: !!saved.updated,
+                        chapterId: saved.chapterId || cleanPgText(String(chapterId)),
+                        chapterOrder: Number(saved.chapterOrder ?? req.body?.chapterOrder ?? req.body?.chapter_order),
                         html: "",
                         text: "",
                         title: "",
@@ -123,7 +124,7 @@ function createUploadApiRoutes(options = {}) {
                 }
             }
             const success = stats.failed === 0;
-            const status = success ? 200 : (stats.success > 0 ? 207 : 500);
+            const status = success ? 200 : stats.success > 0 ? 207 : 500;
             const payload = { success, partial: !success && stats.success > 0, stats };
             if (!success && stats.success === 0) payload.error = stats.errors[0] || "Metadata batch upload failed";
             res.status(status).json(payload);

@@ -33,10 +33,22 @@ function makeService(overrides = {}) {
             return result;
         },
         bookColumns: ["book_id", "platform", "title", "updated_at", "uploader", "uploaderId", "detail_url"],
-        chapterColumns: ["book_id", "chapter_id", "title", "html", "text", "chapter_order", "platform", "uploader", "uploaderId", "is_volume", "updated_at"],
+        chapterColumns: [
+            "book_id",
+            "chapter_id",
+            "title",
+            "html",
+            "text",
+            "chapter_order",
+            "platform",
+            "uploader",
+            "uploaderId",
+            "is_volume",
+            "updated_at"
+        ],
         cleanPgText: (value) => String(value || "").trim(),
         cleanPgObject: (data) => data,
-        col: (name) => name === "uploaderId" ? '"uploaderId"' : name,
+        col: (name) => (name === "uploaderId" ? '"uploaderId"' : name),
         normalizeBook: (book) => ({
             book_id: String(book.book_id || book.bookId),
             platform: book.platform || "po18",
@@ -68,7 +80,18 @@ function makeService(overrides = {}) {
 
 test("book chapter service upserts book metadata and records event", async () => {
     const { service, calls } = makeService({
-        bookColumns: ["book_id", "platform", "title", "category", "chapter_count", "description_html", "updated_at", "uploader", "uploaderId", "detail_url"]
+        bookColumns: [
+            "book_id",
+            "platform",
+            "title",
+            "category",
+            "chapter_count",
+            "description_html",
+            "updated_at",
+            "uploader",
+            "uploaderId",
+            "detail_url"
+        ]
     });
 
     await service.upsertBook({
@@ -120,7 +143,10 @@ test("book metadata upsert keeps timestamp columns typed and accepts the unchang
     assert.ok(insert.params.includes("2026-07-12 07:10:00"));
     assert.equal(insert.params.filter((value) => value === null).length, 2);
     assert.match(insert.sql, /latest_chapter_date = COALESCE\(EXCLUDED\.latest_chapter_date, book_metadata\.latest_chapter_date\)/);
-    assert.doesNotMatch(insert.sql, /NULLIF\(EXCLUDED\.(?:latest_chapter_date|source_updated_at|catalog_updated_at|metadata_cached_at), ''\)/);
+    assert.doesNotMatch(
+        insert.sql,
+        /NULLIF\(EXCLUDED\.(?:latest_chapter_date|source_updated_at|catalog_updated_at|metadata_cached_at), ''\)/
+    );
 });
 
 test("book chapter service sorts books by cache completeness", () => {
@@ -186,9 +212,19 @@ test("book chapter service does not renumber PO18 displayed chapter orders", asy
         }
     });
 
-    await service.saveChapter({ bookId: "b1", chapterId: "9004", title: "Chapter 4", html: "<p>Hello</p>", chapterOrder: 4, platform: "po18" });
+    await service.saveChapter({
+        bookId: "b1",
+        chapterId: "9004",
+        title: "Chapter 4",
+        html: "<p>Hello</p>",
+        chapterOrder: 4,
+        platform: "po18"
+    });
 
-    assert.equal(calls.some((call) => /SET chapter_order = -/.test(call.sql || "")), false);
+    assert.equal(
+        calls.some((call) => /SET chapter_order = -/.test(call.sql || "")),
+        false
+    );
     const insert = calls.find((call) => /INSERT INTO chapter_cache/.test(call.sql || ""));
     assert.ok(insert);
     assert.ok(insert.params.includes(4));
@@ -223,16 +259,19 @@ test("book chapter service lets PO18 userscript upload correct existing chapter 
     const insert = calls.find((call) => /INSERT INTO chapter_cache/.test(call.sql || ""));
     assert.ok(insert);
     assert.ok(insert.params.includes(4));
-    assert.equal(calls.some((call) => /SET chapter_order = -/.test(call.sql || "")), false);
+    assert.equal(
+        calls.some((call) => /SET chapter_order = -/.test(call.sql || "")),
+        false
+    );
 });
 
-test("book chapter service updates qidian order-only without replacing content", async () => {
+test("book chapter service updates fanqie order-only without replacing content", async () => {
     const { service, calls } = makeService({
         pool: {
             connect: async () => ({
                 async query(sql, params = []) {
                     calls.push({ client: true, sql, params });
-                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8 }] };
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8, platform: "fanqie" }] };
                     return { rows: [] };
                 },
                 release() {
@@ -248,7 +287,7 @@ test("book chapter service updates qidian order-only without replacing content",
         title: "Changed title should be ignored",
         html: "",
         chapterOrder: 12,
-        platform: "qidian",
+        platform: "fanqie",
         fromUserScript: true,
         orderOnly: true,
         updateOrderOnly: true,
@@ -257,20 +296,25 @@ test("book chapter service updates qidian order-only without replacing content",
 
     assert.equal(result.orderOnly, true);
     assert.equal(result.updated, true);
-    assert.equal(calls.some((call) => /INSERT INTO chapter_cache/.test(call.sql || "")), false);
+    assert.equal(
+        calls.some((call) => /INSERT INTO chapter_cache/.test(call.sql || "")),
+        false
+    );
     const update = calls.find((call) => /UPDATE chapter_cache SET chapter_order/.test(call.sql || ""));
     assert.ok(update);
-    assert.deepEqual(update.params, [12, "qidian", "b1", "9004"]);
+    assert.deepEqual(update.params, [12, "b1", "9004"]);
+    assert.equal(result.chapterId, "9004");
+    assert.equal(result.chapterOrder, 12);
     assert.ok(calls.some((call) => call.event?.action === "order-only" && call.event.details.contentUpdated === false));
 });
 
-test("book chapter service does not apply order-only shortcut to PO18", async () => {
+test("book chapter service accepts platform-free order-only and preserves the cached platform", async () => {
     const { service, calls } = makeService({
         pool: {
             connect: async () => ({
                 async query(sql, params = []) {
                     calls.push({ client: true, sql, params });
-                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8 }] };
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8, platform: "tomato" }] };
                     return { rows: [] };
                 },
                 release() {
@@ -283,16 +327,69 @@ test("book chapter service does not apply order-only shortcut to PO18", async ()
     const result = await service.saveChapter({
         bookId: "b1",
         chapterId: "9004",
-        title: "PO18 title",
+        title: "title must stay untouched",
         html: "<p>content</p>",
         chapterOrder: 12,
-        platform: "po18",
         fromUserScript: true,
         orderOnly: true,
         skipContentUpdate: true
     });
 
-    assert.equal(result.orderOnly, false);
-    assert.ok(calls.some((call) => /INSERT INTO chapter_cache/.test(call.sql || "")));
-    assert.equal(calls.some((call) => /UPDATE chapter_cache SET chapter_order/.test(call.sql || "")), false);
+    assert.equal(result.orderOnly, true);
+    assert.equal(result.platform, "tomato");
+    assert.equal(
+        calls.some((call) => /INSERT INTO chapter_cache/.test(call.sql || "")),
+        false
+    );
+    const update = calls.find((call) => /UPDATE chapter_cache SET chapter_order/.test(call.sql || ""));
+    assert.ok(update);
+    assert.deepEqual(update.params, [12, "b1", "9004"]);
+});
+
+test("book chapter service rejects order-only when the chapter is not cached", async () => {
+    const { service } = makeService();
+
+    await assert.rejects(
+        () => service.saveChapter({ bookId: "b1", chapterId: "missing", chapterOrder: 2, orderOnly: true }),
+        (err) => err.status === 404 && /chapter not cached/.test(err.message)
+    );
+});
+
+test("book chapter service rejects order-only without a positive chapter order", async () => {
+    const { service } = makeService({
+        pool: {
+            connect: async () => ({
+                async query(sql) {
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8, platform: "custom" }] };
+                    return { rows: [] };
+                },
+                release() {}
+            })
+        }
+    });
+
+    await assert.rejects(
+        () => service.saveChapter({ bookId: "b1", chapterId: "c1", chapterOrder: -1, orderOnly: true }),
+        (err) => err.status === 400 && /invalid chapterOrder/.test(err.message)
+    );
+});
+
+test("book chapter service reports an unchanged order without issuing an update", async () => {
+    const { service, calls } = makeService({
+        pool: {
+            connect: async () => ({
+                async query(sql, params = []) {
+                    calls.push({ client: true, sql, params });
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 12, platform: "custom" }] };
+                    return { rows: [] };
+                },
+                release() {}
+            })
+        }
+    });
+
+    const result = await service.saveChapter({ bookId: "b1", chapterId: "c1", chapterOrder: 12, orderOnly: true });
+
+    assert.equal(result.updated, false);
+    assert.equal(calls.some((call) => /UPDATE chapter_cache/.test(call.sql || "")), false);
 });

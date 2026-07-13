@@ -8,6 +8,15 @@ const Ajv = require("ajv");
 
 const identifier = { type: "string", minLength: 1, maxLength: 240 };
 const boundedText = (maxLength) => ({ type: "string", maxLength });
+const booleanLike = {
+    anyOf: [{ type: "boolean" }, { type: "integer", enum: [0, 1] }, { type: "string", enum: ["0", "1", "true", "false"] }]
+};
+const positiveIntegerLike = {
+    anyOf: [
+        { type: "integer", minimum: 1 },
+        { type: "string", pattern: "^[1-9][0-9]*$" }
+    ]
+};
 const registrationCode = { type: "string", minLength: 1, maxLength: 256 };
 const sha256Checksum = {
     type: "object",
@@ -145,7 +154,12 @@ const REQUEST_SCHEMA_POLICIES = Object.freeze([
                 title: boundedText(2000),
                 html: boundedText(10 * 1024 * 1024),
                 text: boundedText(10 * 1024 * 1024),
-                platform: boundedText(80)
+                platform: boundedText(80),
+                chapterOrder: positiveIntegerLike,
+                chapter_order: positiveIntegerLike,
+                orderOnly: booleanLike,
+                updateOrderOnly: booleanLike,
+                skipContentUpdate: booleanLike
             },
             additionalProperties: true
         }

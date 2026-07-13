@@ -50,12 +50,14 @@ function baseDeps(overrides = {}) {
 
 test("upload API protects write routes and returns cached chapter content", async () => {
     const calls = [];
-    const router = createUploadApiRoutes(baseDeps({
-        query: async (sql, params) => {
-            calls.push({ sql, params });
-            return { rows: [{ html: "<p>Hello</p>", text: "Hello", title: "Chapter 1" }] };
-        }
-    }));
+    const router = createUploadApiRoutes(
+        baseDeps({
+            query: async (sql, params) => {
+                calls.push({ sql, params });
+                return { rows: [{ html: "<p>Hello</p>", text: "Hello", title: "Chapter 1" }] };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const getResponse = await fetch(`${base}/api/parse/chapter-content`);
@@ -89,13 +91,15 @@ test("upload API protects write routes and returns cached chapter content", asyn
 test("upload API accepts userscript chapter upload without cache lookup", async () => {
     const saved = [];
     let queries = 0;
-    const router = createUploadApiRoutes(baseDeps({
-        query: async () => {
-            queries++;
-            return { rows: [] };
-        },
-        saveChapter: async (payload) => saved.push(payload)
-    }));
+    const router = createUploadApiRoutes(
+        baseDeps({
+            query: async () => {
+                queries++;
+                return { rows: [] };
+            },
+            saveChapter: async (payload) => saved.push(payload)
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/api/parse/chapter-content`, {
@@ -114,29 +118,30 @@ test("upload API accepts userscript chapter upload without cache lookup", async 
     assert.equal(queries, 0);
 });
 
-test("upload API accepts qidian order-only userscript update without content", async () => {
+test("upload API accepts platform-free order-only update and returns the explicit order result", async () => {
     const saved = [];
     let queries = 0;
-    const router = createUploadApiRoutes(baseDeps({
-        query: async () => {
-            queries++;
-            return { rows: [{ html: "<p>Old</p>", text: "Old", title: "Old" }] };
-        },
-        saveChapter: async (payload) => {
-            saved.push(payload);
-            return { success: true, orderOnly: true, updated: true };
-        }
-    }));
+    const router = createUploadApiRoutes(
+        baseDeps({
+            query: async () => {
+                queries++;
+                return { rows: [{ html: "<p>Old</p>", text: "Old", title: "Old" }] };
+            },
+            saveChapter: async (payload) => {
+                saved.push(payload);
+                return { success: true, orderOnly: true, updated: true, chapterId: payload.chapterId, chapterOrder: payload.chapterOrder };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/api/parse/chapter-content`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Upload-Token": "upload-token" },
             body: JSON.stringify({
-                bookId: "b1",
-                chapterId: "c1",
-                chapterOrder: 9,
-                platform: "qidian",
+                bookId: "7140570974730062883",
+                chapterId: "7140571136370475528",
+                chapterOrder: 2,
                 orderOnly: true,
                 updateOrderOnly: true,
                 skipContentUpdate: true
@@ -144,6 +149,10 @@ test("upload API accepts qidian order-only userscript update without content", a
         });
         assert.equal(response.status, 200);
         assert.deepEqual(await response.json(), {
+            success: true,
+            orderUpdated: true,
+            chapterId: "7140571136370475528",
+            chapterOrder: 2,
             html: "",
             text: "",
             title: "",
@@ -158,16 +167,21 @@ test("upload API accepts qidian order-only userscript update without content", a
     assert.equal(queries, 0);
 });
 
-test("upload API ignores order-only shortcut for non-qidian platforms", async () => {
+test("upload API forwards order-only updates for every explicit platform", async () => {
     const saved = [];
     let queries = 0;
-    const router = createUploadApiRoutes(baseDeps({
-        query: async () => {
-            queries++;
-            return { rows: [{ html: "<p>Old</p>", text: "Old", title: "Old" }] };
-        },
-        saveChapter: async (payload) => saved.push(payload)
-    }));
+    const router = createUploadApiRoutes(
+        baseDeps({
+            query: async () => {
+                queries++;
+                return { rows: [{ html: "<p>Old</p>", text: "Old", title: "Old" }] };
+            },
+            saveChapter: async (payload) => {
+                saved.push(payload);
+                return { success: true, orderOnly: true, updated: true, chapterId: payload.chapterId, chapterOrder: payload.chapterOrder };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/api/parse/chapter-content`, {
@@ -185,26 +199,35 @@ test("upload API ignores order-only shortcut for non-qidian platforms", async ()
         });
         assert.equal(response.status, 200);
         assert.deepEqual(await response.json(), {
-            html: "<p>Old</p>",
-            text: "Old",
-            title: "Old",
-            fromCache: true
+            success: true,
+            orderUpdated: true,
+            chapterId: "c1",
+            chapterOrder: 9,
+            html: "",
+            text: "",
+            title: "",
+            fromCache: true,
+            uploaded: false,
+            orderOnly: true,
+            updated: true
         });
     });
 
-    assert.equal(saved.length, 0);
-    assert.equal(queries, 1);
+    assert.equal(saved.length, 1);
+    assert.equal(queries, 0);
 });
 
 test("upload API batches metadata and stops on database connection errors", async () => {
     const seen = [];
-    const router = createUploadApiRoutes(baseDeps({
-        upsertBook: async (book) => {
-            seen.push(book.bookId || book.book_id);
-            if (book.bookId === "db-down") throw new Error("connection lost");
-        },
-        isPgConnectionError: (err) => /connection/.test(err.message)
-    }));
+    const router = createUploadApiRoutes(
+        baseDeps({
+            upsertBook: async (book) => {
+                seen.push(book.bookId || book.book_id);
+                if (book.bookId === "db-down") throw new Error("connection lost");
+            },
+            isPgConnectionError: (err) => /connection/.test(err.message)
+        })
+    );
 
     await withApp(router, async (base) => {
         const invalid = await fetch(`${base}/api/metadata/batch`, {
@@ -246,21 +269,28 @@ test("upload API batches metadata and stops on database connection errors", asyn
 
 test("upload API checks cache and deletes book chapters", async () => {
     const events = [];
-    const router = createUploadApiRoutes(baseDeps({
-        query: async (sql, params) => {
-            if (/SELECT chapter_id, chapter_order/.test(sql)) {
-                assert.deepEqual(params, ["b1"]);
-                assert.match(sql, /ORDER BY chapter_id ASC/);
-                return { rows: [{ chapter_id: 2, chapter_order: 1 }, { chapter_id: "10", chapter_order: 9 }] };
-            }
-            if (/DELETE FROM chapter_cache/.test(sql)) {
-                assert.deepEqual(params, ["b1"]);
-                return { rows: [], rowCount: 12 };
-            }
-            return { rows: [] };
-        },
-        recordEvent: async (event) => events.push(event)
-    }));
+    const router = createUploadApiRoutes(
+        baseDeps({
+            query: async (sql, params) => {
+                if (/SELECT chapter_id, chapter_order/.test(sql)) {
+                    assert.deepEqual(params, ["b1"]);
+                    assert.match(sql, /ORDER BY chapter_id ASC/);
+                    return {
+                        rows: [
+                            { chapter_id: 2, chapter_order: 1 },
+                            { chapter_id: "10", chapter_order: 9 }
+                        ]
+                    };
+                }
+                if (/DELETE FROM chapter_cache/.test(sql)) {
+                    assert.deepEqual(params, ["b1"]);
+                    return { rows: [], rowCount: 12 };
+                }
+                return { rows: [] };
+            },
+            recordEvent: async (event) => events.push(event)
+        })
+    );
 
     await withApp(router, async (base) => {
         const cache = await fetch(`${base}/api/parse/check-cache`, {
@@ -287,35 +317,40 @@ test("upload API checks cache and deletes book chapters", async () => {
         assert.deepEqual(await deleted.json(), { success: true, deleted: 12 });
     });
 
-    assert.deepEqual(events, [{
-        eventType: "chapter",
-        action: "delete_book_chapters",
-        bookId: "b1",
-        source: "api",
-        details: { changes: 12 }
-    }]);
+    assert.deepEqual(events, [
+        {
+            eventType: "chapter",
+            action: "delete_book_chapters",
+            bookId: "b1",
+            source: "api",
+            details: { changes: 12 }
+        }
+    ]);
 });
 
 test("upload API caches public cache lookups and invalidates after writes", async () => {
     let lookupQueries = 0;
-    const router = createUploadApiRoutes(baseDeps({
-        cacheLookupTtlMs: 60000,
-        query: async (sql) => {
-            if (/SELECT chapter_id, chapter_order/.test(sql)) {
-                lookupQueries += 1;
-                return { rows: [{ chapter_id: "1", chapter_order: 1 }] };
-            }
-            return { rows: [], rowCount: 0 };
-        },
-        saveChapter: async () => ({ success: true })
-    }));
+    const router = createUploadApiRoutes(
+        baseDeps({
+            cacheLookupTtlMs: 60000,
+            query: async (sql) => {
+                if (/SELECT chapter_id, chapter_order/.test(sql)) {
+                    lookupQueries += 1;
+                    return { rows: [{ chapter_id: "1", chapter_order: 1 }] };
+                }
+                return { rows: [], rowCount: 0 };
+            },
+            saveChapter: async () => ({ success: true })
+        })
+    );
 
     await withApp(router, async (base) => {
-        const requestLookup = () => fetch(`${base}/api/parse/check-cache`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bookId: "b-cache" })
-        });
+        const requestLookup = () =>
+            fetch(`${base}/api/parse/check-cache`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bookId: "b-cache" })
+            });
         assert.equal((await requestLookup()).status, 200);
         assert.equal((await requestLookup()).status, 200);
         assert.equal(lookupQueries, 1);

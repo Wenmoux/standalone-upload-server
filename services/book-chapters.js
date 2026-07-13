@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 chapter-title-cleaner 的标题规范化规则和注入的 PostgreSQL query/事务能力
- * [OUTPUT]: 对外提供书籍与章节写入、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
- * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一字段类型和书籍章节数据语义
+ * [OUTPUT]: 对外提供书籍与章节写入、全平台仅顺序更新、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
+ * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一字段类型，并隔离 order-only 与正文写入路径
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { cleanChapterTitle } = require("./chapter-title-cleaner");
@@ -44,22 +44,22 @@ function createBookChapterService(options = {}) {
     const chapterOrderSkipPlatforms = new Set(["po18", "p18", "qidian", "qd", "fanqie", "fq", "tomato"]);
 
     function chapterOrderPlatformKey(value = "") {
-        return String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
-    }
-
-    function isQidianPlatform(platform = "") {
-        return ["qidian", "qd"].includes(chapterOrderPlatformKey(platform));
+        return String(value || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[\s_-]+/g, "");
     }
 
     function shouldNormalizeChapterOrder(platform = "") {
         return !chapterOrderSkipPlatforms.has(chapterOrderPlatformKey(platform));
     }
 
-    function isQidianOrderOnly(payload = {}, platform = "") {
-        if (!isQidianPlatform(platform)) return false;
-        return safePgBool(payload.orderOnly, false)
-            || safePgBool(payload.updateOrderOnly, false)
-            || safePgBool(payload.skipContentUpdate, false);
+    function isOrderOnlyUpdate(payload = {}) {
+        return (
+            safePgBool(payload.orderOnly, false) ||
+            safePgBool(payload.updateOrderOnly, false) ||
+            safePgBool(payload.skipContentUpdate, false)
+        );
     }
 
     function chapterListOrderSql(bookPlatformSql = "platform") {
@@ -195,7 +195,9 @@ function createBookChapterService(options = {}) {
             free_chapters: Number(book.freeChapters || book.free_chapters || 0),
             paid_chapters: Number(book.paidChapters || book.paid_chapters || 0),
             total_chapters: Number(book.totalChapters || book.total_chapters || book.chapterCount || 0),
-            subscribed_chapters: Number(book.subscribedChapters || book.subscribed_chapters || book.chapterCount || book.totalChapters || 0),
+            subscribed_chapters: Number(
+                book.subscribedChapters || book.subscribed_chapters || book.chapterCount || book.totalChapters || 0
+            ),
             status: book.status || "unknown",
             latest_chapter_name: book.latestChapterName || book.latest_chapter_name || "",
             latest_chapter_date: normalizeOptionalTimestamp(book.latestChapterDate, book.latest_chapter_date),
@@ -230,24 +232,26 @@ function createBookChapterService(options = {}) {
         const cacheCount = statsPrefix ? `COALESCE(${statsPrefix}.cache_count, 0)` : "cache_count";
         const expectedChapters = `GREATEST(COALESCE(${p}total_chapters, 0), COALESCE(${p}subscribed_chapters, 0), COALESCE(${p}chapter_count, 0))`;
         const completeness = `CASE WHEN ${expectedChapters} > 0 THEN (${cacheCount})::numeric / ${expectedChapters} ELSE 0 END`;
-        return {
-            updated_desc: `COALESCE(${p}updated_at, ${p}created_at) DESC, ${p}id DESC`,
-            updated_asc: `COALESCE(${p}updated_at, ${p}created_at) ASC, ${p}id ASC`,
-            cache_desc: `${cacheCount} DESC, ${p}id DESC`,
-            cache_asc: `${cacheCount} ASC, ${p}id ASC`,
-            complete_desc: `${completeness} DESC, ${cacheCount} DESC, ${p}id DESC`,
-            complete_asc: `${completeness} ASC, ${cacheCount} ASC, ${p}id ASC`,
-            chapters_desc: `COALESCE(${p}total_chapters, ${p}subscribed_chapters, 0) DESC, ${p}id DESC`,
-            chapters_asc: `COALESCE(${p}total_chapters, ${p}subscribed_chapters, 0) ASC, ${p}id ASC`,
-            popularity_desc: `COALESCE(${p}total_popularity, 0) DESC, ${p}id DESC`,
-            popularity_asc: `COALESCE(${p}total_popularity, 0) ASC, ${p}id ASC`,
-            word_desc: `COALESCE(${p}word_count, 0) DESC, ${p}id DESC`,
-            word_asc: `COALESCE(${p}word_count, 0) ASC, ${p}id ASC`,
-            book_id_desc: `${p}book_id DESC, ${p}id DESC`,
-            book_id_asc: `${p}book_id ASC, ${p}id ASC`,
-            title_asc: `${p}title ASC, ${p}id ASC`,
-            title_desc: `${p}title DESC, ${p}id DESC`
-        }[sort] || `COALESCE(${p}updated_at, ${p}created_at) DESC, ${p}id DESC`;
+        return (
+            {
+                updated_desc: `COALESCE(${p}updated_at, ${p}created_at) DESC, ${p}id DESC`,
+                updated_asc: `COALESCE(${p}updated_at, ${p}created_at) ASC, ${p}id ASC`,
+                cache_desc: `${cacheCount} DESC, ${p}id DESC`,
+                cache_asc: `${cacheCount} ASC, ${p}id ASC`,
+                complete_desc: `${completeness} DESC, ${cacheCount} DESC, ${p}id DESC`,
+                complete_asc: `${completeness} ASC, ${cacheCount} ASC, ${p}id ASC`,
+                chapters_desc: `COALESCE(${p}total_chapters, ${p}subscribed_chapters, 0) DESC, ${p}id DESC`,
+                chapters_asc: `COALESCE(${p}total_chapters, ${p}subscribed_chapters, 0) ASC, ${p}id ASC`,
+                popularity_desc: `COALESCE(${p}total_popularity, 0) DESC, ${p}id DESC`,
+                popularity_asc: `COALESCE(${p}total_popularity, 0) ASC, ${p}id ASC`,
+                word_desc: `COALESCE(${p}word_count, 0) DESC, ${p}id DESC`,
+                word_asc: `COALESCE(${p}word_count, 0) ASC, ${p}id ASC`,
+                book_id_desc: `${p}book_id DESC, ${p}id DESC`,
+                book_id_asc: `${p}book_id ASC, ${p}id ASC`,
+                title_asc: `${p}title ASC, ${p}id ASC`,
+                title_desc: `${p}title DESC, ${p}id DESC`
+            }[sort] || `COALESCE(${p}updated_at, ${p}created_at) DESC, ${p}id DESC`
+        );
     }
 
     function isCacheCountSort(sort = "") {
@@ -324,29 +328,34 @@ function createBookChapterService(options = {}) {
     async function saveChapter(payload) {
         const bookId = cleanPgText(String(payload.bookId || payload.book_id));
         const chapterId = cleanPgText(String(payload.chapterId || payload.chapter_id));
-        const platform = cleanPgText(payload.platform || "po18");
-        const normalizeOrder = shouldNormalizeChapterOrder(platform);
+        const requestedPlatform = cleanPgText(payload.platform || "");
+        const orderOnly = isOrderOnlyUpdate(payload);
+        let platform = requestedPlatform || "po18";
+        let normalizeOrder = shouldNormalizeChapterOrder(platform);
         const client = await pool.connect();
         let data;
         try {
             await client.query("BEGIN");
-            if (normalizeOrder) {
+            if (normalizeOrder && !orderOnly) {
                 await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`chapter_order:${bookId}`]);
             }
             const existing = await client.query(
-                "SELECT chapter_order FROM chapter_cache WHERE book_id = $1 AND chapter_id = $2 LIMIT 1",
+                "SELECT chapter_order, platform FROM chapter_cache WHERE book_id = $1 AND chapter_id = $2 LIMIT 1",
                 [bookId, chapterId]
             );
+            if (orderOnly && !requestedPlatform && existing.rows[0]?.platform) {
+                platform = cleanPgText(existing.rows[0].platform);
+                normalizeOrder = shouldNormalizeChapterOrder(platform);
+            }
             const providedOrder = safePgInt(payload.chapterOrder ?? payload.chapter_order, 0);
-            const orderOnly = isQidianOrderOnly(payload, platform);
             if (orderOnly) {
                 if (!existing.rows[0]) {
                     const err = new Error("chapter not cached for order-only update");
                     err.status = 404;
                     throw err;
                 }
-                if (!providedOrder) {
-                    const err = new Error("missing chapterOrder for order-only update");
+                if (providedOrder <= 0) {
+                    const err = new Error("missing or invalid chapterOrder for order-only update");
                     err.status = 400;
                     throw err;
                 }
@@ -364,8 +373,8 @@ function createBookChapterService(options = {}) {
                 };
                 if (Number(existing.rows[0].chapter_order || 0) !== providedOrder) {
                     await client.query(
-                        "UPDATE chapter_cache SET chapter_order = $1, platform = COALESCE(NULLIF($2, ''), platform), updated_at = CURRENT_TIMESTAMP WHERE book_id = $3 AND chapter_id = $4",
-                        [providedOrder, platform, bookId, chapterId]
+                        "UPDATE chapter_cache SET chapter_order = $1, updated_at = CURRENT_TIMESTAMP WHERE book_id = $2 AND chapter_id = $3",
+                        [providedOrder, bookId, chapterId]
                     );
                 }
                 await client.query("COMMIT");
@@ -385,22 +394,34 @@ function createBookChapterService(options = {}) {
                         contentUpdated: false
                     }
                 });
-                return { success: true, orderOnly: true, updated: Number(existing.rows[0].chapter_order || 0) !== providedOrder, event };
+                return {
+                    success: true,
+                    orderOnly: true,
+                    updated: Number(existing.rows[0].chapter_order || 0) !== providedOrder,
+                    chapterId,
+                    chapterOrder: providedOrder,
+                    platform,
+                    event
+                };
             }
             const cleanedTitle = cleanChapterTitle(payload.title || "").title;
             let chapterOrder = providedOrder || parseChapterOrderFromTitle(payload.title || "");
             if (existing.rows[0]) {
-                chapterOrder = !normalizeOrder && providedOrder
-                    ? providedOrder
-                    : safePgInt(existing.rows[0].chapter_order, chapterOrder || safePgInt(chapterId, 0));
+                chapterOrder =
+                    !normalizeOrder && providedOrder
+                        ? providedOrder
+                        : safePgInt(existing.rows[0].chapter_order, chapterOrder || safePgInt(chapterId, 0));
             } else if (!chapterOrder) {
-                const maxOrder = await client.query("SELECT COALESCE(MAX(chapter_order), 0)::int max_order FROM chapter_cache WHERE book_id = $1", [bookId]);
+                const maxOrder = await client.query(
+                    "SELECT COALESCE(MAX(chapter_order), 0)::int max_order FROM chapter_cache WHERE book_id = $1",
+                    [bookId]
+                );
                 chapterOrder = Number(maxOrder.rows[0]?.max_order || 0) + 1;
             } else if (normalizeOrder) {
-                const occupied = await client.query(
-                    "SELECT 1 FROM chapter_cache WHERE book_id = $1 AND chapter_order = $2 LIMIT 1",
-                    [bookId, chapterOrder]
-                );
+                const occupied = await client.query("SELECT 1 FROM chapter_cache WHERE book_id = $1 AND chapter_order = $2 LIMIT 1", [
+                    bookId,
+                    chapterOrder
+                ]);
                 if (occupied.rows[0]) {
                     await client.query(
                         `UPDATE chapter_cache

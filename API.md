@@ -653,6 +653,32 @@ POST /api/parse/chapter-content
 }
 ```
 
+仅更新已缓存章节顺序时，不需要上传标题或正文，也不限制平台：
+
+```json
+{
+    "bookId": "7140570974730062883",
+    "chapterId": "7140571136370475528",
+    "chapterOrder": 2,
+    "orderOnly": true,
+    "updateOrderOnly": true,
+    "skipContentUpdate": true
+}
+```
+
+三个 order-only 标记任意一个为 `true` 即可；全部保留是为了兼容不同版本上传脚本。目标章节必须已缓存，`chapterOrder` 必须为正整数。`platform` 可传可不传，但 order-only 路径始终保留章节现有平台。成功返回：
+
+```json
+{
+    "success": true,
+    "orderUpdated": true,
+    "chapterId": "7140571136370475528",
+    "chapterOrder": 2
+}
+```
+
+实际响应还保留 `orderOnly`、`updated`、`fromCache`、`uploaded` 和空正文兼容字段，旧上传脚本无需修改。`orderUpdated: false` 表示原顺序已经等于请求值；章节不存在时返回 404，顺序缺失或无效时返回 400。
+
 读取缓存请求：
 
 ```json
@@ -680,6 +706,7 @@ POST /api/parse/chapter-content
 - `text` 字段保留但不存正文。
 - API 返回时会从 `html` 即时派生 `text`。
 - 新章节写入会记录 `upload_events`，并按配置触发 Telegram 推送。
+- order-only 路径只更新 `chapter_order` 和 `updated_at`，不修改平台、标题、HTML 或正文。
 
 ### 3. 检查章节缓存
 
