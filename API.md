@@ -1084,7 +1084,7 @@ DELETE /admin-api/config/export/style2-assets/:slot
 - `PUT` 请求体直接发送 JPEG、PNG、GIF 或 WebP，单图最大 `20 MB`。
 - `DELETE` 删除 `/config/epub-style2/:slot.asset` 并恢复镜像内置图。
 - `bot_epub_style_config.style2` 保存副标题、版本文本、来源文本、版权文本、阅读提示、字体族和追加 CSS。
-- 静态样式三使用内部 ID `style3`、显示名“疏影横斜”，复用通用制作说明和简介配置，无额外资源 API。
+- 静态样式三使用内部 ID `style3`、显示名“疏影横斜”，复用通用制作说明和简介配置，无额外资源 API；导出器自动生成长屏封面，并为真实分卷写入 `duokan-page-fullscreen` 与嵌套 NCX，不改变请求结构。
 - Telegram 回调 `epubstyle|style1|bookId` / `epubstyle|style2|bookId` / `epubstyle|style3|bookId` 在用户选择后创建 EPUB 导出任务。
 
 ### 2026-05-03

@@ -42,7 +42,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `db-errors.test.js`: PostgreSQL 错误到 HTTP 语义的规范化。
 - `docker-release.test.js`: 镜像标签、来源身份和发布清单规则。
 - `docs-check.test.js`: Markdown 目标解析、断链识别和多语言源码 L3 完整性门禁。
-- `epub-builder.test.js`: EPUB 内容结构、标题去重与样式注入。
+- `epub-builder.test.js`: EPUB 长屏封面、全屏 spine、分卷目录、制作说明、标题去重与样式注入契约。
 - `epub-style-picker.test.js`: EPUB 样式选择、默认值和兼容别名。
 - `epub-style2-assets.test.js`: 老二次元样式资源解析与回退。
 - `events.test.js`: 领域事件发布和监听隔离。

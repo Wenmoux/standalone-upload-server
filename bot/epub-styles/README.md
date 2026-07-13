@@ -8,12 +8,14 @@ EPUB 生成器把通用的封装、目录、资源和 EPUB 2 文件结构留在 
 | --- | --- | --- | --- |
 | `style1` | 江湖纸卷 | 暖纸底、红黑章头、圆形人物头图、竖排分卷与独立制作说明 | 是 |
 | `style2` | 老二次元 | 插画标题页、制作说明、书籍信息、分卷图与三组正文章头 | 是 |
-| `style3` | 疏影横斜 | 暖白留白、淡墨梅影、宋体标题与居中章序的文艺简约排版 | 是 |
+| `style3` | 疏影横斜 | 长屏封面、浅灰说明框、全屏留白分卷、淡墨梅影与宋体章序 | 是 |
 | `crane` | 仙鹤章头 | 仙鹤头图、深色圆角标题条与旧版页面结构 | 否，仅兼容旧配置 |
 
 “疏影横斜”取自林逋《山园小梅》“疏影横斜水清浅”，保留古典气息而不把固定诗句写进正文模板。
 
-分卷页不是默认正文：生成器只在源章节中识别到非空真实分卷记录时调用 `renderVolume`。书籍没有分卷数据就不会插入“正文”或其他占位分卷。
+分卷页不是默认正文：生成器只在源章节中识别到非空真实分卷记录时调用 `renderVolume`。书籍没有分卷数据就不会插入“正文”或其他占位分卷。“疏影横斜”的真实分卷页写入 `duokan-page-fullscreen` spine 属性、独立全屏 XHTML/SVG 和二级 NCX 目录，所以支持该扩展的阅读器不会把它当普通正文流排版。
+
+样式一和样式三各自的参考 EPUB 都包含原图/长屏双封面，因此这两种样式保留原图作为书库缩略图，同时生成 `1080×2400` 的 `cover~slim.png`：模糊延展背景承接长屏空白，前景完整保留原封面。只有《家弑服务》对应的样式三额外声明封面 `duokan-page-fullscreen` 与 Apple 显示选项；样式二遵循自己的参考书标题页结构，不生成可见封面页或无用长屏资源。渲染失败时安全回退到原图。
 
 网页 Reader 只复用 `style1` 的暖纸主题与章头 CSS，不生成 EPUB 的封面、制作说明、简介或分卷页面。
 
@@ -24,7 +26,7 @@ EPUB 生成器把通用的封装、目录、资源和 EPUB 2 文件结构留在 
 - 必填元数据：唯一 `id`、后台显示的 `name`、简短 `description`。
 - 必填渲染能力：`css`（字符串或接收配置的函数）、`renderIntro`、`renderVolume`、`renderChapter`。
 - 可选页面：`renderTitlePage`、`renderColophon`；只有实现并启用相应配置时才写入 EPUB。
-- 可选结构开关：`skipVisibleCoverPage`、`titlePageNavTitle`、`nestedVolumeToc`。
+- 可选结构开关：`skipVisibleCoverPage`、`useSlimCover`、`includeAppleDisplayOptions`、`coverPageNavTitle`、`coverPageSpineProperties`、`titlePageNavTitle`、`nestedVolumeToc`、`volumePageSpineProperties`、`volumeDocumentOptions`。
 - 可选 `assets`：每项声明 EPUB 内部 `name`、`mediaType`、本地候选 `paths`，并可用 `when(config)` 控制是否嵌入。模板必须通过 `hasAsset(name)` 判断资源是否真正可用。
 - 所有动态书名、作者、简介、卷名和章名必须使用生成器提供的转义/段落工具，不得直接拼接未转义用户文本。
 
@@ -47,5 +49,5 @@ EPUB 生成器把通用的封装、目录、资源和 EPUB 2 文件结构留在 
 
 - `style1` 头图来自用户提供的参考 EPUB。原书字体是裁剪子集，无法覆盖任意书名和章节，因此实现使用跨平台中文字体回退链。页面结构考据见 [`STYLE1_REFERENCE.md`](./STYLE1_REFERENCE.md)。
 - `style2` 参考 EPUB 未内嵌完整字体，只声明 `DK-SONGTI`、`DK-HEITI`、`DK-KAITI` 等本地字体名；实现保留别名并提供系统字体回退。
-- `style3` 的淡墨梅影是项目自制 SVG。参考书的固定文字图片与字符子集字体没有进入通用模板。
+- `style3` 的淡墨梅影是项目自制 SVG。参考书的固定文字分部图片与字符子集字体没有进入通用模板；动态卷名在全屏 SVG 中排版，制作说明沿用参考书的 20% 顶距、浅灰边框、小字号说明框结构。
 - `crane` 读取旧仙鹤头图候选路径，保留是为了不破坏既有配置，不代表新增交互入口。

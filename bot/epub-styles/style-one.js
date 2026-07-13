@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node path、江湖纸卷内置头图和生成器提供的转义、段落及资源可用性上下文
- * [OUTPUT]: 对外提供 style1 江湖纸卷的 CSS、资源声明和制作说明、简介、分卷、章页渲染器
+ * [OUTPUT]: 对外提供 style1 江湖纸卷的长屏封面声明、CSS、资源清单和制作说明、简介、分卷、章页渲染器
  * [POS]: epub-styles 的古典纸卷视觉插件，只描述页面语义与装饰，不负责 EPUB 容器装配
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -12,6 +12,7 @@ module.exports = {
     id: "style1",
     name: "江湖纸卷",
     description: "暖纸底、红黑章头、圆形人物头图、竖排分卷和独立制作说明。",
+    useSlimCover: true,
     css: `@charset "UTF-8";
 /*
  * [INPUT]: 依赖江湖纸卷 EPUB XHTML 语义类名与兼容 Reader 的内嵌 CSS 能力

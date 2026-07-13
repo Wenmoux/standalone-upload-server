@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Node 文件与压缩能力、epub-styles 插件注册表，以及调用方注入的文本清洗、卷章识别和资源读取能力
- * [OUTPUT]: 对外提供将书籍元数据、章节和样式配置组装为 EPUB 2 文件集合与 ZIP 字节流的生成器
- * [POS]: bot 导出域的 EPUB 唯一组合器，统一掌管容器、manifest、目录、XHTML、资源与样式插件生命周期
+ * [INPUT]: 依赖 Node 文件与压缩能力、按需加载的 Resvg 长屏封面渲染、epub-styles 插件注册表，以及调用方注入的文本清洗、卷章识别和资源读取能力
+ * [OUTPUT]: 对外提供将书籍元数据、章节和样式配置组装为含长屏封面、全屏页语义、目录与资源的 EPUB 2 文件集合及 ZIP 字节流生成器
+ * [POS]: bot 导出域的 EPUB 唯一组合器，统一掌管容器、manifest、spine 全屏扩展、目录、XHTML、资源与样式插件生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs");
@@ -9,10 +9,14 @@ const zlib = require("zlib");
 const { listEpubStyles, resolveEpubStyle } = require("./epub-styles");
 
 const COVER_PAGE_CSS = `
-html.cover-document,html.cover-document body.cover-page{margin:0!important;padding:0!important;width:100%!important;height:100%!important;min-height:100%!important;overflow:hidden!important;background:#000!important;}
+html.fullscreen-document,html.fullscreen-document body.cover-page,html.fullscreen-document body.fullscreen-page{margin:0!important;padding:0!important;width:100%!important;height:100%!important;min-height:100%!important;overflow:hidden!important;}
+html.cover-document,html.cover-document body.cover-page{background:#000!important;}
 body.cover-page .cover{margin:0!important;padding:0!important;width:100%!important;height:100%!important;min-height:100%!important;display:block!important;text-align:center!important;text-indent:0!important;line-height:0!important;background:#000!important;}
 body.cover-page .cover-svg{margin:0!important;padding:0!important;width:100%!important;height:100%!important;display:block!important;}
 `;
+
+const SLIM_COVER_WIDTH = 1080;
+const SLIM_COVER_HEIGHT = 2400;
 
 const CHAPTER_LABEL_REGEX = /第\s*[0-9０-９零一二三四五六七八九十百千万两〇○壹贰叁肆伍陆柒捌玖拾佰仟]+\s*[章节回卷篇话节集]/i;
 const VOLUME_LABEL_REGEX = /第\s*[0-9０-９零一二三四五六七八九十百千万两〇○壹贰叁肆伍陆柒捌玖拾佰仟]+\s*[卷部篇集]/i;
@@ -55,16 +59,37 @@ function createEpubBuilder(deps = {}) {
             { name: "OEBPS/Styles/main.css", content: Buffer.from(`${styleCss}\n${COVER_PAGE_CSS}`) }
         ];
 
+        if (style.includeAppleDisplayOptions) {
+            files.splice(2, 0, {
+                name: "META-INF/com.apple.ibooks.display-options.xml",
+                content: Buffer.from(
+                    '<?xml version="1.0" encoding="UTF-8"?><display_options><platform name="*"><option name="specified-fonts">true</option></platform></display_options>'
+                )
+            });
+        }
+
         for (const asset of loadedAssets) {
             files.push({ name: `OEBPS/${asset.name}`, content: asset.content });
             manifest.push(`<item id="${escapeXml(asset.id)}" href="${escapeXml(asset.name)}" media-type="${escapeXml(asset.mediaType)}"/>`);
         }
 
         let pageOrder = 0;
-        function addPage({ id, href, pageTitle, body, navTitle = "", navParent = null, linear = true, documentOptions = {} }) {
+        function addPage({
+            id,
+            href,
+            pageTitle,
+            body,
+            navTitle = "",
+            navParent = null,
+            linear = true,
+            spineProperties = "",
+            documentOptions = {}
+        }) {
             const itemId = cleanId(id);
+            const properties = normalizeSpineProperties(spineProperties);
+            const propertiesAttribute = properties ? ` properties="${properties}"` : "";
             manifest.push(`<item id="${itemId}" href="${href}" media-type="application/xhtml+xml"/>`);
-            spine.push(`<itemref idref="${itemId}"${linear ? "" : ' linear="no"'}/>`);
+            spine.push(`<itemref idref="${itemId}"${linear ? "" : ' linear="no"'}${propertiesAttribute}/>`);
             files.push({ name: `OEBPS/${href}`, content: Buffer.from(xhtmlDocument(pageTitle, body, documentOptions)) });
             if (navTitle) {
                 pageOrder += 1;
@@ -83,14 +108,25 @@ function createEpubBuilder(deps = {}) {
             coverName = `Images/cover${cover.ext}`;
             files.push({ name: `OEBPS/${coverName}`, content: cover.bytes });
             manifest.push(`<item id="cover-image" href="${coverName}" media-type="${cover.mime}"/>`);
+            const slimCover = !style.skipVisibleCoverPage && style.useSlimCover ? renderSlimCover(cover) : null;
+            const slimCoverName = slimCover ? "Images/cover~slim.png" : "";
+            if (slimCover) {
+                files.push({ name: `OEBPS/${slimCoverName}`, content: slimCover });
+                manifest.push(`<item id="cover-image-slim" href="${slimCoverName}" media-type="image/png"/>`);
+            }
             if (!style.skipVisibleCoverPage) {
+                const visibleCoverName = slimCoverName || coverName;
+                const visibleCoverWidth = slimCover ? SLIM_COVER_WIDTH : cover.width || 1200;
+                const visibleCoverHeight = slimCover ? SLIM_COVER_HEIGHT : cover.height || 1600;
                 addPage({
                     id: "cover-page",
                     href: "Text/cover.xhtml",
                     pageTitle: rawTitle,
-                    body: `<body class="cover-page"><div class="cover"><svg class="cover-svg" xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 ${cover.width || 1200} ${cover.height || 1600}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink"><image width="${cover.width || 1200}" height="${cover.height || 1600}" preserveAspectRatio="xMidYMid meet" xlink:href="../${coverName}"/></svg></div></body>`,
+                    navTitle: style.coverPageNavTitle || "",
+                    body: `<body class="cover-page"><div class="cover"><svg class="cover-svg" xmlns="http://www.w3.org/2000/svg" height="100%" preserveAspectRatio="xMidYMid meet" version="1.1" viewBox="0 0 ${visibleCoverWidth} ${visibleCoverHeight}" width="100%" xmlns:xlink="http://www.w3.org/1999/xlink"><image width="${visibleCoverWidth}" height="${visibleCoverHeight}" preserveAspectRatio="xMidYMid meet" xlink:href="../${visibleCoverName}"/></svg></div></body>`,
                     linear: true,
-                    documentOptions: { cover: true }
+                    spineProperties: style.coverPageSpineProperties || "",
+                    documentOptions: { cover: true, fullscreen: true }
                 });
                 coverPageAdded = true;
             }
@@ -148,13 +184,16 @@ function createEpubBuilder(deps = {}) {
                 const rawVolumeTitle = String(chapter.title || chapter.chapter_title || "").trim();
                 if (!rawVolumeTitle) continue;
                 volumeNo += 1;
-                const header = escapedHeader(splitHeading(rawVolumeTitle, volumeNo, VOLUME_LABEL_REGEX, "卷"));
+                const rawHeader = splitHeading(rawVolumeTitle, volumeNo, VOLUME_LABEL_REGEX, "卷");
+                const header = escapedHeader(rawHeader);
                 currentVolumeNav = addPage({
                     id: `volume-${volumeNo}`,
                     href: `Text/volume_${padNumber(volumeNo)}.xhtml`,
                     pageTitle: rawVolumeTitle,
                     navTitle: rawVolumeTitle,
-                    body: style.renderVolume({ ...pageContext, header, title: escapeXml(rawVolumeTitle), volumeNo })
+                    body: style.renderVolume({ ...pageContext, header, rawHeader, title: escapeXml(rawVolumeTitle), volumeNo }),
+                    spineProperties: style.volumePageSpineProperties || "",
+                    documentOptions: style.volumeDocumentOptions || {}
                 });
             } else {
                 const rawChapterTitle = chapter.title || chapter.chapter_title || chapter.chapter_id || `第${index + 1}章`;
@@ -322,7 +361,10 @@ function stripDuplicateLeadingChapterTitle(value = "", rawTitle = "") {
     const firstContent = lines.findIndex((line) => line.trim());
     if (firstContent < 0 || comparableHeading(lines[firstContent]) !== comparableHeading(rawTitle)) return text;
     lines.splice(firstContent, 1);
-    return lines.join("\n").replace(/^\s*\n+/, "").trim();
+    return lines
+        .join("\n")
+        .replace(/^\s*\n+/, "")
+        .trim();
 }
 
 function escapedHeader(header) {
@@ -336,9 +378,18 @@ function renderNavPoint(item) {
 
 function xhtmlDocument(title, body, options = {}) {
     const cover = options.cover === true;
-    const htmlClass = cover ? ' class="cover-document"' : "";
-    const viewport = cover ? '<meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0"/>' : "";
+    const fullscreen = cover || options.fullscreen === true;
+    const htmlClasses = [fullscreen ? "fullscreen-document" : "", cover ? "cover-document" : ""].filter(Boolean).join(" ");
+    const htmlClass = htmlClasses ? ` class="${htmlClasses}"` : "";
+    const viewport = fullscreen ? '<meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0"/>' : "";
     return `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html${htmlClass} xmlns="http://www.w3.org/1999/xhtml"><head><title>${escapeXml(title)}</title>${viewport}<link href="../Styles/main.css" type="text/css" rel="stylesheet"/></head>${body}</html>`;
+}
+
+function normalizeSpineProperties(value = "") {
+    return String(value || "")
+        .split(/\s+/)
+        .filter((token) => /^[a-z][a-z0-9:_-]*$/i.test(token))
+        .join(" ");
 }
 
 function readFirstFile(paths) {
@@ -377,12 +428,32 @@ function imageDimensions(bytes, isPng) {
     return {};
 }
 
+function renderSlimCover(cover) {
+    if (!cover?.bytes?.length || !cover.width || !cover.height) return null;
+    try {
+        const { Resvg } = require("@resvg/resvg-js");
+        const maxForegroundWidth = 900;
+        const maxForegroundHeight = 1680;
+        const scale = Math.min(maxForegroundWidth / cover.width, maxForegroundHeight / cover.height);
+        const foregroundWidth = Math.max(1, Math.round(cover.width * scale));
+        const foregroundHeight = Math.max(1, Math.round(cover.height * scale));
+        const foregroundX = Math.round((SLIM_COVER_WIDTH - foregroundWidth) / 2);
+        const foregroundY = Math.round((SLIM_COVER_HEIGHT - foregroundHeight) / 2);
+        const imageData = `data:${cover.mime};base64,${cover.bytes.toString("base64")}`;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${SLIM_COVER_WIDTH}" height="${SLIM_COVER_HEIGHT}" viewBox="0 0 ${SLIM_COVER_WIDTH} ${SLIM_COVER_HEIGHT}"><defs><filter id="cover-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="52"/></filter><filter id="cover-shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000" flood-opacity=".48"/></filter></defs><rect width="100%" height="100%" fill="#161616"/><image width="100%" height="100%" preserveAspectRatio="xMidYMid slice" filter="url(#cover-blur)" opacity=".74" xlink:href="${imageData}"/><rect width="100%" height="100%" fill="#000" opacity=".24"/><image x="${foregroundX}" y="${foregroundY}" width="${foregroundWidth}" height="${foregroundHeight}" preserveAspectRatio="xMidYMid meet" filter="url(#cover-shadow)" xlink:href="${imageData}"/></svg>`;
+        return Buffer.from(new Resvg(svg).render().asPng());
+    } catch {
+        return null;
+    }
+}
+
 function detectImageMediaType(bytes) {
     if (!Buffer.isBuffer(bytes) || !bytes.length) return "";
     if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
     if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
     if (bytes.length >= 6 && ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"))) return "image/gif";
-    if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+    if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP")
+        return "image/webp";
     return "";
 }
 

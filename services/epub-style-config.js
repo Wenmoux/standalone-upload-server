@@ -20,7 +20,7 @@ const EPUB_STYLE_OPTIONS = Object.freeze([
     {
         id: "style3",
         name: "疏影横斜",
-        description: "暖白留白、淡墨梅影、宋体标题与居中章序的文艺简约排版。"
+        description: "参考样例的长屏封面、浅灰说明框、全屏留白分卷、淡墨梅影与宋体章序。"
     },
     {
         id: "crane",

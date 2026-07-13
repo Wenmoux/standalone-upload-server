@@ -12,7 +12,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `styles.css`: 后台全局设计令牌、布局与组件基础样式，由 `main.js` 唯一引入。
 `components/ConfirmDialog.vue`: 全局高风险操作确认器，收集可选原因并把确认结果交回调用视图。
 `components/DataTable.vue`: 声明式表格外壳，通过列定义和插槽统一空状态、单元格与行操作渲染。
-`components/EpubStyleEditor.vue`: EPUB 导出样式配置与资产预览工作台，读取内置 CSS/图片并经 Admin API 管理自定义模板资产。
+`components/EpubStyleEditor.vue`: EPUB 导出样式配置与资产预览工作台，按最终 XHTML/SVG 同构预览内置 CSS/图片并经 Admin API 管理自定义模板资产。
 `components/FormModal.vue`: 通用表单弹窗容器，统一关闭门禁、提交状态和错误提示槽位。
 `components/StatCard.vue`: 仪表盘数值卡片，以标签、数值、提示或插槽呈现单一指标。
 `components/StatusBadge.vue`: 状态语义标签，以 tone 类名承接父视图的状态映射。

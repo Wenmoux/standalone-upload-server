@@ -15,7 +15,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `broadcast-handlers.js`: 管理员全员通知交互与批量投递器，执行身份复核、草稿确认、收件人分页、限速发送和失败统计。
 `command-catalog.js`: 命令名称、分组、帮助、别名和管理员标记的单一元数据源，驱动后台配置与帮助展示。
 `command-registry.js`: 注册、别名解析、启停配置和 Telegram command list 的运行时注册表，不实现具体业务。
-`epub-builder.js`: 组装 EPUB 2 容器、封面、XHTML、目录、资源与样式插件，是所有 EPUB 外壳逻辑的唯一实现。
+`epub-builder.js`: 组装 EPUB 2 容器、原始/长屏封面、全屏 spine、XHTML、目录、资源与样式插件，是所有 EPUB 外壳逻辑的唯一实现。
 `epub-style-picker.js`: 定义 Telegram EPUB 直选样式白名单和 inline keyboard 回调协议，刻意不暴露兼容样式 `crane`。
 `export-builder.js`: 从 server API 拉取缓存/已购章节并流式生成 TXT 或调用 EPUB 生成器，管理任务临时文件边界。
 `export-errors.js`: 归一化导出失败码、可重试语义和用户提示，避免网络/配额/内容错误在调用点分叉。
@@ -55,7 +55,7 @@ Telegram update
 
 - `command-catalog.js` 管声明，`commands/` 管注册，领域 handler 管行为；三者不可互相复制命令分支。
 - `job-queue.js` 只管理单进程并发，跨重启/跨实例正确性由 `task-runtime.js` 与服务端 lease 保证。
-- EPUB 样式只扩展 `epub-styles/` 插件契约，ZIP、清单和转义始终由 `epub-builder.js` 统一。
+- EPUB 样式只扩展 `epub-styles/` 插件契约，ZIP、长屏封面、清单、全屏 spine 和转义始终由 `epub-builder.js` 统一。
 - 自动取消置顶只消费 `pinned_message.is_automatic_forward` 且携带根级系统标记的消息，并始终传入精确 `message_id`；普通群消息和未标记频道帖不受影响。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
