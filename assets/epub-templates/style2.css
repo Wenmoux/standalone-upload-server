@@ -1,50 +1,47 @@
 @charset "UTF-8";
 /*
- * [INPUT]: 依赖样式二 XHTML 语义类名、三个背景图、单一分卷图和单一正文章头图
- * [OUTPUT]: 提供标题页、制作说明、书籍信息、分卷与正文的完整基础排版规则
- * [POS]: assets/epub-templates 的 Style2 规范 CSS，由服务端导出与 Admin 完整样式展示共同消费
+ * [INPUT]: 依赖老二次元原始 EPUB 的 XHTML 类名、三个背景图、单一分卷图和单一正文章头图
+ * [OUTPUT]: 提供按参考 EPUB 原值复刻的标题页、制作说明、书籍信息、分卷与正文排版规则
+ * [POS]: assets/epub-templates 的 Style2 规范 CSS，由服务端导出与 Admin 同构预览共同消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-@font-face{font-family:"DK-SONGTI";src:local("Songti SC"),local("STSong"),local("SimSun");}
-@font-face{font-family:"DK-HEITI";src:local("PingFang SC"),local("Microsoft YaHei"),local("SimHei");}
-@font-face{font-family:"DK-KAITI";src:local("Kaiti SC"),local("STKaiti"),local("KaiTi");}
 *{margin:0;padding:0;border:none;}
 ul,ol{list-style:none;}
 a{text-decoration:none;}
 body{padding:0;margin-top:0;margin-bottom:0;margin-left:1%;margin-right:1%;line-height:130%;text-align:justify;font-family:__STYLE2_FONT__;}
-p{text-align:justify;text-indent:2em;line-height:150%;margin-right:1%;margin-left:1%;font-family:__STYLE2_FONT__;}
-div{margin:0;padding:0;line-height:130%;text-align:center;font-family:__STYLE2_FONT__;}
+p{text-align:justify;text-indent:2em;line-height:150%;margin-right:1%;margin-left:1%;font-family:"DK-SONGTI","st","微软雅黑","zw",sans-serif;}
+div{margin:0;padding:0;line-height:130%;text-align:center;font-family:"zw";}
 body.ver{background-image:url(__STYLE2_TITLE_BACKGROUND__);background-position:top center;background-repeat:no-repeat;background-attachment:fixed;background-size:cover;}
-h3.booktitle{color:#29aeff;font-weight:bold;font-size:1.2em;font-family:"DK-HEITI","Microsoft YaHei","SimHei",sans-serif;text-indent:0!important;text-align:center;padding:25% 5px 5px;}
-p.booksubtitle{margin-top:3em;color:#f6f7f9;font-weight:bold;font-size:medium;font-family:"DK-HEITI","Microsoft YaHei","SimHei",sans-serif;text-indent:0!important;text-align:center;text-shadow:1px 1px #000;}
-p.bookauthor{margin-top:1em;font-family:"DK-KAITI","Kaiti SC","KaiTi",serif;text-indent:0!important;text-align:center;color:#f6f7f9;text-shadow:1px 1px #000;}
+h3.booktitle{color:#29aeff;font-weight:bold;font-size:1.2em;font-family:"h2","微软雅黑","黑体","zw",sans-serif;text-indent:0!important;text-align:center;padding:25% 5px 5px;}
+p.booksubtitle{margin-top:3em;color:#f6f7f9;font-weight:bold;font-size:medium;font-family:"h2","微软雅黑","黑体","zw",sans-serif;text-indent:0!important;text-align:center;text-shadow:1px 1px #000;}
+p.bookauthor{margin-top:1em;font-family:"kt","楷体","楷体_gb2312","zw",serif;text-indent:0!important;text-align:center;color:#f6f7f9;text-shadow:1px 1px #000;}
 div.ff{margin:15% 5%;padding:1em;background-color:rgba(212,211,209,.5);border:1px solid rgba(0,0,0,.8);border-radius:28px;box-shadow:0 0 2px rgba(25,25,112,.1);}
 body.bg{background-color:#fff;background-image:url(__STYLE2_COLOPHON_BACKGROUND__);background-repeat:no-repeat;background-size:cover;}
 .xx{border-top-style:solid;border-color:#fff;border-width:1px;margin:1em 0 .5em auto;}
-h3.ff-title{margin:1em auto;padding:0 4px;font-family:"DK-HEITI","Microsoft YaHei","SimHei",sans-serif;font-size:100%;color:#3d99f5;text-align:center;}
-p.cc-pot{font-family:"DK-HEITI","SimHei",sans-serif;text-indent:0;duokan-text-indent:0;text-align:left;color:#fff;font-size:80%;text-shadow:1px 1px #000;}
-p.ff-pot{font-family:"DK-HEITI","Microsoft YaHei",sans-serif;color:#000;font-size:65%;text-align:left;text-indent:0;duokan-text-indent:0;}
-p.ff-text{margin-top:1em;font-family:"DK-HEITI","Microsoft YaHei",sans-serif;font-size:65%;color:#fff;text-indent:0;duokan-text-indent:0;text-shadow:1px 1px rgba(0,0,0,.24);}
-p.ff-duokan{font-family:"DK-HEITI","Microsoft YaHei",sans-serif;font-size:50%;text-indent:0;text-align:left;duokan-text-indent:0;padding-bottom:15px;color:#ff2525;}
-.babala{background:#253142 no-repeat center;background-size:cover;background-attachment:fixed;background-repeat:no-repeat;background-position:top center;background-image:url(__STYLE2_INTRO_BACKGROUND__);}
-div.frame{padding:.5em 15px 15px;margin:3em 5px 1em;border-top:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:15px 15px 0 0;background:rgba(12,23,37,.28);text-shadow:0 1px 2px rgba(0,0,0,.78);}
+h3.ff-title{margin:1em auto;padding:0 4px;font-family:"ht","微软雅黑","黑体","DK-HEITI",sans-serif;font-size:100%;color:#3d99f5;text-align:center;}
+p.cc-pot{font-family:"DK-HEITI","黑体","ht",sans-serif;text-indent:0;duokan-text-indent:0;text-align:left;color:#fff;font-size:80%;text-shadow:1px 1px #000;}
+p.ff-pot{font-family:"DK-XIHEITI","细黑体","xihei",sans-serif;color:#000;font-size:65%;text-align:left;text-indent:0;duokan-text-indent:0;}
+p.ff-text{margin-top:1em;font-family:"DK-XIHEITI","细黑体","xihei",sans-serif;font-size:65%;color:#fff;text-indent:0;duokan-text-indent:0;}
+p.ff-duokan{font-family:"DK-CODE","DK-XIHEITI","细黑体","xihei",sans-serif;font-size:50%;text-indent:0;text-align:left;duokan-text-indent:0;padding-bottom:15px;color:#ff2525;}
+.babala{background:#fff no-repeat center;background-size:cover;background-attachment:fixed;background-repeat:no-repeat;background-position:top center;background-image:url(__STYLE2_INTRO_BACKGROUND__);}
+div.frame{padding:.5em 15px 15px;margin:3em 5px 1em;border-top:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:15px 15px 0 0;}
 div.cover{text-align:center;margin:0 auto;padding-top:1em;text-indent:0;duokan-text-indent:0;}
-img.cover{margin:0;width:60px;max-height:92px;object-fit:cover;border:1px solid #fff;box-shadow:4px 4px 5px #a49d9d;}
-h3.title{margin:.7em auto .4em;font-family:"FangSong","DK-SONGTI",serif;font-size:.8em;text-indent:0;text-align:center;color:#ffc500;line-height:100%;font-weight:bold;}
-p.author{margin:.5em 0;color:#fff;font-size:.7em;text-align:center;font-family:"DK-KAITI","Kaiti SC","KaiTi",serif;}
-.p1{font-family:"FangSong",sans-serif;font-size:100%;font-weight:bold;text-align:center;color:#f23e5b;}
-.p2{font-family:"FangSong",sans-serif;font-size:57%;text-align:center;text-indent:0;color:#fff;}
+img.cover{margin:0;width:60px;border:1px solid #fff;box-shadow:4px 4px 5px #a49d9d;}
+h3.title{margin:.7em auto .4em;font-family:"仿宋","DK-XIAOBIAOSONG",serif;font-size:.8em;text-indent:0;text-align:center;color:#ffc500;line-height:100%;font-weight:blod;}
+p.author{margin:.5em 0;color:#fff;font-size:.7em;text-align:center;font-family:"DK-KAITI","kt","楷体","zw",serif;}
+.p1{font-family:"仿宋",sans-serif;font-size:100%;font-weight:bold;text-align:center;color:#f23e5b;}
+.p2{font-family:"仿宋",sans-serif;font-size:57%;text-align:center;text-indent:0;color:#fff;}
 .XD{border-top-style:solid;border-color:#000;border-width:1px;margin:1em 0 .5em auto;}
-.RP{margin:.5em 0;text-indent:2em;duokan-text-indent:5em 2em;font-family:"FangSong",sans-serif;font-size:50%;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9);}
-.PL{font-family:"KaiTi",sans-serif;font-size:30%;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9);}
-div.frame2{padding:2.5em 10px 1em;margin:-3em 5px auto;border-bottom:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:0 0 15px 15px;background:rgba(12,23,37,.4);}
+.RP{margin:.5em 0;text-indent:2em;duokan-text-indent:5em 2em;font-family:"仿宋",sans-serif;font-size:50%;font-weight:bold;color:#fff;}
+.PL{font-family:"楷体",sans-serif;font-size:30%;color:#fff;}
+div.frame2{padding:2.5em 10px 1em;margin:-3em 5px auto;border-bottom:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:0 0 15px 15px;}
 table.block{margin-bottom:.5em;width:100%;text-align:center;}
-.volume-cover{margin:0;padding:0;text-indent:0;text-align:center;}
-.image-single{text-indent:0;border:0;display:block;line-height:1;margin:1em 0;padding:0;text-decoration:none;width:100%;}
-.img-name-1{border-bottom:1px solid #000;float:right;text-align:right;margin:0 0 auto;padding-right:.5em;color:#ff6699;font-size:.7em;font-family:"DK-HEITI","SimHei",sans-serif;}
-.volume-art{display:block;width:100%;height:auto;border:3px solid #000;}
-h2.head{font-family:"DK-KAITI","Kaiti SC","KaiTi",sans-serif;text-align:center;font-weight:bold;font-size:1.2em;margin:1em;color:#fff;line-height:140%;page-break-after:avoid;}
-span.num{font-family:"DK-HEITI","SimHei",sans-serif;font-size:.65em;background-color:#ee82a4;border-radius:10px;padding:5px;color:#fff;}
-h2.head b{font-family:"DK-HEITI","SimHei",sans-serif;font-size:1em;border-radius:5px;font-weight:900;padding:5px;color:#496dc6;}
+.cover{margin:0;padding:0;text-indent:0;text-align:center;}
+.image-single{text-indent:0;border-bottom:currentColor none 0;border-top:currentColor none 0;display:block;line-height:1;margin:1em 0;padding-bottom:0;padding-top:0;text-decoration:none;width:100%;}
+.img-name-1{border-bottom:1px solid #000;float:right;text-align:right;margin:0 0 auto;padding-right:.5em;color:#f69;font-size:.7em;font-family:"DK-HEITI","黑体","ht",sans-serif;}
+h2.head{font-family:"llf","kt","DK-KAITI","楷体",sans-serif;text-align:center;font-weight:bold;font-size:1.2em;margin:1em;color:#fff;line-height:140%;}
+span.num{font-family:"DK-HEITI","ht","黑体","zw",sans-serif;font-size:.65em;background-color:#ee82a4;border-radius:10px;padding:5px;color:#fff;}
+h2.head b{font-family:"llf","DK-HEITI","黑体",sans-serif;font-size:1em;border-radius:5px;font-weight:900;padding:5px;color:#496dc6;}
 div.logo{margin:0;text-align:center;text-indent:0;duokan-text-indent:0;duokan-bleed:lefttopright;}
-img.logo{width:100%;height:auto;border:3px solid #000;display:block;}
+img.logo{width:100%;border:3px solid #000;}
+img.logo1{width:40%;}

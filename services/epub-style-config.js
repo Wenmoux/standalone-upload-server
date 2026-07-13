@@ -6,11 +6,13 @@
  */
 const { DEFAULT_STYLE2_CONFIG } = require("./epub-style2-template");
 
+const LEGACY_STYLE2_DEFAULT_FONT_FAMILY = '"DK-SONGTI","Songti SC","STSong","SimSun","Noto Serif CJK SC",serif';
+
 const EPUB_STYLE_OPTIONS = Object.freeze([
     {
         id: "style1",
         name: "江湖纸卷",
-        description: "暖纸底、红黑章头、圆形人物头图、竖排分卷和独立制作说明。"
+        description: "纯白阅读底、原版字体、红黑章头、人物头图、竖排分卷和独立制作说明。"
     },
     {
         id: "style2",
@@ -20,7 +22,7 @@ const EPUB_STYLE_OPTIONS = Object.freeze([
     {
         id: "style3",
         name: "疏影横斜",
-        description: "参考样例的长屏封面、浅灰说明框、全屏留白分卷、淡墨梅影与宋体章序。"
+        description: "参考样例的原版字体、浅灰说明框、全屏留白分部底图与居中数字章题。"
     },
     {
         id: "crane",
@@ -75,13 +77,17 @@ function cleanCss(value, maxLength = 30000) {
 
 function normalizeStyle2Config(value = {}) {
     const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const inputFontFamily = input.fontFamily ?? input.font_family;
     return {
         subtitle: cleanText(input.subtitle, 80, DEFAULT_STYLE2_CONFIG.subtitle),
         versionText: cleanText(input.versionText ?? input.version_text, 160, DEFAULT_STYLE2_CONFIG.versionText),
         sourceText: cleanText(input.sourceText ?? input.source_text, 2000, DEFAULT_STYLE2_CONFIG.sourceText),
         copyrightText: cleanText(input.copyrightText ?? input.copyright_text, 2000, DEFAULT_STYLE2_CONFIG.copyrightText),
         readingTip: cleanText(input.readingTip ?? input.reading_tip, 1000, DEFAULT_STYLE2_CONFIG.readingTip),
-        fontFamily: cleanFontFamily(input.fontFamily ?? input.font_family, DEFAULT_STYLE2_CONFIG.fontFamily),
+        fontFamily: cleanFontFamily(
+            inputFontFamily === LEGACY_STYLE2_DEFAULT_FONT_FAMILY ? DEFAULT_STYLE2_CONFIG.fontFamily : inputFontFamily,
+            DEFAULT_STYLE2_CONFIG.fontFamily
+        ),
         customCss: cleanCss(input.customCss ?? input.custom_css)
     };
 }

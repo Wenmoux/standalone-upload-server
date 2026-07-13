@@ -19,6 +19,10 @@ function contentOf(files, name) {
 test("style1 uses the standalone CSS template", () => {
     const templateCss = fs.readFileSync(path.join(__dirname, "..", "assets", "epub-templates", "style1.css"), "utf8").trim();
     assert.equal(templateCss, styleOne.css.trim());
+    assert.doesNotMatch(templateCss, /body\s*\{[^}]*background(?:-color)?\s*:/s);
+    assert.match(templateCss, /p\.intro-text\{[^}]*color:#000[^}]*text-indent:0/s);
+    assert.doesNotMatch(templateCss, /p\.intro-text\{[^}]*background/s);
+    assert.match(templateCss, /@font-face\{font-family:"Asheng"/);
 });
 
 test("style3 uses the standalone CSS template", () => {
@@ -26,7 +30,7 @@ test("style3 uses the standalone CSS template", () => {
     assert.equal(templateCss, styleThree.css.trim());
 });
 
-test("style3 volume keeps dynamic text and fullscreen canvas when decorative SVG is unavailable", () => {
+test("style3 volume keeps dynamic text and fullscreen canvas when the reference artwork is unavailable", () => {
     const page = styleThree.renderVolume({
         header: { number: "第二部", name: "卷名示例" },
         rawHeader: { number: "第二部", name: "卷名示例" },
@@ -34,13 +38,11 @@ test("style3 volume keeps dynamic text and fullscreen canvas when decorative SVG
         paragraphs: { escape: (value) => String(value) },
         hasAsset: () => false
     });
-    assert.match(page, /class="fullscreen-page style3-volume-page"/);
-    assert.match(page, /class="style3-volume-number">第二部/);
-    assert.match(page, /class="style3-volume-name">卷名示例/);
+    assert.match(page, /class="style3-volume-page"/);
+    assert.match(page, /class="style3-semantic-title">第二部　卷名示例/);
     assert.match(page, /class="style3-volume-svg"/);
     assert.match(page, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
     assert.match(page, />Part II<\/text>/);
-    assert.match(page, /<line x1="150" y1="1670"/);
     assert.doesNotMatch(page, /<image/);
 });
 
@@ -82,6 +84,8 @@ test("style1 EPUB builds cover matter, intro, volume and chapter templates", asy
     assert.ok(files.some((file) => file.name === "OEBPS/Images/cover~slim.png"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/cover.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Images/style-one-top.png"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Fonts/style1-asheng.ttf"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Fonts/style1-source-han-serif-bold.otf"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/colophon.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/intro.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
@@ -99,6 +103,7 @@ test("style1 EPUB builds cover matter, intro, volume and chapter templates", asy
     assert.match(mainCss, /html\.fullscreen-document,html\.fullscreen-document body\.cover-page/);
     assert.match(packageFile, /po18-epub-style" content="style1"/);
     assert.match(packageFile, /id="cover-image-slim" href="Images\/cover~slim\.png" media-type="image\/png"/);
+    assert.match(packageFile, /href="Fonts\/style1-asheng\.ttf" media-type="application\/x-font-ttf"/);
     assert.match(packageFile, /reference type="cover" title="Cover" href="Text\/cover\.xhtml"/);
     assert.match(contentOf(files, "OEBPS/Text/colophon.xhtml"), /class="design-box"/);
     assert.match(contentOf(files, "OEBPS/Text/intro.xhtml"), /class="introduction-title">作品简介/);
@@ -196,6 +201,9 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     const toc = contentOf(files, "OEBPS/toc.ncx");
 
     assert.match(css, /style2-title-background\.jpg/);
+    assert.match(css, /\.babala\{background:#fff no-repeat center/);
+    assert.doesNotMatch(css, /div\.frame\{[^}]*background:/s);
+    assert.doesNotMatch(css, /div\.frame2\{[^}]*background:/s);
     assert.match(css, /\.head\{letter-spacing:0;\}/);
     assert.match(title, /body class="ver"/);
     assert.match(title, /内部群版/);
@@ -207,6 +215,7 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.match(intro, /Images\/cover\.png/);
     assert.match(intro, /324\.3万字/);
     assert.match(volume, /style2-volume\.jpg/);
+    assert.match(volume, /<div class="cover"><div class="images image-single"><img alt="" class="logo"/);
     assert.match(chapter, /style2-chapter\.jpg/);
     assert.match(chapter, /class="num">第1章/);
     assert.match(packageFile, /po18-epub-style" content="style2"/);
@@ -257,8 +266,11 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     assert.ok(files.some((file) => file.name === "OEBPS/Text/intro.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/chapter_0001.xhtml"));
-    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-plum-shadow.svg"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-volume-1.jpg"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-volume-2.jpg"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-volume-3.jpg"));
     assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-reader-mark.png"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Fonts/style3-stsongti-bold.ttf"));
     assert.ok(files.some((file) => file.name === "META-INF/com.apple.ibooks.display-options.xml"));
 
     const css = contentOf(files, "OEBPS/Styles/main.css");
@@ -269,27 +281,28 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     const packageFile = contentOf(files, "OEBPS/content.opf");
     const toc = contentOf(files, "OEBPS/toc.ncx");
 
-    assert.match(css, /\.style3-volume-svg/);
-    assert.match(colophon, /class="style3-design-box"/);
-    assert.match(colophon, /class="style3-design-content"/);
-    assert.match(colophon, /class="style3-design-icon" src="..\/Images\/style3-reader-mark\.png"/);
-    assert.match(intro, /class="style3-intro-title">内容简介/);
-    assert.match(intro, /《示例书名》 · 示例作者/);
-    assert.match(volume, /class="style3-volume-number">第一部/);
-    assert.match(volume, /class="style3-volume-name">卷名示例/);
-    assert.match(volume, /class="fullscreen-page style3-volume-page"/);
+    assert.match(css, /@font-face\{font-family:"roboto_medium_numbers"/);
+    assert.match(css, /div\.design-box\{[^}]*margin-top:20%[^}]*border-width:4px[^}]*background-color:#fcfcfc/s);
+    assert.match(colophon, /class="design-box"/);
+    assert.match(colophon, /class="design-content"/);
+    assert.match(colophon, /class="design-icon-dk" src="..\/Images\/style3-reader-mark\.png"/);
+    assert.match(intro, /<h1>内容简介<\/h1>/);
+    assert.doesNotMatch(intro, /style3-intro|《示例书名》/);
+    assert.match(volume, /class="style3-semantic-title">第一部　卷名示例/);
+    assert.match(volume, /class="style3-volume-page"/);
     assert.match(volume, /viewBox="0 0 1536 2048"/);
     assert.match(volume, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
     assert.match(volume, />Part I<\/text>/);
-    assert.match(volume, /style3-plum-shadow\.svg/);
-    assert.match(chapter, /class="style3-chapter-number">第1章/);
-    assert.match(chapter, /class="style3-chapter-title">新工作/);
+    assert.match(volume, /style3-volume-1\.jpg/);
+    assert.match(volume, /clip-path="url\(#style3-volume-art-clip\)"/);
+    assert.match(chapter, /<h2>第1章　新工作<\/h2>/);
     assert.doesNotMatch(chapter, /<p>第1章[\s　]*新工作<\/p>/);
     assert.match(chapter, /<p>门铃响了两次。<\/p>/);
     assert.match(packageFile, /po18-epub-style" content="style3"/);
     assert.match(packageFile, /idref="cover-page" properties="duokan-page-fullscreen"/);
     assert.match(packageFile, /idref="volume-1" properties="duokan-page-fullscreen"/);
-    assert.match(packageFile, /href="Images\/style3-plum-shadow\.svg" media-type="image\/svg\+xml"/);
+    assert.match(packageFile, /href="Images\/style3-volume-1\.jpg" media-type="image\/jpeg"/);
+    assert.match(packageFile, /href="Fonts\/style3-stsongti-bold\.ttf" media-type="application\/x-font-ttf"/);
     assert.match(packageFile, /href="Images\/style3-reader-mark\.png" media-type="image\/png"/);
     assert.match(toc, /<navLabel><text>书封<\/text><\/navLabel><content src="Text\/cover\.xhtml"\/>/);
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 新工作<\/text>/);

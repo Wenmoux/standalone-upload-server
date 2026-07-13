@@ -64,7 +64,7 @@ const DEFAULT_STYLE2_CONFIG = Object.freeze({
     sourceText: "本书由 PO18 Reader 根据本地缓存内容生成，封面使用书籍元信息中的图片，页面结构与内置样式保持一致。",
     copyrightText: "本书仅供个人阅读、备份与排版学习，请勿用于商业用途。请支持正版，任何修改、加工与传播行为由使用者自行负责。",
     readingTip: "为获得最佳阅读效果，建议关闭阅读器自带排版增强，并允许 EPUB 使用内嵌样式。",
-    fontFamily: '"DK-SONGTI","Songti SC","STSong","SimSun","Noto Serif CJK SC",serif',
+    fontFamily: '"DK-SONGTI","st","宋体","zw",sans-serif',
     customCss: ""
 });
 
@@ -164,7 +164,7 @@ function renderStyle2Volume(context) {
     const { header } = context;
     const definition = STYLE2_ASSET_BY_SLOT.get("volume");
     const image = context.hasAsset(definition.name)
-        ? `<div class="images image-single"><img alt="" class="volume-art" src="${assetHref(context, definition.name)}"/></div>`
+        ? `<div class="images image-single"><img alt="" class="logo" src="${assetHref(context, definition.name)}"/></div>`
         : "";
     return renderEpubTemplate("style2-volume.xhtml", { IMAGE: image, TITLE: header.name });
 }

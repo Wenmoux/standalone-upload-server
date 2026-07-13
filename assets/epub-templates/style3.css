@@ -1,35 +1,42 @@
 @charset "UTF-8";
 /*
- * [INPUT]: 依赖疏影横斜 EPUB XHTML/SVG 语义类名、淡墨梅影装饰与兼容 Reader 的全屏页、内嵌 CSS 能力
- * [OUTPUT]: 提供 Style3 样例式浅灰说明框、全屏分卷画布、简介和正文的文艺简约排版规则
- * [POS]: assets/epub-templates 的 Style3 规范 CSS，由 Bot 导出与 Admin 完整样式展示共同消费
+ * [INPUT]: 依赖疏影横斜参考 EPUB 的 XHTML 类名、三种原始分部底图和随样式打包的楷体、宋体粗体及数字字体
+ * [OUTPUT]: 提供与参考 EPUB 同值的说明框、简介、全屏分部页和数字章题排版规则
+ * [POS]: assets/epub-templates 的 Style3 规范 CSS，由 Bot 导出与 Admin 同构预览共同消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-html{background:#fcfbf7;}
-body{margin:0;padding:0 6% 5%;background:#fcfbf7;color:#252321;font-family:"Songti SC","Noto Serif CJK SC","Source Han Serif SC","STSong","SimSun",serif;text-align:justify;text-justify:inter-ideograph;}
-p{margin:.72em 0;line-height:1.68;text-indent:2em;duokan-text-indent:2em;text-align:justify;text-justify:inter-ideograph;}
-img{max-width:100%;height:auto;}
-.style3-art{display:block;height:auto;page-break-inside:avoid;}
-.style3-art-fallback{height:1px;border-top:1px solid #d8d3cc;}
-.style3-eyebrow{margin:0;color:#8c8780;font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:.66em;letter-spacing:.28em;text-indent:0;duokan-text-indent:0;text-align:left;}
-.style3-intro-page{padding-top:9%;}
-.style3-intro-branch{width:64%;margin:0 -4% 1.2em auto;opacity:.82;}
-.style3-intro-title{margin:.7em 0 .35em;font-size:1.55em;font-weight:600;line-height:1.45;letter-spacing:.12em;text-align:left;}
-.style3-intro-book{margin:.15em 0 0;color:#736e67;font-size:.78em;letter-spacing:.08em;text-indent:0;duokan-text-indent:0;text-align:left;}
-.style3-intro-rule{width:3.4em;margin:1.6em 0 1.8em;border-top:1px solid #aca69f;}
-.style3-intro-text{font-size:1em;line-height:1.76;}
+@font-face{font-family:"DFKaiShuStd-W5";src:url("../Fonts/style3-stkaiti.ttf");}
+@font-face{font-family:"STSongti-TC-Bold";src:url("../Fonts/style3-stsongti-bold.ttf");}
+@font-face{font-family:"roboto_medium_numbers";src:url("../Fonts/style3-roboto-medium-numbers.ttf");}
+body{margin-top:0;margin-left:0;margin-bottom:0;margin-right:0;padding-top:0;padding-left:0;padding-bottom:0;padding-right:0;text-align:justify;font-family:"DK-SONGTI","st","宋体","SimSun","STSong",serif;}
+p{margin-left:0;margin-right:0;line-height:130%;text-align:justify;text-justify:inter-ideograph;text-indent:2em;duokan-text-indent:2em;}
+div{margin-top:0;margin-left:0;margin-bottom:0;margin-right:0;padding-top:0;padding-left:0;padding-bottom:0;padding-right:0;line-height:130%;text-align:justify;}
+img{margin:0;padding:0;}
+h1.preface-title{margin-top:2em;margin-left:12%;margin-bottom:2em;margin-right:12%;font-family:"STSongti-TC-Bold";text-align:center;font-size:1em;color:#000;}
+p.author{margin-top:-.5em;margin-left:12%;margin-bottom:1.5em;margin-right:12%;font-family:"DFKaiShuStd-W5";text-align:center;font-size:1em;color:#000;text-indent:0;duokan-text-indent:0;}
+h1{margin-top:2.5em;margin-left:auto;margin-bottom:2.5em;margin-right:auto;font-family:"STSongti-TC-Bold";text-align:center;font-size:1em;color:#000;}
+h2{margin-top:2.5em;margin-left:auto;margin-bottom:2.5em;margin-right:auto;font-family:"roboto_medium_numbers";text-align:center;font-size:1.2em;color:#000;}
+img.height-1em{height:1em;vertical-align:middle;}
+p.gfont,span.gfont{font-family:sans-serif;font-weight:700;}
+p.seikuro{font-family:sans-serif;font-weight:700;color:#274a78;}
+p.ktr{margin-left:2em;font-family:"DFKaiShuStd-W5";text-align:right;text-indent:0;duokan-text-indent:0;}
+p.text-right{text-align:right;}
+p.asterisk{margin-top:2em;margin-bottom:2em;text-align:center;text-indent:0;duokan-text-indent:0;}
+a{text-decoration:none;color:#151515;}
+a:hover{background-color:rgba(0,0,0,.05);}
+a:active{background-color:gold;}
+img.duokan-footnote-icon{width:14px;}
+ol.hr{margin:2em 0 0 1em;padding:0;height:2px;width:50%;background-color:#252525;}
+ol.duokan-footnote-content{margin-bottom:1em;padding:0 auto;}
+li.duokan-footnote-item{margin:.5em 0;font-family:"DFKaiShuStd-W5";text-align:left;font-size:14px;line-height:130%;clear:both;list-style-type:cjk-ideographic;}
+p.duokan-footnote{text-indent:0;duokan-text-indent:0;}
+div.copyright-box,div.design-box{margin-top:20%;margin-left:3%;margin-bottom:auto;margin-right:3%;padding-top:1em;padding-left:1em;padding-bottom:1em;padding-right:1em;border-style:solid;border-width:4px;border-color:#fafafa;border-radius:14px;background-color:#fcfcfc;}
+p.copyright-title{font-family:"STSongti-TC-Bold";font-size:70%;font-weight:bold;color:#808080;text-indent:0;duokan-text-indent:0;}
+p.copyright-text,p.design-content{font-family:"DK-XIHEITI","Microsoft YaHei","PingFang TC","STYuan","xht",sans-serif;color:#808080;font-size:60%;text-indent:0;duokan-text-indent:0;}
+p.design-content{margin-top:1em;}
+hr.design-line{border-style:dashed;border-width:1px 0 0;border-color:rgba(200,200,193,.15);}
+img.design-icon-dk{margin-top:0;margin-left:0;margin-bottom:1px;margin-right:1px;padding:0;width:10px;height:10px;vertical-align:middle;vertical-align:duokan-middle-line;}
 .style3-semantic-title{display:none;}
-.style3-colophon-page{margin:0;padding:0;background:#fff;}
-.style3-design-box{margin:20% 3% auto;padding:1em;border:4px solid #fafafa;border-radius:14px;background:#fcfcfc;}
-.style3-design-content{margin:1em 0 0;color:#808080;font-family:"Microsoft YaHei","PingFang SC","STYuan",sans-serif;font-size:60%;line-height:1.5;text-indent:0;duokan-text-indent:0;}
-.style3-design-icon{width:10px;height:10px;margin:0 1px 1px 0;padding:0;vertical-align:middle;}
-.style3-volume-page{margin:0;padding:0;background:#fff;overflow:hidden;}
+.style3-volume-page{margin:0;padding:0;overflow:hidden;background:#fff;}
 .style3-volume-canvas{display:block;width:100%;height:100%;margin:0;padding:0;line-height:0;text-align:center;}
 .style3-volume-svg{display:block;width:100%;height:100%;margin:0;padding:0;}
-.style3-volume-number,.style3-volume-name{display:inline;}
-.style3-chapter-lead{margin:2.5em 6% 2.2em;text-align:center;page-break-after:avoid;}
-.style3-chapter-number{margin:0;color:#8c8780;font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:.68em;letter-spacing:.14em;text-indent:0;duokan-text-indent:0;text-align:center;}
-.style3-chapter-title{margin:.68em auto .9em;color:#252321;font-size:1.2em;font-weight:600;line-height:1.5;letter-spacing:.08em;text-align:center;}
-.style3-chapter-rule{width:3.2em;margin:0 auto;border-top:1px solid #aaa49d;text-align:center;}
-.style3-chapter-dot{display:inline-block;position:relative;top:-.72em;padding:0 .45em;background:#fcfbf7;color:#99938b;font-size:.72em;line-height:1;}
-@media (max-width:480px){body{padding-left:7%;padding-right:7%;}p{line-height:1.72;}.style3-colophon-page,.style3-volume-page{padding-left:0;padding-right:0;}.style3-chapter-lead{margin-left:3%;margin-right:3%;}}

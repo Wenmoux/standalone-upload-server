@@ -1,0 +1,256 @@
+/**
+ * [INPUT]: 依赖 Admin 全局设计令牌与 EpubStyleEditor 的稳定语义类名
+ * [OUTPUT]: 提供 EPUB 样式工作台、同构预览设备和图片资源列表的局部布局与响应式规则
+ * [POS]: admin-ui/src/components 的 EPUB 工作台样式边界，由 EpubStyleEditor.vue 通过 scoped src 独占消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+.epub-style-editor {
+  margin-top: 14px;
+}
+.epub-workspace {
+  display: grid;
+  gap: 18px;
+}
+.epub-workspace.has-preview {
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 470px);
+  align-items: start;
+}
+.epub-settings {
+  min-width: 0;
+}
+.epub-style-description {
+  margin-top: 8px;
+}
+.epub-switches {
+  margin: 12px 0;
+}
+.style2-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+  margin-top: 16px;
+}
+.field-span {
+  grid-column: 1/-1;
+}
+.effective-css-field {
+  margin-top: 16px;
+}
+.effective-css-field textarea {
+  min-height: 250px;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 2;
+}
+.effective-css-field small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.epub-actions {
+  margin-top: 14px;
+}
+.epub-preview-panel {
+  position: sticky;
+  top: 86px;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  padding-left: 18px;
+}
+.preview-head {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.preview-head strong,
+.asset-section-head strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+}
+.preview-head small,
+.asset-section-head small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.preview-head .preview-hint {
+  color: #9a5d16;
+  line-height: 1.4;
+}
+.preview-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+.preview-tabs button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 7px;
+  border: 1px solid #d7e0ea;
+  background: #fff;
+  color: #526579;
+  box-shadow: none;
+  font-size: 12px;
+}
+.preview-tabs button.active {
+  border-color: var(--primary);
+  background: #e8f8f4;
+  color: var(--primary);
+}
+.preview-device {
+  width: min(390px, 100%);
+  aspect-ratio: 9/16;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 8px solid #172033;
+  border-radius: 24px;
+  background: #f3eadc;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.2);
+}
+.preview-device iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #f3eadc;
+}
+.asset-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.asset-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.asset-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #d6e0ea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.asset-thumb {
+  width: 92px;
+  aspect-ratio: 3/4;
+  overflow: hidden;
+  border: 1px solid #d3dde7;
+  border-radius: 6px;
+  background: #e8edf3;
+}
+.asset-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.asset-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.asset-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.asset-title-row strong {
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-title-row span {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.asset-title-row .custom {
+  color: #0f5f58;
+  background: #d9f4ef;
+}
+.asset-title-row .builtin {
+  color: #526579;
+  background: #e7edf3;
+}
+.asset-copy small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.asset-copy .dimension-warning {
+  color: var(--warn);
+  font-weight: 750;
+}
+.asset-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 9px;
+}
+.asset-actions button,
+.asset-upload {
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.asset-upload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd6e5;
+  background: #fff;
+  color: #315071;
+  font-weight: 760;
+  cursor: pointer;
+}
+.asset-upload input {
+  display: none;
+}
+.asset-upload.disabled {
+  opacity: 0.56;
+  cursor: wait;
+}
+@media (max-width: 1180px) {
+  .epub-workspace.has-preview {
+    grid-template-columns: 1fr;
+  }
+  .epub-preview-panel {
+    position: static;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 18px 0 0;
+  }
+}
+@media (max-width: 900px) {
+  .style2-fields,
+  .asset-grid {
+    grid-template-columns: 1fr;
+  }
+  .preview-device {
+    width: min(360px, 100%);
+  }
+}

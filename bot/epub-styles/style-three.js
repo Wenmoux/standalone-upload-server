@@ -1,20 +1,19 @@
 /**
- * [INPUT]: 依赖 Node path、独立 Style3 CSS/XHTML 模板、梅影/原始阅读提示图和生成器提供的安全文本、真实卷章及全屏上下文
- * [OUTPUT]: 对外提供 style3 疏影横斜的 CSS、全屏页声明、资源清单和参考样例结构的制作说明、简介、分卷、章页渲染器
- * [POS]: epub-styles 的文艺简约视觉插件，以动态 XHTML/SVG 复现样例的说明框与全屏分卷语义并服从上层 EPUB 结构契约
+ * [INPUT]: 依赖 Node path、独立 Style3 CSS/XHTML 模板、参考 EPUB 拆出的字体/三张分部底图/阅读提示图和生成器安全文本上下文
+ * [OUTPUT]: 对外提供 style3 疏影横斜的原版 CSS、字体资源、全屏分部页及制作说明、简介、数字章题渲染器
+ * [POS]: epub-styles 的文艺简约视觉插件，以原始资源和动态文本复现样例并服从上层 EPUB 结构契约
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const path = require("path");
 const { loadEpubTemplate, renderEpubTemplate } = require("../../services/epub-template-files");
 
-const PLUM_SHADOW_NAME = "Images/style3-plum-shadow.svg";
 const READER_MARK_NAME = "Images/style3-reader-mark.png";
-
-function plumShadow(hasAsset, className) {
-    return hasAsset(PLUM_SHADOW_NAME)
-        ? `<img alt="" class="style3-art ${className}" src="../${PLUM_SHADOW_NAME}"/>`
-        : `<div class="style3-art ${className} style3-art-fallback"></div>`;
-}
+const VOLUME_ART_NAMES = Object.freeze(["Images/style3-volume-1.jpg", "Images/style3-volume-2.jpg", "Images/style3-volume-3.jpg"]);
+const FONT_ASSETS = Object.freeze([
+    ["style3-stkaiti", "Fonts/style3-stkaiti.ttf", "application/x-font-ttf", "style3-stkaiti.ttf"],
+    ["style3-stsongti-bold", "Fonts/style3-stsongti-bold.ttf", "application/x-font-ttf", "style3-stsongti-bold.ttf"],
+    ["style3-roboto-medium-numbers", "Fonts/style3-roboto-medium-numbers.ttf", "application/x-font-ttf", "style3-roboto-medium-numbers.ttf"]
+]);
 
 function escapedWithBreaks(value, escape) {
     return String(value || "")
@@ -63,7 +62,7 @@ function romanVolume(value) {
 module.exports = {
     id: "style3",
     name: "疏影横斜",
-    description: "参考样例的浅灰说明框、全屏留白分卷、淡墨梅影与宋体章序。",
+    description: "参考样例的原版字体、浅灰说明框、全屏留白分部底图与居中数字章题。",
     nestedVolumeToc: true,
     useSlimCover: true,
     includeAppleDisplayOptions: true,
@@ -74,33 +73,36 @@ module.exports = {
     css: loadEpubTemplate("style3.css"),
     assets: [
         {
-            id: "style3-plum-shadow",
-            name: PLUM_SHADOW_NAME,
-            mediaType: "image/svg+xml",
-            paths: [path.resolve(__dirname, "assets/style3-plum-shadow.svg")]
-        },
-        {
             id: "style3-reader-mark",
             name: READER_MARK_NAME,
             mediaType: "image/png",
             paths: [path.resolve(__dirname, "assets/style3-reader-mark.png")]
-        }
+        },
+        ...VOLUME_ART_NAMES.map((name, index) => ({
+            id: `style3-volume-${index + 1}`,
+            name,
+            mediaType: "image/jpeg",
+            paths: [path.resolve(__dirname, `assets/style3-volume-${index + 1}.jpg`)]
+        })),
+        ...FONT_ASSETS.map(([id, name, mediaType, file]) => ({
+            id,
+            name,
+            mediaType,
+            paths: [path.resolve(__dirname, `assets/${file}`)]
+        }))
     ],
     renderColophon({ config, paragraphs, hasAsset }) {
-        const mark = hasAsset(READER_MARK_NAME) ? `<img alt="" class="style3-design-icon" src="../${READER_MARK_NAME}"/>` : "";
+        const mark = hasAsset(READER_MARK_NAME) ? `<img alt="" class="design-icon-dk" src="../${READER_MARK_NAME}"/>` : "";
         return renderEpubTemplate("style3-colophon.xhtml", {
             TITLE: paragraphs.escape(config.colophonTitle),
             MARK: mark,
             CONTENT: escapedWithBreaks(config.colophonText, paragraphs.escape)
         });
     },
-    renderIntro({ config, descriptionText, rawTitle, rawAuthor, paragraphs, hasAsset }) {
+    renderIntro({ config, descriptionText, paragraphs }) {
         return renderEpubTemplate("style3-intro.xhtml", {
-            ART: plumShadow(hasAsset, "style3-intro-branch"),
             TITLE: paragraphs.escape(config.introTitle),
-            BOOK: paragraphs.escape(rawTitle),
-            AUTHOR: paragraphs.escape(rawAuthor),
-            CONTENT: paragraphs(descriptionText, "style3-intro-text")
+            CONTENT: paragraphs(descriptionText)
         });
     },
     renderVolume({ header, rawHeader, volumeNo, paragraphs, hasAsset }) {
@@ -108,23 +110,23 @@ module.exports = {
         const rawName = rawHeader?.name || header.name;
         const volumeName = volumeNameTspans(rawName, escape);
         const partY = 730 + Math.max(0, volumeName.lineCount - 1) * 126;
-        const branch =
-            typeof hasAsset === "function" && hasAsset(PLUM_SHADOW_NAME)
-                ? `<image x="230" y="1530" width="1420" height="450" opacity=".7" xlink:href="../${PLUM_SHADOW_NAME}"/>`
-                : '<line x1="150" y1="1670" x2="560" y2="1670" stroke="#d8d3cc" stroke-width="2"/>';
+        const artName = VOLUME_ART_NAMES[(Math.max(1, Number(volumeNo) || 1) - 1) % VOLUME_ART_NAMES.length];
+        const art =
+            typeof hasAsset === "function" && hasAsset(artName)
+                ? `<image width="1536" height="2048" clip-path="url(#style3-volume-art-clip)" xlink:href="../${artName}"/>`
+                : "";
         return renderEpubTemplate("style3-volume.xhtml", {
             NUMBER: header.number,
             TITLE: header.name,
             TITLE_LINES: volumeName.markup,
             PART_Y: partY,
             PART: romanVolume(volumeNo),
-            ART: branch
+            ART: art
         });
     },
     renderChapter({ header, bodyHtml }) {
         return renderEpubTemplate("style3-chapter.xhtml", {
-            NUMBER: header.number,
-            TITLE: header.name,
+            HEADING: [header.number, header.name].filter(Boolean).join("　"),
             CONTENT: bodyHtml
         });
     }
