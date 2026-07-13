@@ -16,29 +16,30 @@ function contentOf(files, name) {
     return files.find((file) => file.name === name)?.content.toString("utf8") || "";
 }
 
-test("style1 admin preview CSS stays identical to the EPUB style", () => {
-    const previewCss = fs.readFileSync(path.join(__dirname, "..", "ui", "epub-style1.css"), "utf8").trim();
-    assert.equal(previewCss, styleOne.css.trim());
+test("style1 uses the standalone CSS template", () => {
+    const templateCss = fs.readFileSync(path.join(__dirname, "..", "assets", "epub-templates", "style1.css"), "utf8").trim();
+    assert.equal(templateCss, styleOne.css.trim());
 });
 
-test("style3 admin preview CSS stays identical to the EPUB style", () => {
-    const previewCss = fs.readFileSync(path.join(__dirname, "..", "ui", "epub-style3.css"), "utf8").trim();
-    assert.equal(previewCss, styleThree.css.trim());
+test("style3 uses the standalone CSS template", () => {
+    const templateCss = fs.readFileSync(path.join(__dirname, "..", "assets", "epub-templates", "style3.css"), "utf8").trim();
+    assert.equal(templateCss, styleThree.css.trim());
 });
 
 test("style3 volume keeps dynamic text and fullscreen canvas when decorative SVG is unavailable", () => {
     const page = styleThree.renderVolume({
-        header: { number: "第二部", name: "妮娜" },
-        rawHeader: { number: "第二部", name: "妮娜" },
+        header: { number: "第二部", name: "卷名示例" },
+        rawHeader: { number: "第二部", name: "卷名示例" },
         volumeNo: 2,
         paragraphs: { escape: (value) => String(value) },
         hasAsset: () => false
     });
     assert.match(page, /class="fullscreen-page style3-volume-page"/);
     assert.match(page, /class="style3-volume-number">第二部/);
-    assert.match(page, /class="style3-volume-name">妮娜/);
+    assert.match(page, /class="style3-volume-name">卷名示例/);
     assert.match(page, /class="style3-volume-svg"/);
-    assert.match(page, /<tspan x="150" dy="0">妮娜<\/tspan>/);
+    assert.match(page, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
+    assert.match(page, />Part II<\/text>/);
     assert.match(page, /<line x1="150" y1="1670"/);
     assert.doesNotMatch(page, /<image/);
 });
@@ -148,8 +149,8 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     const files = await makeEpubFiles(
         {
             book_id: "b3",
-            title: "原来，她们才是主角",
-            author: "ccc",
+            title: "示例书名",
+            author: "示例作者",
             description: "第一段\n第二段",
             cover: "https://example.test/cover.png",
             platform: "ciweimao",
@@ -159,7 +160,7 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
         },
         [
             { chapter_id: "v1", title: "第一卷 正文", type: "volume" },
-            { chapter_id: "c1", title: "第1章 配角竟是我自己", text: "正文一\n正文二" }
+            { chapter_id: "c1", title: "第1章 示例章节", text: "正文一\n正文二" }
         ],
         {
             epub: {
@@ -182,7 +183,8 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.ok(files.some((file) => file.name === "OEBPS/Text/colophon.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/intro.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Images/style2-title-background.jpg"));
-    assert.ok(files.some((file) => file.name === "OEBPS/Images/style2-chapter-1.jpg"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style2-chapter.jpg"));
+    assert.ok(!files.some((file) => /style2-(?:note|publisher|chapter-[23]|volume-2)/.test(file.name)));
 
     const css = contentOf(files, "OEBPS/Styles/main.css");
     const title = contentOf(files, "OEBPS/Text/title.xhtml");
@@ -197,17 +199,19 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.match(css, /\.head\{letter-spacing:0;\}/);
     assert.match(title, /body class="ver"/);
     assert.match(title, /内部群版/);
+    assert.doesNotMatch(title, /chubanshe|publisher/);
     assert.match(colophon, /body class="bg"/);
     assert.match(colophon, /版本 v2/);
+    assert.doesNotMatch(colophon, /duokan-footnote|style2-note/);
     assert.match(intro, /body class="babala"/);
     assert.match(intro, /Images\/cover\.png/);
     assert.match(intro, /324\.3万字/);
-    assert.match(volume, /style2-volume-1\.jpg/);
-    assert.match(chapter, /style2-chapter-1\.jpg/);
+    assert.match(volume, /style2-volume\.jpg/);
+    assert.match(chapter, /style2-chapter\.jpg/);
     assert.match(chapter, /class="num">第1章/);
     assert.match(packageFile, /po18-epub-style" content="style2"/);
     assert.doesNotMatch(packageFile, /reference type="cover"/);
-    assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 配角竟是我自己<\/text>/);
+    assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 示例章节<\/text>/);
     assert.equal(listEpubStyles().find((style) => style.id === "style1")?.name, "江湖纸卷");
     assert.equal(listEpubStyles().find((style) => style.id === "style2")?.name, "老二次元");
 });
@@ -228,13 +232,13 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     const files = await makeEpubFiles(
         {
             book_id: "b-style3",
-            title: "家弑服务",
-            author: "弗丽达·麦克法登",
+            title: "示例书名",
+            author: "示例作者",
             description: "门后藏着秘密。\n真相正沿着沉默的走廊逼近。",
             cover: "https://example.test/cover.png"
         },
         [
-            { chapter_id: "v1", title: "第一部 米莉", type: "volume" },
+            { chapter_id: "v1", title: "第一部 卷名示例", type: "volume" },
             { chapter_id: "c1", title: "第1章 新工作", text: "第1章　新工作\n门铃响了两次。" }
         ],
         {
@@ -254,6 +258,7 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/chapter_0001.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-plum-shadow.svg"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-reader-mark.png"));
     assert.ok(files.some((file) => file.name === "META-INF/com.apple.ibooks.display-options.xml"));
 
     const css = contentOf(files, "OEBPS/Styles/main.css");
@@ -267,14 +272,15 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     assert.match(css, /\.style3-volume-svg/);
     assert.match(colophon, /class="style3-design-box"/);
     assert.match(colophon, /class="style3-design-content"/);
-    assert.match(colophon, /class="style3-design-icon">阅/);
+    assert.match(colophon, /class="style3-design-icon" src="..\/Images\/style3-reader-mark\.png"/);
     assert.match(intro, /class="style3-intro-title">内容简介/);
-    assert.match(intro, /《家弑服务》 · 弗丽达·麦克法登/);
+    assert.match(intro, /《示例书名》 · 示例作者/);
     assert.match(volume, /class="style3-volume-number">第一部/);
-    assert.match(volume, /class="style3-volume-name">米莉/);
+    assert.match(volume, /class="style3-volume-name">卷名示例/);
     assert.match(volume, /class="fullscreen-page style3-volume-page"/);
     assert.match(volume, /viewBox="0 0 1536 2048"/);
-    assert.match(volume, /<tspan x="150" dy="0">米莉<\/tspan>/);
+    assert.match(volume, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
+    assert.match(volume, />Part I<\/text>/);
     assert.match(volume, /style3-plum-shadow\.svg/);
     assert.match(chapter, /class="style3-chapter-number">第1章/);
     assert.match(chapter, /class="style3-chapter-title">新工作/);
@@ -284,6 +290,7 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     assert.match(packageFile, /idref="cover-page" properties="duokan-page-fullscreen"/);
     assert.match(packageFile, /idref="volume-1" properties="duokan-page-fullscreen"/);
     assert.match(packageFile, /href="Images\/style3-plum-shadow\.svg" media-type="image\/svg\+xml"/);
+    assert.match(packageFile, /href="Images\/style3-reader-mark\.png" media-type="image\/png"/);
     assert.match(toc, /<navLabel><text>书封<\/text><\/navLabel><content src="Text\/cover\.xhtml"\/>/);
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 新工作<\/text>/);
     assert.equal(listEpubStyles().find((style) => style.id === "style3")?.name, "疏影横斜");

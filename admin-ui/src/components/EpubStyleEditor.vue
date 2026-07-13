@@ -50,9 +50,15 @@
                 </template>
 
                 <label v-if="hasPreview" class="field effective-css-field">
-                    <span>完整样式 CSS</span>
+                    <span>内置完整 CSS（只读）</span>
                     <textarea :value="effectiveCss" rows="14" readonly spellcheck="false"></textarea>
                     <small>{{ effectiveCssHint }}</small>
+                </label>
+
+                <label v-if="hasPreview" class="field effective-template-field">
+                    <span>{{ effectiveTemplateName }}</span>
+                    <textarea :value="effectiveTemplate" rows="8" readonly spellcheck="false"></textarea>
+                    <small>这是实际导出读取的 XHTML 骨架；双花括号内容会在导出时替换为当前书籍数据。</small>
                 </label>
 
                 <div class="button-row epub-actions">
@@ -134,16 +140,30 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、内置 EPUB CSS/章头资产、Admin API 及父级传入的样式配置模型
- * [OUTPUT]: 提供 EPUB 样式选择、与导出 XHTML/SVG 同构的实时预览、模板参数编辑和自定义资产上传/删除界面
+ * [INPUT]: 依赖 Vue、独立 EPUB CSS/XHTML 模板、内置章头资产、Admin API 及父级传入的样式配置模型
+ * [OUTPUT]: 提供 EPUB 样式选择、完整 CSS/页面骨架查看、与导出同构的实时预览、参数编辑和精简资产替换界面
  * [POS]: admin-ui/src/components 的导出样式工作台，由 TelegramView 组合进导出配置流程并承担配置与最终 EPUB 视觉契约的一致性反馈
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { computed, inject, onMounted, ref, watch } from "vue";
 import style1TopImage from "../../../bot/epub-styles/assets/jianghu-top.png";
 import style3PlumShadow from "../../../bot/epub-styles/assets/style3-plum-shadow.svg";
-import style1Css from "../../../ui/epub-style1.css?raw";
-import style3Css from "../../../ui/epub-style3.css?raw";
+import style3ReaderMark from "../../../bot/epub-styles/assets/style3-reader-mark.png";
+import style1Css from "../../../assets/epub-templates/style1.css?raw";
+import style1ChapterTemplate from "../../../assets/epub-templates/style1-chapter.xhtml?raw";
+import style1ColophonTemplate from "../../../assets/epub-templates/style1-colophon.xhtml?raw";
+import style1IntroTemplate from "../../../assets/epub-templates/style1-intro.xhtml?raw";
+import style1VolumeTemplate from "../../../assets/epub-templates/style1-volume.xhtml?raw";
+import style2ChapterTemplate from "../../../assets/epub-templates/style2-chapter.xhtml?raw";
+import style2ColophonTemplate from "../../../assets/epub-templates/style2-colophon.xhtml?raw";
+import style2IntroTemplate from "../../../assets/epub-templates/style2-intro.xhtml?raw";
+import style2TitleTemplate from "../../../assets/epub-templates/style2-title.xhtml?raw";
+import style2VolumeTemplate from "../../../assets/epub-templates/style2-volume.xhtml?raw";
+import style3Css from "../../../assets/epub-templates/style3.css?raw";
+import style3ChapterTemplate from "../../../assets/epub-templates/style3-chapter.xhtml?raw";
+import style3ColophonTemplate from "../../../assets/epub-templates/style3-colophon.xhtml?raw";
+import style3IntroTemplate from "../../../assets/epub-templates/style3-intro.xhtml?raw";
+import style3VolumeTemplate from "../../../assets/epub-templates/style3-volume.xhtml?raw";
 import { api } from "../services/api";
 
 const model = defineModel({ type: Object, required: true });
@@ -164,6 +184,27 @@ const previewPageDefs = [
     { id: "volume", label: "分卷" },
     { id: "chapter", label: "正文" }
 ];
+const pageTemplates = {
+    style1: {
+        colophon: style1ColophonTemplate,
+        intro: style1IntroTemplate,
+        volume: style1VolumeTemplate,
+        chapter: style1ChapterTemplate
+    },
+    style2: {
+        title: style2TitleTemplate,
+        colophon: style2ColophonTemplate,
+        intro: style2IntroTemplate,
+        volume: style2VolumeTemplate,
+        chapter: style2ChapterTemplate
+    },
+    style3: {
+        colophon: style3ColophonTemplate,
+        intro: style3IntroTemplate,
+        volume: style3VolumeTemplate,
+        chapter: style3ChapterTemplate
+    }
+};
 
 const fallbackStyle2 = {
     subtitle: "内部群版",
@@ -211,6 +252,15 @@ const effectiveCssHint = computed(() =>
         ? "只读预览；内置基础 CSS 与追加 CSS 已合并，保存后用于下一次 EPUB 导出。"
         : `只读预览；内容与${isStyle3.value ? "疏影横斜" : "江湖纸卷"}内置样式包 CSS 保持一致。`
 );
+const effectiveTemplate = computed(
+    () =>
+        pageTemplates[model.value.styleId]?.[previewPage.value]?.trim() ||
+        "封面页由 EPUB 生成器按当前书籍封面动态创建，不保存固定书名或固定封面模板。"
+);
+const effectiveTemplateName = computed(() => {
+    const page = previewPages.value.find((item) => item.id === previewPage.value)?.label || "页面";
+    return `${page} XHTML 模板（只读）`;
+});
 const previewHint = computed(() => {
     if (previewPage.value === "volume") return "这里只展示分卷版式；导出时仅在章节数据包含真实分卷时生成。";
     if (previewPage.value === "colophon" && !model.value.includeColophon) return "制作说明已关闭，导出时不会生成此页。";
@@ -305,8 +355,8 @@ const effectiveCss = computed(() => {
 });
 
 const style1PreviewBody = computed(() => {
-    const title = "原来，她们才是主角";
-    const author = "ccc";
+    const title = "示例书名";
+    const author = "示例作者";
     const art = model.value.showTopImage
         ? `<div class="top-img-box"><img alt="江湖纸卷人物头图" class="top-img" src="${style1TopImage}"/></div>`
         : "";
@@ -327,7 +377,7 @@ const style1PreviewBody = computed(() => {
         return `<body><div class="design-box"><h1 class="design-title">${escapeHtml(model.value.colophonTitle)}</h1>${content}</div></body>`;
     }
     if (previewPage.value === "intro") {
-        return `<body><h1 class="introduction-title">${escapeHtml(model.value.introTitle)}</h1>${previewParagraphs("牧知安穿越到了仙侠世界，成为了一名注定要被主角当作踏脚石的配角。\n\n围绕在身边的人们都有自己的故事，而命运也正悄然改变。", "intro-text")}</body>`;
+        return `<body><h1 class="introduction-title">${escapeHtml(model.value.introTitle)}</h1>${previewParagraphs("这里展示导出时写入的作品简介内容。\n\n段落、缩进和字体会使用当前样式的完整 CSS。", "intro-text")}</body>`;
     }
     if (previewPage.value === "volume") {
         const verticalTitle = Array.from("少年游")
@@ -335,53 +385,51 @@ const style1PreviewBody = computed(() => {
             .join("<br/>");
         return `<body>${art}<h1 class="volume-sequence-number">第一卷</h1><p class="volume-title">${verticalTitle}</p></body>`;
     }
-    return `<body>${art}<h2 class="chapter-title"><span class="chapter-sequence-number">第1章</span><br/>配角竟是我自己</h2>${previewParagraphs("马车伴随着清脆的声音，沿着街道缓缓前行。\n\n窗外细雨飘落，湿润的地面映着灯火，故事从这里开始。\n\n他抬起头，终于意识到自己正站在命运改变的路口。")}</body>`;
+    return `<body>${art}<h2 class="chapter-title"><span class="chapter-sequence-number">第1章</span><br/>示例章节</h2>${previewParagraphs("这里展示导出后的正文排版效果。\n\n实际内容来自当前书籍章节。")}</body>`;
 });
 
 const style2PreviewBody = computed(() => {
-    const title = "原来，她们才是主角";
-    const author = "ccc";
-    const note = assetUrl("note");
-    const marker = note ? `<sup><span class="duokan-footnote"><img alt="note" src="${note}"/></span></sup>` : "";
+    const title = "示例书名";
+    const author = "示例作者";
     if (previewPage.value === "title") {
-        return `<body class="ver"><h3 class="booktitle">${title}</h3><p class="booksubtitle">${escapeHtml(style2.value.subtitle)}</p><p class="bookauthor">${author}<span style="color:#e70014;">著</span></p><div class="chubanshe"><img class="chubanshe" alt="publisher" src="${assetUrl("publisher")}"/></div></body>`;
+        return `<body class="ver"><h3 class="booktitle">${title}</h3><p class="booksubtitle">${escapeHtml(style2.value.subtitle)}</p><p class="bookauthor">${author}<span style="color:#e70014;">著</span></p></body>`;
     }
     if (previewPage.value === "colophon") {
         if (!model.value.includeColophon) {
             return `<body class="bg"><div class="ff"><h3 class="ff-title"><u>制作说明未生成</u></h3><p class="ff-text">当前已关闭“生成制作说明页”。</p></div></body>`;
         }
-        return `<body class="bg"><div class="ff"><h3 class="ff-title"><u>${escapeHtml(model.value.colophonTitle)}${marker}</u></h3><p class="cc-pot"><b>${title}</b></p><p class="ff-pot">${author}◎著</p><p class="ff-pot">${escapeHtml(style2.value.versionText)}</p><p class="xx"></p><p class="ff-text">${escapeHtml(style2.value.sourceText)}</p><p class="ff-text">${escapeHtml(style2.value.copyrightText)}</p><p class="xx"></p><p class="ff-duokan">${escapeHtml(style2.value.readingTip)}</p></div></body>`;
+        return `<body class="bg"><div class="ff"><h3 class="ff-title"><u>${escapeHtml(model.value.colophonTitle)}</u></h3><p class="cc-pot"><b>${title}</b></p><p class="ff-pot">${author}◎著</p><p class="ff-pot">${escapeHtml(style2.value.versionText)}</p><p class="xx"></p><p class="ff-text">${escapeHtml(style2.value.sourceText)}</p><p class="ff-text">${escapeHtml(style2.value.copyrightText)}</p><p class="xx"></p><p class="ff-duokan">${escapeHtml(style2.value.readingTip)}</p></div></body>`;
     }
     if (previewPage.value === "intro") {
-        return `<body class="babala"><div class="frame"><div class="cover"><img class="cover" alt="cover" src="${assetUrl("volume-1")}"/></div><h3 class="title">${title}${marker}</h3><p class="author">${author}◎著</p><p class="XD"></p></div><div class="frame2"><table class="block"><tbody><tr><td class="p2">刺猬猫小说</td><td class="p2">仙侠武侠</td></tr><tr><td class="p1">658章</td><td class="p1">324.3万字</td></tr><tr><td class="p2">章节</td><td class="p2">已完结</td></tr></tbody></table><p class="XD"></p><p class="RP">${escapeHtml(model.value.introTitle)}</p><p class="PL">牧知安穿越到了仙侠世界，成为了一名注定要被主角当作踏脚石的配角。</p><p class="PL">围绕在身边的人们都有自己的故事，而命运也正悄然改变。</p></div></body>`;
+        return `<body class="babala"><div class="frame"><div class="cover"></div><h3 class="title">${title}</h3><p class="author">${author}◎著</p><p class="XD"></p></div><div class="frame2"><table class="block"><tbody><tr><td class="p2">来源站点</td><td class="p2">作品分类</td></tr><tr><td class="p1">658章</td><td class="p1">324.3万字</td></tr><tr><td class="p2">章节</td><td class="p2">已完结</td></tr></tbody></table><p class="XD"></p><p class="RP">${escapeHtml(model.value.introTitle)}</p><p class="PL">这里展示导出时写入的作品简介内容。</p></div></body>`;
     }
     if (previewPage.value === "volume") {
-        return `<body><div class="volume-cover"><div class="images image-single"><img class="volume-art" alt="volume" src="${assetUrl("volume-1")}"/></div><div class="img-name-1"><h1>少年游</h1></div></div></body>`;
+        return `<body><div class="volume-cover"><div class="images image-single"><img class="volume-art" alt="volume" src="${assetUrl("volume")}"/></div><div class="img-name-1"><h1>少年游</h1></div></div></body>`;
     }
-    return `<body><div class="top"><div class="logo"><img class="logo" alt="chapter" src="${assetUrl("chapter-1")}"/></div><h2 class="head"><span class="num">第1章</span><br/><b>配角竟是我自己</b></h2><p>马车伴随着清脆的声音，沿着街道缓缓前行。</p><p>窗外细雨飘落，湿润的地面映着灯火，故事从这里开始。</p><p>他抬起头，终于意识到自己正站在命运改变的路口。</p></div></body>`;
+    return `<body><div class="top"><div class="logo"><img class="logo" alt="chapter" src="${assetUrl("chapter")}"/></div><h2 class="head"><span class="num">第1章</span><br/><b>示例章节</b></h2><p>这里展示导出后的正文排版效果。</p></div></body>`;
 });
 
 const style3PreviewBody = computed(() => {
-    const title = "原来，她们才是主角";
-    const author = "ccc";
+    const title = "示例书名";
+    const author = "示例作者";
     const branch = (className) => `<img alt="" class="style3-art ${className}" src="${style3PlumShadow}"/>`;
     if (previewPage.value === "title") {
         return `<body class="style3-cover-preview"><div class="style3-cover-card">${branch("style3-cover-branch")}<p class="style3-cover-kicker">PO18 READER</p><h1>${title}</h1><p class="style3-cover-author">${author} · 著</p><small class="style3-cover-note">正式导出时<br/>使用当前书籍封面</small></div></body>`;
     }
     if (previewPage.value === "colophon") {
         if (!model.value.includeColophon) {
-            return `<body class="style3-colophon-page"><h1 class="style3-semantic-title">制作说明未生成</h1><div class="style3-design-box"><p class="style3-design-content"><span class="style3-design-icon">阅</span>当前已关闭“生成制作说明页”。</p></div></body>`;
+            return `<body class="style3-colophon-page"><h1 class="style3-semantic-title">制作说明未生成</h1><div class="style3-design-box"><p class="style3-design-content"><img alt="" class="style3-design-icon" src="${style3ReaderMark}"/>当前已关闭“生成制作说明页”。</p></div></body>`;
         }
         const text = model.value.colophonText || "本书由 PO18 Reader 根据本地缓存内容生成。\n\n仅供个人阅读与备份，请支持正版。";
-        return `<body class="style3-colophon-page"><h1 class="style3-semantic-title">${escapeHtml(model.value.colophonTitle)}</h1><div class="style3-design-box"><p class="style3-design-content"><span class="style3-design-icon">阅</span>${escapeHtml(text).replace(/\r?\n/g, "<br/>")}</p></div></body>`;
+        return `<body class="style3-colophon-page"><h1 class="style3-semantic-title">${escapeHtml(model.value.colophonTitle)}</h1><div class="style3-design-box"><p class="style3-design-content"><img alt="" class="style3-design-icon" src="${style3ReaderMark}"/>${escapeHtml(text).replace(/\r?\n/g, "<br/>")}</p></div></body>`;
     }
     if (previewPage.value === "intro") {
-        return `<body class="style3-intro-page">${branch("style3-intro-branch")}<p class="style3-eyebrow">一卷清读</p><h1 class="style3-intro-title">${escapeHtml(model.value.introTitle)}</h1><p class="style3-intro-book">《${title}》 · ${author}</p><div class="style3-intro-rule"></div>${previewParagraphs("牧知安穿越到了仙侠世界，成为了一名注定要被主角当作踏脚石的配角。\n\n围绕在身边的人们都有自己的故事，而命运也正悄然改变。", "style3-intro-text")}</body>`;
+        return `<body class="style3-intro-page">${branch("style3-intro-branch")}<p class="style3-eyebrow">一卷清读</p><h1 class="style3-intro-title">${escapeHtml(model.value.introTitle)}</h1><p class="style3-intro-book">《${title}》 · ${author}</p><div class="style3-intro-rule"></div>${previewParagraphs("这里展示导出时写入的作品简介内容。\n\n段落、缩进和字体会使用当前样式的完整 CSS。", "style3-intro-text")}</body>`;
     }
     if (previewPage.value === "volume") {
-        return `<body class="fullscreen-page style3-volume-page"><h1 class="style3-semantic-title"><span class="style3-volume-number">第一卷</span> <span class="style3-volume-name">少年游</span></h1><div class="style3-volume-canvas"><svg class="style3-volume-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" height="100%" preserveAspectRatio="xMidYMid meet" viewBox="0 0 1536 2048" width="100%"><rect width="1536" height="2048" fill="#ffffff"/><text x="150" y="300" fill="#5f5a55" font-family="STSong,SimSun,serif" font-size="52" letter-spacing="8">第一卷</text><text x="150" y="500" fill="#211f1d" font-family="STSong,SimSun,serif" font-size="112" font-weight="600" letter-spacing="10"><tspan x="150" dy="0">少年游</tspan></text><line x1="150" y1="760" x2="365" y2="760" stroke="#98918a" stroke-width="2"/><image x="230" y="1530" width="1420" height="450" opacity=".7" xlink:href="${style3PlumShadow}"/></svg></div></body>`;
+        return `<body class="fullscreen-page style3-volume-page"><h1 class="style3-semantic-title"><span class="style3-volume-number">第一卷</span> <span class="style3-volume-name">少年游</span></h1><div class="style3-volume-canvas"><svg class="style3-volume-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" height="100%" preserveAspectRatio="xMidYMid meet" viewBox="0 0 1536 2048" width="100%"><rect width="1536" height="2048" fill="#ffffff"/><text x="150" y="300" fill="#5f5a55" font-family="STSong,SimSun,serif" font-size="52" letter-spacing="8">第一卷</text><text x="150" y="500" fill="#211f1d" font-family="STSong,SimSun,serif" font-size="112" font-weight="600" letter-spacing="10"><tspan x="150" dy="0">少年游</tspan></text><text x="150" y="730" fill="#211f1d" font-family="Georgia,Times New Roman,serif" font-size="54" letter-spacing="3">Part I</text><image x="230" y="1530" width="1420" height="450" opacity=".7" xlink:href="${style3PlumShadow}"/></svg></div></body>`;
     }
-    return `<body class="style3-chapter-page"><div class="style3-chapter-lead"><p class="style3-chapter-number">第1章</p><h2 class="style3-chapter-title">配角竟是我自己</h2><div class="style3-chapter-rule"><span class="style3-chapter-dot">·</span></div></div>${previewParagraphs("马车伴随着清脆的声音，沿着街道缓缓前行。\n\n窗外细雨飘落，湿润的地面映着灯火，故事从这里开始。\n\n他抬起头，终于意识到自己正站在命运改变的路口。")}</body>`;
+    return `<body class="style3-chapter-page"><div class="style3-chapter-lead"><p class="style3-chapter-number">第1章</p><h2 class="style3-chapter-title">示例章节</h2><div class="style3-chapter-rule"><span class="style3-chapter-dot">·</span></div></div>${previewParagraphs("这里展示导出后的正文排版效果。\n\n实际内容来自当前书籍章节。")}</body>`;
 });
 
 const previewCss = computed(() => {

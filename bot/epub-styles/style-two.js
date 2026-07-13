@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 services/epub-style2-template 提供的可配置 CSS、页面模板和图片槽位定义
+ * [INPUT]: 依赖 services/epub-style2-template 提供的可配置 CSS、页面模板与单一章头/分卷图片槽
  * [OUTPUT]: 对外提供 style2 老二次元插件元数据、资源声明及标题页到章页的完整渲染接口
  * [POS]: epub-styles 的插画型适配器，复用服务端预览与实际 EPUB 共享模板以保持两相一致
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -18,7 +18,7 @@ const {
 module.exports = {
     id: "style2",
     name: "老二次元",
-    description: "1:1 复刻参考 EPUB 的插画标题页、制作说明、书籍信息、分卷图和正文章头。",
+    description: "复刻独立模板的插画标题页、制作说明、书籍信息、统一分卷图和正文章头。",
     skipVisibleCoverPage: true,
     titlePageNavTitle: "版权声明",
     nestedVolumeToc: true,

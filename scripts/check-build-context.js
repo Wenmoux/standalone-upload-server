@@ -17,10 +17,15 @@ const REQUIRED_CONTEXT_FILES = Object.freeze([
     "cirno-src/public/pwa-icon-192.png",
     "cirno-src/public/pwa-icon-512.png",
     "ui/design-tokens.css",
-    "ui/epub-style1.css",
-    "ui/epub-style3.css",
+    "assets/epub-templates/style1.css",
+    "assets/epub-templates/style2.css",
+    "assets/epub-templates/style3.css",
+    "assets/epub-templates/style1-colophon.xhtml",
+    "assets/epub-templates/style2-colophon.xhtml",
+    "assets/epub-templates/style3-colophon.xhtml",
     "bot/epub-styles/assets/jianghu-top.png",
-    "bot/epub-styles/assets/style3-plum-shadow.svg"
+    "bot/epub-styles/assets/style3-plum-shadow.svg",
+    "bot/epub-styles/assets/style3-reader-mark.png"
 ]);
 
 function posix(relativePath) {

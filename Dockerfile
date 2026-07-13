@@ -41,6 +41,7 @@ RUN npm ci && npm cache clean --force
 COPY admin-ui ./
 COPY ui /build/ui
 COPY bot/epub-styles/assets /build/bot/epub-styles/assets
+COPY assets/epub-templates /build/assets/epub-templates
 RUN npm run build
 
 FROM ${NODE_ALPINE_IMAGE} AS server-pg

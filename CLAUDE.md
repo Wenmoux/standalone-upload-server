@@ -5,7 +5,7 @@ Node.js 20 + Express 4 + PostgreSQL 16 + Vue 3 + Vite 8 + Docker + GitHub Action
 <directory>
 .github/ - CI、依赖更新与 Docker 发布 (2 子目录/文件: workflows、dependabot)
 admin-ui/ - Vue 3 管理后台 (2 核心目录: src、dist)
-assets/ - README 与 EPUB 等发布静态资源
+assets/ - README、EPUB 独立 CSS/XHTML 模板与发布静态资源
 benchmarks/ - 搜索计划性能预算
 bot/ - Telegram polling、命令、持久任务与 TXT/EPUB 导出 (2 子目录: commands、epub-styles)
 cirno-src/ - Vue 3 Reader、Reader server 与离线/PWA 能力 (4 子目录: src、docs、scripts、public)

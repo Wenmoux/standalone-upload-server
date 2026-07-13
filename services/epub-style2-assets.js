@@ -6,12 +6,7 @@
  */
 const fs = require("fs/promises");
 const path = require("path");
-const {
-    STYLE2_ASSET_BY_SLOT,
-    STYLE2_ASSET_DEFINITIONS,
-    style2AssetPaths,
-    style2CustomAssetDir
-} = require("./epub-style2-template");
+const { STYLE2_ASSET_BY_SLOT, STYLE2_ASSET_DEFINITIONS, style2AssetPaths, style2CustomAssetDir } = require("./epub-style2-template");
 
 const MAX_STYLE2_ASSET_BYTES = 20 * 1024 * 1024;
 
@@ -20,7 +15,8 @@ function imageMediaType(bytes) {
     if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
     if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
     if (bytes.length >= 6 && ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"))) return "image/gif";
-    if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+    if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP")
+        return "image/webp";
     return "";
 }
 
@@ -89,8 +85,7 @@ function createEpubStyle2AssetService(options = {}) {
     async function resolveAsset(slot) {
         const definition = definitionFor(slot);
         if (!definition) return null;
-        const paths = style2AssetPaths(definition, configFile);
-        paths[0] = customPath(definition);
+        const paths = style2AssetPaths(definition, configFile, customDir);
         const found = await existingFile(paths);
         if (!found) return { definition, missing: true, custom: false };
         const bytes = await fs.readFile(found.filePath);
@@ -102,7 +97,7 @@ function createEpubStyle2AssetService(options = {}) {
             size: found.stat.size,
             mediaType,
             ...imageDimensions(bytes, mediaType),
-            custom: path.resolve(found.filePath) === path.resolve(customPath(definition))
+            custom: path.resolve(found.filePath) !== path.resolve(paths[paths.length - 1])
         };
     }
 
@@ -176,7 +171,8 @@ function createEpubStyle2AssetService(options = {}) {
             error.status = 404;
             throw error;
         }
-        await fs.rm(customPath(definition), { force: true });
+        const customCandidates = style2AssetPaths(definition, configFile, customDir).slice(0, -1);
+        await Promise.all(customCandidates.map((filePath) => fs.rm(filePath, { force: true })));
         return { slot: definition.slot, label: definition.label, custom: false };
     }
 

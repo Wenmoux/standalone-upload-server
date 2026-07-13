@@ -15,7 +15,7 @@ const EPUB_STYLE_OPTIONS = Object.freeze([
     {
         id: "style2",
         name: "老二次元",
-        description: "1:1 复刻参考 EPUB 的插画标题页、制作说明、书籍信息、分卷图和正文章头。"
+        description: "复刻独立模板的插画标题页、制作说明、书籍信息、统一分卷图和正文章头。"
     },
     {
         id: "style3",
