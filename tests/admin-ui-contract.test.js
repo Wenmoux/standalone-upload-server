@@ -31,7 +31,7 @@ function adminSources() {
 test("admin navigation is grouped and mobile shell exposes current page semantics", () => {
     const router = source("router.js");
     const app = source("App.vue");
-    const styles = source("styles.css");
+    const styles = source("styles/responsive.css");
     assert.match(router, /export const adminNavGroups/);
     assert.match(router, /group:\s*"content"/);
     assert.match(app, /aria-current="activeView === item\.key \? 'page'/);
@@ -57,7 +57,7 @@ test("admin uses non-blocking input and grouped high-density workspaces", () => 
     const allSources = adminSources();
     assert.doesNotMatch(allSources, /window\.(?:prompt|confirm|alert)\s*\(/);
     assert.match(source("App.vue"), /provide\("inputAction", inputAction\)/);
-    assert.match(source("views/SystemView.vue"), /权限与 Token/);
+    assert.match(`${source("views/SystemView.vue")}\n${source("views/system-config.js")}`, /权限与 Token/);
     assert.match(source("views/TelegramView.vue"), /消息推送/);
     assert.match(source("views/FeedbackView.vue"), /待审举报/);
     assert.match(source("views/Po18CrawlerView.vue"), /config-disclosure/);
@@ -72,4 +72,27 @@ test("admin session expiry and queued feedback remain application-level services
     assert.match(app, /toastItems\.value = \[\.\.\.toastItems\.value\.slice\(-3\)/);
     assert.match(toast, /aria-live="polite"/);
     assert.match(toast, /v-for="item in items"/);
+});
+
+test("admin global styles and oversized views stay within the documented module budget", () => {
+    const styleRoot = source("styles.css");
+    const styleFiles = ["foundation.css", "workflow.css", "content.css", "operations.css", "responsive.css"];
+    for (const file of styleFiles) {
+        assert.match(styleRoot, new RegExp(`@import "\\./styles/${file.replace(".", "\\.")}"`));
+        assert.ok(source(`styles/${file}`).split(/\r?\n/).length <= 800, `${file} exceeds 800 lines`);
+    }
+    assert.ok(source("views/BooksView.vue").split(/\r?\n/).length <= 800, "BooksView exceeds 800 lines");
+    assert.ok(source("views/SystemView.vue").split(/\r?\n/).length <= 800, "SystemView exceeds 800 lines");
+});
+
+test("admin high-density workspaces lazy load and quality samples deep-link to books", () => {
+    const system = source("views/SystemView.vue");
+    const telegram = source("views/TelegramView.vue");
+    const quality = source("views/QualityView.vue");
+    assert.match(system, /useLazyWorkspace\("runtime"/);
+    assert.match(telegram, /useLazyWorkspace\("runtime"/);
+    assert.match(system, /onMounted\(loadActiveTab\)/);
+    assert.match(telegram, /onMounted\(\(\) => loadActiveTab\(\)/);
+    assert.match(quality, /navigate\("books", \{ query: \{ q: bookId \} \}\)/);
+    assert.match(quality, /查看书籍/);
 });

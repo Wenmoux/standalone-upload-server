@@ -9,7 +9,8 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `App.vue`: 应用组合根，解析当前管理员、版本和访问能力，向下提供消息队列、确认/输入服务并承载分组导航与备份快捷操作。
 `main.js`: 浏览器启动入口，安装路由、全局样式并把 `App` 挂载到 `#app`。
 `router.js`: Admin 导航与路由事实源，集中定义页面键、权限元数据和懒加载视图。
-`styles.css`: 后台全局设计令牌、布局与组件基础样式，由 `main.js` 唯一引入。
+`styles.css`: 后台全局样式聚合入口，按固定级联顺序引入设计令牌与 `styles/` 模块，由 `main.js` 唯一消费。
+`styles/`: 全局视觉分层模块，按 foundation、workflow、content、operations、responsive 顺序组织；详见 `styles/CLAUDE.md`。
 `components/ConfirmDialog.vue`: 全局高风险操作确认器，收集可选原因并把确认结果交回调用视图。
 `components/DataTable.vue`: 声明式表格外壳，通过列定义和插槽统一键盘排序、加载/空状态、单元格与行操作渲染。
 `components/EpubStyleEditor.vue`: EPUB 导出样式配置与资产预览工作台，按最终 XHTML/SVG 同构预览内置 CSS/图片并经 Admin API 管理自定义模板资产。
@@ -23,9 +24,11 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `utils/clipboard.js`: 剪贴板能力适配层，在标准 API 受限时使用无阻塞选区复制兜底。
 `utils/dialogFocus.js`: 弹窗焦点协议工具，统一首焦点、Tab 闭环和关闭后焦点恢复。
 `utils/format.js`: 后台展示格式化与 Reader 地址推导工具，避免领域视图重复实现数值、时间和平台标签规则。
+`utils/lazyWorkspace.js`: 页内工作区按需加载调度器，统一首次加载缓存与当前分区强制刷新。
 `views/AuditView.vue`: 管理审计查询页，按操作、主体和时间筛选服务端审计记录。
 `views/BooklistView.vue`: 动态榜单缓存运维页，展示来源状态并触发显式刷新任务。
 `views/BooksView.vue`: 书籍/章节主维护页，涵盖筛选、清单导入、增删改、陈旧清理和章节批量操作。
+`views/books-config.js`: 书库视图的稳定声明配置，集中提供平台、表格列、表单字段与数值转换清单。
 `views/CdksView.vue`: Reader 注册码生命周期页，负责生成、筛选和带原因撤销 CDK。
 `views/CorrectionsView.vue`: 正文纠错审核页，查询待办并执行通过、驳回与审核备注写入。
 `views/DashboardView.vue`: 任务优先运营总览，将积压入口置顶并把书库、用户、反馈与 Bot 全量指标折叠展示。
@@ -36,8 +39,10 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `views/PlatformsView.vue`: 平台标识映射页，维护服务端自动发现平台的人工展示名称。
 `views/Po18CrawlerView.vue`: PO18 遍历任务控制台，常驻呈现运行状态并分层维护 Cookie/计划/风险参数及任务控制。
 `views/QualityView.vue`: 数据质量诊断页，展示异常聚合并预览、执行章节顺序修复。
-`views/SystemView.vue`: 分区系统运维中心，按运行、权限、备份、日志组织指标、管理员、Token、诊断与重启。
-`views/TelegramView.vue`: 分区 Telegram 运营中心，按运行、消息、导出、命令组织全员通知、频道日报、EPUB 样式和连接测试。
+`views/SystemView.vue`: 按需加载的分区系统运维中心，按运行、权限、备份、日志组织指标、管理员、Token、诊断与重启。
+`views/system-backups.js`: 系统备份工作区组合层，封装索引、上传、远端归档、验证、恢复演练与数据库恢复状态机。
+`views/system-config.js`: 系统页稳定声明与纯展示规则，集中工作区、日志筛选、状态、性能、备份、版本和 RUM 映射。
+`views/TelegramView.vue`: 按需加载的分区 Telegram 运营中心，按运行、消息、导出、命令组织全员通知、频道日报、EPUB 样式和连接测试。
 `views/TransactionsView.vue`: 货币流水查询页，按用户、币种和类型分页检索交易记录。
 `views/UsersView.vue`: Reader 用户管理页，维护账号、会员与余额，并让 owner 通过专用审计动作设置或取消 Reader/Bot 管理员。
 

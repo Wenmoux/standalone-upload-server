@@ -1,0 +1,268 @@
+/*
+ * [INPUT]: 依赖全部前序样式模块及移动端断点
+ * [OUTPUT]: 提供爬虫档案尾部样式、移动端抽屉/表格适配、确认弹窗和审计响应式规则
+ * [POS]: styles 的最终覆盖层，集中管理窄屏重排与必须后置的状态修正
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
+.crawler-profile-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.crawler-profile-card {
+  display: grid;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfe;
+}
+
+.crawler-profile-card.active {
+  border-color: #8ec6be;
+  background: #f0faf8;
+}
+
+.crawler-profile-card strong {
+  font-size: 13px;
+}
+
+.crawler-profile-card span,
+.crawler-profile-card small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.live-refresh-pill {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid #b8e4dd;
+  border-radius: 999px;
+  background: #e8f8f4;
+  color: #22554f;
+  font-size: 12px;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.crawler-log {
+  min-height: 260px;
+}
+
+@media (max-width: 1180px) {
+  .dashboard,
+  .stat-grid.four,
+  .stat-grid.five,
+  .stat-grid.six,
+  .status-grid,
+  .rank-preview-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .crawler-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .source-mode-list,
+  .crawler-profile-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .books-table {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px 16px;
+  }
+
+  .layout,
+  .auth-layout,
+  .dashboard,
+  .stat-grid,
+  .stat-grid.four,
+  .stat-grid.five,
+  .stat-grid.six,
+  .status-grid,
+  .schema-strip,
+  .split,
+  .form-grid,
+  .toolbar,
+  .toolbar.compact,
+  .correction-text-grid,
+  .rank-admin-grid,
+  .rank-preview-grid,
+  .crawler-form-grid,
+  .source-mode-list,
+  .crawler-cookie-grid,
+  .crawler-profile-list,
+  .job-detail-grid,
+  .restore-box {
+    grid-template-columns: 1fr;
+  }
+
+  .summary {
+    position: static;
+  }
+
+  .page-main {
+    padding: 18px 16px 42px;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
+  }
+
+  body.admin-nav-open {
+    overflow: hidden;
+  }
+
+  .mobile-menu-button,
+  .mobile-sidebar-head {
+    display: inline-flex;
+  }
+
+  .mobile-sidebar-head {
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .mobile-nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 998;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    background: rgba(15, 23, 42, 0.42);
+    box-shadow: none;
+  }
+
+  .admin-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 999;
+    width: min(340px, calc(100vw - 44px));
+    max-height: none;
+    margin: 0;
+    overflow-y: auto;
+    border-radius: 0 12px 12px 0;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+  }
+
+  .admin-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .version-chip {
+    display: none;
+  }
+
+  .toast-stack {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    max-width: none;
+  }
+
+  .toast {
+    min-width: 0;
+  }
+}
+
+.confirm-modal {
+  z-index: 1200;
+}
+
+.confirm-card {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.confirm-eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--danger, #b42318);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.confirm-message {
+  margin: 0;
+  color: var(--text, #1f2937);
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.confirm-body {
+  display: grid;
+  gap: 18px;
+}
+
+.confirm-phrase {
+  display: block;
+  width: fit-content;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--surface-soft, #f3f4f6);
+  user-select: all;
+}
+
+.audit-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.audit-json {
+  max-width: 520px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.audit-pager {
+  margin-top: 16px;
+}
+
+.danger-tag {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.ok-tag {
+  color: #067647;
+  background: #d1fadf;
+}
+
+@media (max-width: 900px) {
+  .audit-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+}
