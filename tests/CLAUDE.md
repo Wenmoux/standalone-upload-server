@@ -44,7 +44,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `config-service.test.js`: 配置解析、默认值和安全校验。
 - `control-panel.test.js`: Setup 控制面配置、鉴权、脱敏和诊断契约。
 - `credential-crypto.test.js`: 外部账户凭据加解密与密钥轮换。
-- `csrf.test.js`: CSRF 来源、旧代理登录兼容与受保护写请求拒绝判定。
+- `csrf.test.js`: CSRF 来源、旧版 JSON 登录/注册与已有会话兼容、受保护写请求拒绝判定。
 - `db-errors.test.js`: PostgreSQL 错误到 HTTP 语义的规范化。
 - `docker-release.test.js`: 镜像标签、来源身份和发布清单规则。
 - `docs-check.test.js`: Markdown 目标解析、断链识别和多语言源码 L3 完整性门禁。

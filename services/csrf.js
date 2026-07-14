@@ -1,13 +1,13 @@
 /**
  * [INPUT]: 依赖 http-security 的可信 CORS 来源、请求 Origin/Host、浏览器 Fetch Metadata 与 session cookie
- * [OUTPUT]: 对外提供兼容代理丢失 Origin 的 CSRF 防护中间件、未登录会话登录兼容判定以及来源提取/可信判断函数
+ * [OUTPUT]: 对外提供兼容代理丢失 Origin 的 CSRF 防护中间件、旧版 JSON 身份入口判定以及来源提取/可信判断函数
  * [POS]: services 的浏览器会话写操作防线，与 CORS 共用来源真源以避免安全策略分叉
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { allowedCorsOrigins } = require("./http-security");
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const SESSION_ESTABLISHMENT_PATHS = new Set(["/admin-api/auth/login", "/reader-auth/login", "/reader-auth/telegram"]);
+const LEGACY_JSON_AUTH_PATHS = new Set(["/admin-api/auth/login", "/reader-auth/login", "/reader-auth/register", "/reader-auth/telegram"]);
 
 function normalizeOrigin(value) {
     try {
@@ -67,11 +67,15 @@ function needsCsrfProtection(req, cookieName) {
     return !!req.session?.adminUser || !!req.session?.readerUser || hasSessionCookie(req, cookieName);
 }
 
-function isUnauthenticatedSessionEstablishment(req) {
+function isLegacyJsonAuthRequest(req) {
     if (String(req.method || "GET").toUpperCase() !== "POST") return false;
     const path = String(req.path || req.url || "").split("?")[0];
-    if (!SESSION_ESTABLISHMENT_PATHS.has(path)) return false;
-    return !req.session?.adminUser && !req.session?.readerUser;
+    if (!LEGACY_JSON_AUTH_PATHS.has(path)) return false;
+    const contentType = String(req.headers?.["content-type"] || "")
+        .split(";")[0]
+        .trim()
+        .toLowerCase();
+    return contentType === "application/json" || contentType.endsWith("+json");
 }
 
 function createCsrfProtection(options = {}) {
@@ -87,7 +91,7 @@ function createCsrfProtection(options = {}) {
             return res.status(403).json({ error: "跨站写请求已拒绝" });
         }
         if (fetchSite === "same-origin") return next();
-        if (isUnauthenticatedSessionEstablishment(req)) return next();
+        if (isLegacyJsonAuthRequest(req)) return next();
         if (hasSessionCookie(req, cookieName) && env.PO18_CSRF_ALLOW_MISSING_ORIGIN !== "1") {
             return res.status(403).json({ error: "缺少写请求来源信息" });
         }
@@ -99,7 +103,7 @@ module.exports = {
     createCsrfProtection,
     expectedOrigin,
     hasSessionCookie,
-    isUnauthenticatedSessionEstablishment,
+    isLegacyJsonAuthRequest,
     needsCsrfProtection,
     normalizeOrigin,
     requestOrigin,

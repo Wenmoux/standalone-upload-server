@@ -29,7 +29,7 @@ chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则去
 config.js: `admin_config` 访问与配置语义层，统一平台标签、导出计价、EPUB 配置及数值归一化。
 correction-text.js: 纠错文本规则层，统一 Unicode 字符偏移、换行规范化与精确/首处替换语义。
 credential-crypto.js: 外部站点凭证加密层，以版本化密文和轮换密钥保护数据库中的 PO18 Cookie/账号字段。
-csrf.js: 基于可信 Origin、浏览器 same-origin Fetch Metadata 与 session cookie 的 CSRF 防护，仅对当前未登录的登录入口兼容旧代理完全丢失来源头，并优先拒绝明确的 cross-site 与其他无来源写入。
+csrf.js: 基于可信 Origin、浏览器 same-origin Fetch Metadata 与 session cookie 的 CSRF 防护，仅对旧版 JSON 登录/注册入口兼容代理完全丢失来源头，并优先拒绝明确的 cross-site、表单与其他无来源写入。
 data-quality.js: 数据质量诊断服务，以只读查询发现重复书籍、缺章、异常元数据和大体积正文。
 db-errors.js: PostgreSQL 可用性错误分类器，把驱动/网络错误转换为稳定的启动与 API 提示。
 epub-style2-assets.js: 老二次元 EPUB 资源服务，校验图片类型、尺寸和大小并管理 `/config` 自定义覆盖。

@@ -32,9 +32,9 @@
 
 ## 2026-07-15：旧代理登录来源兼容收口
 
-- 旧代理同时丢失 `Origin`、`Referer` 与 `Sec-Fetch-Site`，且浏览器残留历史 Session Cookie 时，未登录用户仍可使用原有 Admin、本地 Reader 与 Telegram 登录入口。
-- 兼容范围只覆盖当前 Session 没有 Admin/Reader 身份的登录建立请求；注册、退出、已登录换号及其他无来源写操作继续拒绝，明确的 `cross-site` 请求始终优先拒绝。
-- 增加旧 Session Cookie、活动登录态和注册入口回归，避免以全局关闭 CSRF 或临时环境变量换取兼容。
+- 旧代理同时丢失 `Origin`、`Referer` 与 `Sec-Fetch-Site`，且浏览器残留历史或活动 Session Cookie 时，仍可使用原有 JSON Admin、本地 Reader、Reader 注册与 Telegram 登录入口。
+- 兼容范围以既有客户端的 JSON 请求形态为边界，不再错误依赖 Session 必须完全未登录；表单、退出、资料修改及其他无来源写操作继续拒绝，明确的 `cross-site` 请求始终优先拒绝。
+- 增加历史/活动 Reader 与 Admin Session、注册入口、非 JSON 登录和普通受保护写入回归，避免以全局关闭 CSRF 或临时环境变量换取兼容。
 
 ## 2026-07-15：Telegram Bot 组合根职责收敛
 
