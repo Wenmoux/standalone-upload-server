@@ -1,13 +1,18 @@
 /**
  * [INPUT]: 依赖 http-security 的可信 CORS 来源、请求 Origin/Host、浏览器 Fetch Metadata 与 session cookie
- * [OUTPUT]: 对外提供兼容代理丢失 Origin 的 CSRF 防护中间件、旧版 JSON 身份入口判定以及来源提取/可信判断函数
+ * [OUTPUT]: 对外提供兼容旧代理丢失来源头的 CSRF 防护中间件、身份入口判定以及来源提取/可信判断函数
  * [POS]: services 的浏览器会话写操作防线，与 CORS 共用来源真源以避免安全策略分叉
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { allowedCorsOrigins } = require("./http-security");
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const LEGACY_JSON_AUTH_PATHS = new Set(["/admin-api/auth/login", "/reader-auth/login", "/reader-auth/register", "/reader-auth/telegram"]);
+const LEGACY_AUTH_PATHS = new Set(["/admin-api/auth/login", "/reader-auth/login", "/reader-auth/register", "/reader-auth/telegram"]);
+
+function requestPath(req) {
+    const path = String(req.path || req.url || "").split("?")[0];
+    return path.length > 1 ? path.replace(/\/+$/, "") : path;
+}
 
 function normalizeOrigin(value) {
     try {
@@ -62,20 +67,14 @@ function hasSessionCookie(req, cookieName = "po18_upload_admin_pg") {
 
 function needsCsrfProtection(req, cookieName) {
     if (SAFE_METHODS.has(String(req.method || "GET").toUpperCase())) return false;
-    const path = String(req.path || req.url || "").split("?")[0];
+    const path = requestPath(req);
     if (path.startsWith("/admin-api/") || path.startsWith("/reader-api/") || path.startsWith("/reader-auth/")) return true;
     return !!req.session?.adminUser || !!req.session?.readerUser || hasSessionCookie(req, cookieName);
 }
 
-function isLegacyJsonAuthRequest(req) {
+function isLegacyAuthRequest(req) {
     if (String(req.method || "GET").toUpperCase() !== "POST") return false;
-    const path = String(req.path || req.url || "").split("?")[0];
-    if (!LEGACY_JSON_AUTH_PATHS.has(path)) return false;
-    const contentType = String(req.headers?.["content-type"] || "")
-        .split(";")[0]
-        .trim()
-        .toLowerCase();
-    return contentType === "application/json" || contentType.endsWith("+json");
+    return LEGACY_AUTH_PATHS.has(requestPath(req));
 }
 
 function createCsrfProtection(options = {}) {
@@ -91,7 +90,7 @@ function createCsrfProtection(options = {}) {
             return res.status(403).json({ error: "跨站写请求已拒绝" });
         }
         if (fetchSite === "same-origin") return next();
-        if (isLegacyJsonAuthRequest(req)) return next();
+        if (isLegacyAuthRequest(req)) return next();
         if (hasSessionCookie(req, cookieName) && env.PO18_CSRF_ALLOW_MISSING_ORIGIN !== "1") {
             return res.status(403).json({ error: "缺少写请求来源信息" });
         }
@@ -103,9 +102,10 @@ module.exports = {
     createCsrfProtection,
     expectedOrigin,
     hasSessionCookie,
-    isLegacyJsonAuthRequest,
+    isLegacyAuthRequest,
     needsCsrfProtection,
     normalizeOrigin,
     requestOrigin,
+    requestPath,
     trustedOrigins
 };

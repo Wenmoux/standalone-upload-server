@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供可信来源、旧版 JSON 身份入口缺失来源头和跨站/受保护写入拒绝场景的 CSRF 自动化回归断言
+ * [OUTPUT]: 提供可信来源、旧版身份入口缺失来源头和跨站/受保护写入拒绝场景的 CSRF 自动化回归断言
  * [POS]: tests 的CSRF Token 与受保护请求判定守卫，防止实现或部署契约在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -158,39 +158,21 @@ test("CSRF protection rejects cross-site and origin-less Session writes", () => 
     assert.equal(sameSiteWithoutOrigin.res.statusCode, 403);
 });
 
-test("CSRF protection preserves legacy JSON auth flows with stale or active Session cookies", () => {
+test("CSRF protection preserves legacy auth flows with stale or active Session cookies", () => {
     const middleware = createCsrfProtection({ env: { NODE_ENV: "production" } });
     for (const path of ["/admin-api/auth/login", "/reader-auth/login", "/reader-auth/register", "/reader-auth/telegram"]) {
         for (const session of [{}, { readerUser: { id: 7 } }, { adminUser: { id: 8 } }]) {
-            const auth = run(
-                middleware,
-                request({
-                    path,
-                    headers: {
-                        host: "127.0.0.1:3100",
-                        cookie: "po18_upload_admin_pg=existing-session",
-                        "content-type": "application/json; charset=utf-8"
-                    },
-                    session
-                })
-            );
-            assert.equal(auth.continued, true, `${path} should accept the legacy JSON proxy request`);
+            for (const contentType of ["application/json; charset=utf-8", "application/x-www-form-urlencoded", undefined]) {
+                const headers = {
+                    host: "127.0.0.1:3100",
+                    cookie: "po18_upload_admin_pg=existing-session"
+                };
+                if (contentType) headers["content-type"] = contentType;
+                const auth = run(middleware, request({ path: `${path}/`, headers, session }));
+                assert.equal(auth.continued, true, `${path} should accept the legacy proxy request`);
+            }
         }
     }
-
-    const formLogin = run(
-        middleware,
-        request({
-            path: "/reader-auth/login",
-            headers: {
-                host: "127.0.0.1:3100",
-                cookie: "po18_upload_admin_pg=active-session",
-                "content-type": "application/x-www-form-urlencoded"
-            },
-            session: { readerUser: { id: 7 } }
-        })
-    );
-    assert.equal(formLogin.res.statusCode, 403);
 
     const protectedWrite = run(
         middleware,
