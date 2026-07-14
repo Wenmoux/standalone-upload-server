@@ -136,6 +136,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     const { createApiTokenService } = require("../services/api-tokens");
     const { createCredentialCrypto, encryptStoredPo18Credentials } = require("../services/credential-crypto");
     const { createUserCurrencyService } = require("../services/user-currency");
+    const { createReaderAccountService } = require("../services/reader-account");
     const { createBookManifestService } = require("../services/book-manifest");
     const { createBookChapterService } = require("../services/book-chapters");
     const { createReviewGovernanceService } = require("../services/review-governance");
@@ -520,6 +521,17 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             7,
             "integration"
         ]);
+        const readerAccountService = createReaderAccountService({
+            query,
+            pool,
+            hashPassword,
+            verifyPassword: () => false,
+            cdkDuration,
+            botUserSelect,
+            normalizeTelegramId: (value) => String(value || "").trim(),
+            botUsernameForTelegram: (id) => `tg_${id}`,
+            telegramLoginNickname: () => "tg"
+        });
         const router = createReaderApiRoutes({
             query,
             currentReaderUser: async () => null,
@@ -559,7 +571,8 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             synthesizeElevenLabsTts: async () => Buffer.from(""),
             synthesizeCartesiaTts: async () => Buffer.from(""),
             normalizeCorrectionText: (value = "") => String(value),
-            correctionCharLength: (value = "") => Array.from(String(value)).length
+            correctionCharLength: (value = "") => Array.from(String(value)).length,
+            registerReaderWithCdk: readerAccountService.registerReaderWithCdk
         });
 
         await withApp(router, async (base) => {
@@ -579,11 +592,30 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
                 body: JSON.stringify({ username: "pgreader2", password: "secret1", cdk: "PG-CDK-1" })
             });
             assert.equal(reused.status, 409);
+
+            await query("INSERT INTO reader_cdks(code, duration_type, duration_days, created_by) VALUES ($1,$2,$3,$4)", [
+                "PG-CDK-RACE",
+                "7d",
+                7,
+                "integration"
+            ]);
+            const concurrent = await Promise.all(
+                ["pgreader3", "pgreader4"].map((username) =>
+                    fetch(`${base}/reader-auth/register`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username, password: "secret1", cdk: "PG-CDK-RACE" })
+                    })
+                )
+            );
+            assert.deepEqual(concurrent.map((item) => item.status).sort(), [200, 409]);
         });
 
         const cdk = await query("SELECT used_by, used_at FROM reader_cdks WHERE code=$1", ["PG-CDK-1"]);
         assert.ok(cdk.rows[0].used_by);
         assert.ok(cdk.rows[0].used_at);
+        const raceUsers = await query("SELECT username FROM reader_users WHERE username IN ('pgreader3', 'pgreader4')");
+        assert.equal(raceUsers.rows.length, 1);
     });
 
     await t.test("red packet concurrent claims settle balances and packet state", async () => {

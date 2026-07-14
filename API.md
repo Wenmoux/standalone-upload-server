@@ -1,6 +1,6 @@
 # PO18 旁路服务 API 文档
 
-> 当前事实（2026-07-12）：本文以 `server-pg.js` 实际挂载的路由、路由级鉴权中间件和运行时请求契约为准。历史客户端仍在使用的兼容字段会明确标注；旧报告或旧页面名不能作为当前入口依据。
+> 当前事实（2026-07-15）：本文以 `server-pg.js` 实际挂载的路由、路由级鉴权中间件和运行时请求契约为准。历史客户端仍在使用的兼容字段会明确标注；旧报告或旧页面名不能作为当前入口依据。
 
 基础地址：
 
@@ -16,6 +16,14 @@ GET /api-docs
 ```
 
 `/openapi.json` 由运行中的 Express 路由栈生成，定位是“运行时端点索引”：它可以确认当前进程实际注册的方法与路径，并为少量已登记请求/响应附带 Schema，但不会完整表达所有查询参数、Reader 会话权限、非 JSON 响应及业务约束。因此它不是可直接用于生成完整客户端的契约；字段语义与兼容约定仍以本文和路由实现为准。错误响应保留原有 `error` 字段，并新增稳定的 `code` 与 `request_id`；响应头同时返回 `X-Request-Id`。
+
+## Reader/Bot 账户一致性约定
+
+- `POST /reader-auth/register` 会在同一事务内创建用户并消费 CDK；同一 CDK 并发只能有一个请求成功。
+- `POST /reader-auth/login`、`POST /reader-auth/telegram` 均拒绝封禁账户；Telegram 首次登录使用唯一键 upsert，不会因并发创建重复用户。
+- `POST /reader-auth/sign` 与 `POST /bot-api/users/:telegramId/sign` 使用相同的服务端奖励规则，客户端传入的铜币、银币或经验字段不会覆盖奖励。
+- `POST /bot-api/users/register` 只接收 Telegram 身份、昵称和邀请人；初始 100 铜币由服务端决定，`is_admin`、封禁、余额和签到状态字段不会生效。批量迁移应使用需要 `bot:admin` 的 `/bot-api/users/import`，每批最多 2000 条且整批事务提交。
+- `PATCH /bot-api/users/:telegramId/currency` 的 `po18_bookshelf_share_reward` 必须同时提供 `idempotency_key` 与 `book_id`；`POST /bot-api/users/:telegramId/transactions` 仅记录零金额事件，币种、余额和来源由服务端确定。
 
 ## v2.0 运行时端点、数据质量与备份扩展
 

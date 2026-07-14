@@ -38,7 +38,7 @@ function baseDeps(overrides = {}) {
     return {
         query: async () => ({ rows: [] }),
         currentReaderUser: async () => ({ id: 1, username: "reader" }),
-        publicReaderUser: (user) => user ? ({ id: user.id, username: user.username }) : null,
+        publicReaderUser: (user) => (user ? { id: user.id, username: user.username } : null),
         requireReader: readerOnly,
         requireLibraryAccess: readerOnly,
         requireReaderContentAccess: readerOnly,
@@ -83,19 +83,75 @@ test("reader routes expose public auth and catalog helpers", async () => {
     });
 });
 
-test("reader performance endpoint accepts a bounded event batch behind reader auth", async () => {
+test("reader auth routes delegate registration, login and sign-in to atomic services", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        readerRumService: {
-            recordEvents: async (userId, events) => {
-                calls.push({ userId, events });
-                return { accepted: events.length };
+    const user = { id: 7, username: "reader", nickname: "Reader" };
+    const router = createReaderApiRoutes(
+        baseDeps({
+            registerReaderWithCdk: async (input) => {
+                calls.push(["register", input]);
+                return user;
+            },
+            loginReaderWithPassword: async (input) => {
+                calls.push(["login", input]);
+                return user;
+            },
+            checkInUser: async (input) => {
+                calls.push(["sign", input]);
+                return { user: { ...user, copper_coins: 100 }, reward: { copper: 100, silver: 0, exp: 10, day: 1 } };
             }
-        }
-    }));
+        })
+    );
 
     await withApp(router, async (base) => {
-        const blocked = await fetch(`${base}/reader-api/performance`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const registered = await fetch(`${base}/reader-auth/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: "reader", password: "secret1", nickname: "Reader", cdk: "CDK-ONE" })
+        });
+        assert.equal(registered.status, 200);
+
+        const loggedIn = await fetch(`${base}/reader-auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: "reader", password: "secret1" })
+        });
+        assert.equal(loggedIn.status, 200);
+
+        const signed = await fetch(`${base}/reader-auth/sign`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Reader": "1" },
+            body: "{}"
+        });
+        assert.equal(signed.status, 200);
+        assert.equal((await signed.json()).reward.copper, 100);
+    });
+
+    assert.equal(calls[0][0], "register");
+    assert.equal(calls[0][1].cdkCode, "CDK-ONE");
+    assert.equal(calls[1][0], "login");
+    assert.deepEqual(calls[2], ["sign", { userId: 1, source: "reader" }]);
+});
+
+test("reader performance endpoint accepts a bounded event batch behind reader auth", async () => {
+    const calls = [];
+    const router = createReaderApiRoutes(
+        baseDeps({
+            readerRumService: {
+                recordEvents: async (userId, events) => {
+                    calls.push({ userId, events });
+                    return { accepted: events.length };
+                }
+            }
+        })
+    );
+
+    await withApp(router, async (base) => {
+        const blocked = await fetch(`${base}/reader-api/performance`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+        });
         assert.equal(blocked.status, 401);
         const response = await fetch(`${base}/reader-api/performance`, {
             method: "POST",
@@ -109,12 +165,14 @@ test("reader performance endpoint accepts a bounded event batch behind reader au
 
 test("reader bookshelf status reports whether a book is shelved", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            return { rows: params[1] === "b1" ? [{ exists: 1 }] : [] };
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                return { rows: params[1] === "b1" ? [{ exists: 1 }] : [] };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const blocked = await fetch(`${base}/reader-api/me/bookshelf/b1/status`);
@@ -135,12 +193,14 @@ test("reader bookshelf status reports whether a book is shelved", async () => {
 
 test("reader bookshelf idsOnly returns a lean id list", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            return { rows: [{ book_id: "b1" }, { book_id: "b2" }] };
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                return { rows: [{ book_id: "b1" }, { book_id: "b2" }] };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/me/bookshelf?idsOnly=1`, { headers: { "X-Test-Reader": "1" } });
@@ -156,15 +216,19 @@ test("reader bookshelf idsOnly returns a lean id list", async () => {
 
 test("reader bookshelf list applies paging to the optimized shelf query", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            return { rows: [{ book_id: "b21", title: "Book 21" }] };
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                return { rows: [{ book_id: "b21", title: "Book 21" }] };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
-        const response = await fetch(`${base}/reader-api/me/bookshelf?count=20&page=2&order=shelved_time`, { headers: { "X-Test-Reader": "1" } });
+        const response = await fetch(`${base}/reader-api/me/bookshelf?count=20&page=2&order=shelved_time`, {
+            headers: { "X-Test-Reader": "1" }
+        });
         assert.equal(response.status, 200);
         const body = await response.json();
         assert.equal(body.page, 2);
@@ -181,19 +245,21 @@ test("reader bookshelf list applies paging to the optimized shelf query", async 
 
 test("reader chapter content route supports optional export paging", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            return {
-                rows: [
-                    { chapter_id: "c2", html: "two", text: "" },
-                    { chapter_id: "c3", html: "three", text: "" },
-                    { chapter_id: "c4", html: "four", text: "" }
-                ]
-            };
-        },
-        chapterText: (row) => row.text || row.html
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                return {
+                    rows: [
+                        { chapter_id: "c2", html: "two", text: "" },
+                        { chapter_id: "c3", html: "three", text: "" },
+                        { chapter_id: "c4", html: "four", text: "" }
+                    ]
+                };
+            },
+            chapterText: (row) => row.text || row.html
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/books/b1/chapters?includeContent=1&limit=2&offset=1`);
@@ -230,19 +296,21 @@ test("reader routes keep tts endpoints protected and return edge voice fallback"
 
 test("reader TTS proxy validates the target and disables redirects", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        validateTtsProxyTarget: async (value) => {
-            calls.push({ type: "validate", value });
-            return new URL(value);
-        },
-        fetchTtsProxy: async (target, options) => {
-            calls.push({ type: "fetch", target: target.href, options });
-            return new Response(Buffer.from("audio"), {
-                status: 200,
-                headers: { "content-type": "audio/mpeg" }
-            });
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            validateTtsProxyTarget: async (value) => {
+                calls.push({ type: "validate", value });
+                return new URL(value);
+            },
+            fetchTtsProxy: async (target, options) => {
+                calls.push({ type: "fetch", target: target.href, options });
+                return new Response(Buffer.from("audio"), {
+                    status: 200,
+                    headers: { "content-type": "audio/mpeg" }
+                });
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/tts/proxy`, {
@@ -262,22 +330,24 @@ test("reader TTS proxy validates the target and disables redirects", async () =>
 
 test("reader search suggestions combine metadata and hot keywords", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            if (/UNION ALL/.test(sql)) {
-                return {
-                    rows: [
-                        { type: "title", value: "Alpha Book", book_id: "b1", author: "Author A", platform: "po18", score: 99 },
-                        { type: "author", value: "Alpha Writer", author: "Alpha Writer", platform: "po18", score: 2 },
-                        { type: "tag", value: "AlphaTag", platform: "po18", score: 1 }
-                    ]
-                };
-            }
-            return { rows: [] };
-        },
-        getHotKeywords: async () => [{ keyword: "alpha hot", count: 4, result_count: 8 }]
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                if (/UNION ALL/.test(sql)) {
+                    return {
+                        rows: [
+                            { type: "title", value: "Alpha Book", book_id: "b1", author: "Author A", platform: "po18", score: 99 },
+                            { type: "author", value: "Alpha Writer", author: "Alpha Writer", platform: "po18", score: 2 },
+                            { type: "tag", value: "AlphaTag", platform: "po18", score: 1 }
+                        ]
+                    };
+                }
+                return { rows: [] };
+            },
+            getHotKeywords: async () => [{ keyword: "alpha hot", count: 4, result_count: 8 }]
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/search/suggest?q=alpha&platform=po18&limit=4`);
@@ -285,12 +355,10 @@ test("reader search suggestions combine metadata and hot keywords", async () => 
         const body = await response.json();
         assert.equal(body.q, "alpha");
         assert.equal(body.platform, "po18");
-        assert.deepEqual(body.rows.map((row) => `${row.type}:${row.value}`), [
-            "title:Alpha Book",
-            "author:Alpha Writer",
-            "tag:AlphaTag",
-            "hot:alpha hot"
-        ]);
+        assert.deepEqual(
+            body.rows.map((row) => `${row.type}:${row.value}`),
+            ["title:Alpha Book", "author:Alpha Writer", "tag:AlphaTag", "hot:alpha hot"]
+        );
         assert.equal(body.rows[0].book_id, "b1");
     });
 
@@ -301,24 +369,26 @@ test("reader search suggestions combine metadata and hot keywords", async () => 
 
 test("reader search combines author tag and platform filters", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            if (/COUNT/.test(sql)) return { rows: [{ count: 1 }] };
-            return {
-                rows: [
-                    {
-                        book_id: "b1",
-                        title: "Filtered Book",
-                        author: "Alpha Writer",
-                        tags: "AlphaTag",
-                        platform: "po18",
-                        cache_count: 3
-                    }
-                ]
-            };
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                if (/COUNT/.test(sql)) return { rows: [{ count: 1 }] };
+                return {
+                    rows: [
+                        {
+                            book_id: "b1",
+                            title: "Filtered Book",
+                            author: "Alpha Writer",
+                            tags: "AlphaTag",
+                            platform: "po18",
+                            cache_count: 3
+                        }
+                    ]
+                };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/search?author=Alpha&tag=AlphaTag&platform=po18&limit=5&page=2`);
@@ -345,13 +415,15 @@ test("reader search combines author tag and platform filters", async () => {
 
 test("reader search filters exact category tokens", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            if (/COUNT/.test(sql)) return { rows: [{ count: 1 }] };
-            return { rows: [{ book_id: "b2", title: "Category Book", category: "都市，言情", cache_count: 2 }] };
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                if (/COUNT/.test(sql)) return { rows: [{ count: 1 }] };
+                return { rows: [{ book_id: "b2", title: "Category Book", category: "都市，言情", cache_count: 2 }] };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/search?category=%E9%83%BD%E5%B8%82&limit=5`);
@@ -368,19 +440,21 @@ test("reader search filters exact category tokens", async () => {
 
 test("reader search fast mode skips exact count and fetches one extra row", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            return {
-                rows: [
-                    { book_id: "b4", title: "Alpha 4", cache_count: 1 },
-                    { book_id: "b5", title: "Alpha 5", cache_count: 1 },
-                    { book_id: "b6", title: "Alpha 6", cache_count: 1 },
-                    { book_id: "b7", title: "Alpha 7", cache_count: 1 }
-                ]
-            };
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                return {
+                    rows: [
+                        { book_id: "b4", title: "Alpha 4", cache_count: 1 },
+                        { book_id: "b5", title: "Alpha 5", cache_count: 1 },
+                        { book_id: "b6", title: "Alpha 6", cache_count: 1 },
+                        { book_id: "b7", title: "Alpha 7", cache_count: 1 }
+                    ]
+                };
+            }
+        })
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/search?keyword=Alpha&cache_min=1&sort=cache_desc&limit=3&page=2&fast=1`);
@@ -391,7 +465,10 @@ test("reader search fast mode skips exact count and fetches one extra row", asyn
         assert.equal(body.total, 7);
         assert.equal(body.has_more, true);
         assert.equal(body.total_is_estimated, true);
-        assert.deepEqual(body.rows.map((row) => row.book_id), ["b4", "b5", "b6"]);
+        assert.deepEqual(
+            body.rows.map((row) => row.book_id),
+            ["b4", "b5", "b6"]
+        );
     });
 
     assert.equal(calls.length, 1);
@@ -402,17 +479,19 @@ test("reader search fast mode skips exact count and fetches one extra row", asyn
 
 test("reader search cursor uses keyset pagination without OFFSET", async () => {
     const calls = [];
-    const router = createReaderApiRoutes(baseDeps({
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            return {
-                rows: [
-                    { id: 8, book_id: "b8", title: "Eight", updated_at: "2026-07-11T08:00:00.000Z", cache_count: 1 },
-                    { id: 7, book_id: "b7", title: "Seven", updated_at: "2026-07-11T07:00:00.000Z", cache_count: 1 }
-                ]
-            };
-        }
-    }));
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                return {
+                    rows: [
+                        { id: 8, book_id: "b8", title: "Eight", updated_at: "2026-07-11T08:00:00.000Z", cache_count: 1 },
+                        { id: 7, book_id: "b7", title: "Seven", updated_at: "2026-07-11T07:00:00.000Z", cache_count: 1 }
+                    ]
+                };
+            }
+        })
+    );
     const cursor = encodeSearchCursor("updated_desc", { id: 9, updated_at: "2026-07-11T09:00:00.000Z" });
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/reader-api/search?sort=updated_desc&limit=1&cursor=${encodeURIComponent(cursor)}`);

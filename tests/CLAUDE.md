@@ -71,6 +71,8 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `rank.test.js`: 排行聚合、窗口与并列规则。
 - `rate-limit.test.js`: 内存限流窗口和响应元数据。
 - `reader-api-routes.test.js`: Reader 查询、内容、会话和权限路由。
+- `reader-account.test.js`: Reader CDK 注册、密码/Telegram 身份、Bot 注册奖励、邀请和批量导入事务。
+- `reader-check-in.test.js`: Reader/Bot 签到行锁、周期、奖励流水与回滚原子性。
 - `reader-icon-subset.test.js`: Reader 图标子集与产物约束。
 - `reader-navigation.test.js`: Reader 章节导航与边界定位。
 - `reader-offline.test.js`: 离线缓存、更新与失效策略。

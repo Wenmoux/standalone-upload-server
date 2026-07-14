@@ -1,10 +1,9 @@
 ﻿/**
- * [INPUT]: 依赖 Express/crypto、Bot Scope、用户经济/认证/凭据服务与 Telegram 身份参数
+ * [INPUT]: 依赖 Express、Bot Scope、Reader 账户/签到、用户经济/认证服务与 Telegram 身份参数
  * [OUTPUT]: 对外提供 Bot 用户注册、签到、余额流水、转账、CDK、额度及 PO18 凭据内部路由
  * [POS]: routes 的 Bot 用户适配层，把 Telegram 身份映射到事务服务，避免 Bot 进程持有数据库权限
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-const crypto = require("crypto");
 const express = require("express");
 const { bodyNumber, bodyString, enumValue, trimString } = require("../services/validation");
 
@@ -25,7 +24,6 @@ function createBotApiUserRoutes(deps = {}) {
     const {
         requireBotApi,
         query,
-        hashPassword,
         botUserSelect,
         botPublicUser,
         normalizeTelegramId,
@@ -40,10 +38,9 @@ function createBotApiUserRoutes(deps = {}) {
         redeemExportQuotaCdk,
         spendUserCurrency,
         adjustUserCurrency,
-        todayDateKey,
-        positiveNumber,
-        signExpReward,
-        scholarProfile
+        registerBotUser,
+        importBotUsers,
+        checkInUser
     } = deps;
 
     router.get("/bot-api/users/:telegramId", requireBotApi, async (req, res, next) => {
@@ -56,37 +53,20 @@ function createBotApiUserRoutes(deps = {}) {
 
     router.post("/bot-api/users/register", requireBotApi, async (req, res, next) => {
         try {
-            const telegramId = normalizeTelegramId(bodyString(req.body, ["telegram_id", "telegramId"], { required: true, message: "missing telegram_id" }));
-            if (!telegramId) return res.status(400).json({ error: "missing telegram_id" });
-            const telegramUsername = trimString(req.body?.telegram_username ?? req.body?.telegramUsername ?? "", 64).replace(/^@/, "").slice(0, 64);
-            const username = trimString(req.body?.username || botUsernameForTelegram(telegramId), 32);
-            const nickname = trimString(req.body?.nickname || req.body?.display_name || telegramUsername || username, 32);
-            const inviterTelegramId = normalizeTelegramId(req.body?.inviter_telegram_id || req.body?.inviterTelegramId);
-            const copper = bodyNumber(req.body, ["copper_coins", "copper"], { defaultValue: 100, message: "invalid copper" });
-            const silver = bodyNumber(req.body, ["silver_coins", "silver"], { defaultValue: 0, message: "invalid silver" });
-            const signCycleDay = bodyNumber(req.body, ["sign_cycle_day", "signStreak"], { defaultValue: 0, integer: true, min: 0, message: "invalid sign_cycle_day" });
-            const lastSignDate = trimString(req.body?.last_sign_date ?? req.body?.sign_date ?? "") || null;
-            const isAdmin = !!req.body?.is_admin;
-            const isBanned = !!req.body?.is_banned;
-            const existing = await findBotUserByTelegramId(telegramId);
-            if (existing) return res.json({ success: true, existed: true, user: botPublicUser(existing) });
-            const found = await query("SELECT id FROM reader_users WHERE username = $1", [username]);
-            const finalUsername = found.rows.length ? `${botUsernameForTelegram(telegramId)}_${Date.now().toString(36).slice(-4)}`.slice(0, 32) : username;
-            const { salt, hash } = hashPassword(crypto.randomBytes(18).toString("base64url"));
-            const created = await query(
-                `INSERT INTO reader_users(username, password_hash, salt, nickname, library_access, membership_permanent,
-                                          copper_coins, silver_coins, sign_cycle_day, last_sign_date,
-                                          telegram_id, telegram_username, is_admin, is_banned, inviter_telegram_id)
-                 VALUES ($1,$2,$3,$4,TRUE,TRUE,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                 RETURNING ${botUserSelect()}`,
-                [finalUsername, hash, salt, nickname || finalUsername, copper, silver, signCycleDay, lastSignDate, telegramId, telegramUsername, isAdmin, isBanned, inviterTelegramId]
+            const telegramId = normalizeTelegramId(
+                bodyString(req.body, ["telegram_id", "telegramId"], { required: true, message: "missing telegram_id" })
             );
-            if (copper) await recordTransaction({ userId: created.rows[0].id, telegramId, type: "register", currency: "copper", amount: copper, balance: created.rows[0].copper_coins, detail: "注册赠送", source: "telegram_bot" });
-            if (silver) await recordTransaction({ userId: created.rows[0].id, telegramId, type: "register", currency: "silver", amount: silver, balance: created.rows[0].silver_coins, detail: "注册赠送", source: "telegram_bot" });
-            if (inviterTelegramId && inviterTelegramId !== telegramId) {
-                await query("UPDATE reader_users SET invite_count = COALESCE(invite_count, 0) + 1 WHERE telegram_id = $1", [inviterTelegramId]);
-            }
-            res.json({ success: true, existed: false, user: botPublicUser(created.rows[0]) });
+            if (!telegramId) return res.status(400).json({ error: "missing telegram_id" });
+            const telegramUsername = trimString(req.body?.telegram_username ?? req.body?.telegramUsername ?? "", 64)
+                .replace(/^@/, "")
+                .slice(0, 64);
+            const nickname = trimString(
+                req.body?.nickname || req.body?.display_name || telegramUsername || botUsernameForTelegram(telegramId),
+                32
+            );
+            const inviterTelegramId = normalizeTelegramId(req.body?.inviter_telegram_id || req.body?.inviterTelegramId);
+            const result = await registerBotUser({ telegramId, telegramUsername, nickname, inviterTelegramId });
+            res.json({ success: true, existed: result.existed, user: botPublicUser(result.user) });
         } catch (err) {
             next(err);
         }
@@ -94,54 +74,7 @@ function createBotApiUserRoutes(deps = {}) {
 
     router.post("/bot-api/users/import", requireBotApi, async (req, res, next) => {
         try {
-            const rows = Array.isArray(req.body?.users) ? req.body.users : [];
-            const result = { imported: 0, updated: 0, skipped: 0 };
-            for (const row of rows) {
-                const telegramId = normalizeTelegramId(row.telegram_id || row.telegramId || row.user_id || row.userId);
-                if (!telegramId) {
-                    result.skipped += 1;
-                    continue;
-                }
-                const username = String(row.username || botUsernameForTelegram(telegramId)).trim().replace(/^@/, "").slice(0, 32) || botUsernameForTelegram(telegramId);
-                const telegramUsername = String(row.telegram_username || row.telegramUsername || row.username || "").trim().replace(/^@/, "").slice(0, 64);
-                const nickname = String(row.nickname || row.display_name || row.displayName || username).trim().slice(0, 32) || username;
-                let finalUsername = botUsernameForTelegram(telegramId);
-                const usernameConflict = await query("SELECT id FROM reader_users WHERE username = $1 AND COALESCE(telegram_id, '') <> $2", [finalUsername, telegramId]);
-                if (usernameConflict.rows.length) finalUsername = `${finalUsername}_${Date.now().toString(36).slice(-4)}`.slice(0, 32);
-                const copper = Number(row.copper_coins ?? row.copper ?? 0);
-                const silver = Number(row.silver_coins ?? row.silver ?? 0);
-                const signCycleDay = Number(row.sign_cycle_day ?? row.signStreak ?? row.sign_streak ?? 0);
-                const lastSignDate = String(row.last_sign_date || row.sign_date || "").trim() || null;
-                const isAdmin = !!Number(row.is_admin || 0);
-                const isBanned = !!Number(row.is_banned || 0);
-                const inviteCount = Number(row.invite_count || 0);
-                const inviterTelegramId = normalizeTelegramId(row.inviter_telegram_id || row.inviter_id || "");
-                const exportUnlockedAt = String(row.export_unlocked_at || row.unlocked_at || "").trim() || null;
-                const createdAt = String(row.created_at || "").trim() || null;
-                const { salt, hash } = hashPassword(crypto.randomBytes(18).toString("base64url"));
-                const inserted = await query(
-                    `INSERT INTO reader_users(username, password_hash, salt, nickname, created_at, library_access, membership_permanent,
-                                              copper_coins, silver_coins, sign_cycle_day, last_sign_date,
-                                              telegram_id, telegram_username, is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at)
-                     VALUES ($1,$2,$3,$4,COALESCE($5::timestamp, CURRENT_TIMESTAMP),$6,TRUE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-                     ON CONFLICT (telegram_id) DO UPDATE SET
-                        nickname = EXCLUDED.nickname,
-                        telegram_username = EXCLUDED.telegram_username,
-                        copper_coins = EXCLUDED.copper_coins,
-                        silver_coins = EXCLUDED.silver_coins,
-                        sign_cycle_day = EXCLUDED.sign_cycle_day,
-                        last_sign_date = EXCLUDED.last_sign_date,
-                        is_admin = EXCLUDED.is_admin,
-                        is_banned = EXCLUDED.is_banned,
-                        invite_count = EXCLUDED.invite_count,
-                        inviter_telegram_id = EXCLUDED.inviter_telegram_id,
-                        export_unlocked_at = COALESCE(EXCLUDED.export_unlocked_at, reader_users.export_unlocked_at)
-                     RETURNING xmax = 0 AS inserted`,
-                    [finalUsername, hash, salt, nickname, createdAt, !isBanned, copper, silver, signCycleDay, lastSignDate, telegramId, telegramUsername, isAdmin, isBanned, inviteCount, inviterTelegramId, exportUnlockedAt]
-                );
-                if (inserted.rows[0]?.inserted) result.imported += 1;
-                else result.updated += 1;
-            }
+            const result = await importBotUsers(req.body?.users);
             res.json({ success: true, ...result });
         } catch (err) {
             next(err);
@@ -151,45 +84,39 @@ function createBotApiUserRoutes(deps = {}) {
     router.patch("/bot-api/users/:telegramId/currency", requireBotApi, async (req, res, next) => {
         try {
             const telegramId = normalizeTelegramId(req.params.telegramId);
-            const currencyName = enumValue(String(req.body?.currency || "copper").toLowerCase(), ["copper", "silver"], { defaultValue: "copper", name: "currency" });
-            const currency = currencyName === "silver" ? "silver_coins" : "copper_coins";
-            const delta = bodyNumber(req.body, "delta", { defaultValue: 0, integer: true, message: "delta must be a finite integer" });
-            if (!delta) return res.status(400).json({ error: "delta must not be zero" });
-            if (typeof adjustUserCurrency === "function") {
-                const result = await adjustUserCurrency({
-                    telegramId,
-                    currency: currencyName,
-                    delta,
-                    type: req.body?.type || "admin_give",
-                    detail: req.body?.detail || "管理员发币",
-                    source: "telegram_bot",
-                    ...internalIdempotency(req.body || {})
-                });
-                return res.json({
-                    success: true,
-                    repeated: !!result.repeated,
-                    user: botPublicUser(result.user),
-                    transaction: result.transaction || null
-                });
-            }
-            const updated = await query(
-                `UPDATE reader_users SET ${currency} = GREATEST(0, COALESCE(${currency}, 0) + $1)
-                 WHERE telegram_id = $2
-                 RETURNING ${botUserSelect()}`,
-                [delta, telegramId]
-            );
-            if (!updated.rows.length) return res.status(404).json({ error: "user not found" });
-            await recordTransaction({
-                userId: updated.rows[0].id,
-                telegramId,
-                type: req.body?.type || "admin_give",
-                currency: currencyName,
-                amount: delta,
-                balance: updated.rows[0][currency],
-                detail: req.body?.detail || "管理员发币",
-                source: "telegram_bot"
+            const currencyName = enumValue(String(req.body?.currency || "copper").toLowerCase(), ["copper", "silver"], {
+                defaultValue: "copper",
+                name: "currency"
             });
-            res.json({ success: true, user: botPublicUser(updated.rows[0]) });
+            const delta = bodyNumber(req.body, "delta", {
+                defaultValue: 0,
+                integer: true,
+                min: -1000000000,
+                max: 1000000000,
+                message: "delta must be a finite integer"
+            });
+            if (!delta) return res.status(400).json({ error: "delta must not be zero" });
+            const type = trimString(req.body?.type || "admin_give", 64);
+            const idempotency = internalIdempotency(req.body || {});
+            if (type === "po18_bookshelf_share_reward" && (!idempotency.idempotencyKey || !idempotency.idempotencyData.book_id)) {
+                return res.status(400).json({ error: "share reward requires idempotency_key and book_id" });
+            }
+            if (typeof adjustUserCurrency !== "function") return res.status(503).json({ error: "currency service is not configured" });
+            const result = await adjustUserCurrency({
+                telegramId,
+                currency: currencyName,
+                delta,
+                type,
+                detail: req.body?.detail || "管理员发币",
+                source: "telegram_bot",
+                ...idempotency
+            });
+            res.json({
+                success: true,
+                repeated: !!result.repeated,
+                user: botPublicUser(result.user),
+                transaction: result.transaction || null
+            });
         } catch (err) {
             next(err);
         }
@@ -229,7 +156,8 @@ function createBotApiUserRoutes(deps = {}) {
 
     router.post("/bot-api/users/:telegramId/export-extra-claim", requireBotApi, async (req, res, next) => {
         try {
-            if (typeof claimExtraExportQuota !== "function") return res.status(503).json({ error: "extra export quota service is not configured" });
+            if (typeof claimExtraExportQuota !== "function")
+                return res.status(503).json({ error: "extra export quota service is not configured" });
             const result = await claimExtraExportQuota({
                 telegramId: req.params.telegramId,
                 bookId: req.body?.book_id || req.body?.bookId,
@@ -271,7 +199,8 @@ function createBotApiUserRoutes(deps = {}) {
             const cost = (await exportPricingConfig()).unlockCost;
             const current = await findBotUserByTelegramId(telegramId);
             if (!current) return res.status(404).json({ error: "user not found" });
-            if (current.export_unlocked_at || current.is_admin) return res.json({ success: true, unlocked: true, cost: 0, user: botPublicUser(current) });
+            if (current.export_unlocked_at || current.is_admin)
+                return res.json({ success: true, unlocked: true, cost: 0, user: botPublicUser(current) });
             const result = await spendUserCurrency({
                 telegramId,
                 currency: "silver",
@@ -282,7 +211,13 @@ function createBotApiUserRoutes(deps = {}) {
                 setExportUnlocked: true,
                 allowZero: true
             });
-            res.json({ success: true, unlocked: true, cost: result.amount, user: botPublicUser(result.user), transaction: result.transaction });
+            res.json({
+                success: true,
+                unlocked: true,
+                cost: result.amount,
+                user: botPublicUser(result.user),
+                transaction: result.transaction
+            });
         } catch (err) {
             if (err.status) return res.status(err.status).json({ error: err.message });
             next(err);
@@ -300,7 +235,14 @@ function createBotApiUserRoutes(deps = {}) {
                 source: req.body?.source || "telegram_bot",
                 ...internalIdempotency(req.body || {})
             });
-            res.json({ success: true, repeated: !!result.repeated, amount: result.amount, currency: result.currency, user: botPublicUser(result.user), transaction: result.transaction });
+            res.json({
+                success: true,
+                repeated: !!result.repeated,
+                amount: result.amount,
+                currency: result.currency,
+                user: botPublicUser(result.user),
+                transaction: result.transaction
+            });
         } catch (err) {
             if (err.status) return res.status(err.status).json({ error: err.message });
             next(err);
@@ -309,65 +251,8 @@ function createBotApiUserRoutes(deps = {}) {
 
     router.post("/bot-api/users/:telegramId/sign", requireBotApi, async (req, res, next) => {
         try {
-            const telegramId = normalizeTelegramId(req.params.telegramId);
-            const user = await findBotUserByTelegramId(telegramId);
-            if (!user) return res.status(404).json({ error: "user not found" });
-            if (user.is_banned) return res.status(403).json({ error: "user banned" });
-            const today = todayDateKey();
-            const last = user.last_sign_date instanceof Date
-                ? new Date(user.last_sign_date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
-                : String(user.last_sign_date || "").slice(0, 10);
-            if (last === today) return res.status(409).json({ error: "今天已经签到过了" });
-            const nextDay = Number(user.sign_cycle_day || 0) >= 7 ? 1 : Number(user.sign_cycle_day || 0) + 1;
-            const copper = Number(req.body?.copper || 100);
-            const silver = nextDay === 7 ? Number(req.body?.silver || 100) : 0;
-            const exp = Math.trunc(positiveNumber(req.body?.exp, signExpReward(nextDay), 1));
-            const beforeScholar = scholarProfile(user.scholar_exp);
-            const updated = await query(
-                `UPDATE reader_users
-                 SET copper_coins = COALESCE(copper_coins,0) + $1,
-                      silver_coins = COALESCE(silver_coins,0) + $2,
-                      scholar_exp = COALESCE(scholar_exp,0) + $3,
-                      sign_cycle_day = $4,
-                      last_sign_date = $5::date
-                  WHERE telegram_id = $6
-                    AND (last_sign_date IS NULL OR last_sign_date <> $5::date)
-                  RETURNING ${botUserSelect()}`,
-                [copper, silver, exp, nextDay, today, telegramId]
-            );
-            if (!updated.rows.length) return res.status(409).json({ error: "今天已经签到过了" });
-            const afterScholar = scholarProfile(updated.rows[0].scholar_exp);
-            await recordTransaction({
-                userId: updated.rows[0].id,
-                telegramId: updated.rows[0].telegram_id,
-                type: "sign",
-                currency: "copper",
-                amount: copper,
-                balance: updated.rows[0].copper_coins,
-                detail: `每日签到 day=${nextDay}`,
-                source: "telegram_bot"
-            });
-            await recordTransaction({
-                userId: updated.rows[0].id,
-                telegramId: updated.rows[0].telegram_id,
-                type: "sign_exp",
-                currency: "exp",
-                amount: exp,
-                balance: updated.rows[0].scholar_exp,
-                detail: `每日签到 day=${nextDay}`,
-                source: "telegram_bot"
-            });
-            if (silver) await recordTransaction({
-                userId: updated.rows[0].id,
-                telegramId: updated.rows[0].telegram_id,
-                type: "sign",
-                currency: "silver",
-                amount: silver,
-                balance: updated.rows[0].silver_coins,
-                detail: `每日签到 day=${nextDay}`,
-                source: "telegram_bot"
-            });
-            res.json({ success: true, reward: { copper, silver, exp, day: nextDay, scholar: afterScholar, level_up: afterScholar.level > beforeScholar.level }, user: botPublicUser(updated.rows[0]) });
+            const result = await checkInUser({ telegramId: req.params.telegramId, source: "telegram_bot" });
+            res.json({ success: true, reward: result.reward, user: botPublicUser(result.user) });
         } catch (err) {
             next(err);
         }
@@ -375,7 +260,10 @@ function createBotApiUserRoutes(deps = {}) {
 
     router.get("/bot-api/top", requireBotApi, async (req, res, next) => {
         try {
-            const currencyName = enumValue(String(req.query.currency || "copper").toLowerCase(), ["copper", "silver", "exp"], { defaultValue: "copper", name: "currency" });
+            const currencyName = enumValue(String(req.query.currency || "copper").toLowerCase(), ["copper", "silver", "exp"], {
+                defaultValue: "copper",
+                name: "currency"
+            });
             const column = currencyName === "silver" ? "silver_coins" : currencyName === "exp" ? "scholar_exp" : "copper_coins";
             const secondaryColumn = currencyName === "silver" ? "copper_coins" : "silver_coins";
             const limit = bodyNumber(req.query, "limit", { defaultValue: 10, integer: true, min: 1, max: 50, message: "invalid limit" });
@@ -414,18 +302,17 @@ function createBotApiUserRoutes(deps = {}) {
         try {
             const user = await findBotUserByTelegramId(req.params.telegramId);
             if (!user) return res.status(404).json({ error: "user not found" });
-            const currency = enumValue(String(req.body?.currency || "copper").toLowerCase(), ["copper", "silver", "exp"], { defaultValue: "copper", name: "currency" });
             const amount = bodyNumber(req.body, "amount", { defaultValue: 0, integer: true, message: "invalid amount" });
-            const balance = currency === "silver" ? user.silver_coins : currency === "exp" ? user.scholar_exp : user.copper_coins;
+            if (amount !== 0) return res.status(400).json({ error: "event transaction amount must be zero" });
             const tx = await recordTransaction({
                 userId: user.id,
                 telegramId: user.telegram_id,
-                type: req.body?.type || "event",
-                currency,
-                amount,
-                balance,
+                type: trimString(req.body?.type || "event", 64),
+                currency: "copper",
+                amount: 0,
+                balance: user.copper_coins,
                 detail: req.body?.detail || "",
-                source: req.body?.source || "telegram_bot"
+                source: "telegram_bot"
             });
             res.json({ success: true, transaction: tx });
         } catch (err) {
@@ -477,7 +364,10 @@ function createBotApiUserRoutes(deps = {}) {
 
     router.get("/bot-api/users/by-telegram-username/:username", requireBotApi, async (req, res, next) => {
         try {
-            const username = String(req.params.username || "").trim().replace(/^@/, "").toLowerCase();
+            const username = String(req.params.username || "")
+                .trim()
+                .replace(/^@/, "")
+                .toLowerCase();
             if (!username) return res.status(400).json({ error: "missing username" });
             const found = await query(
                 `SELECT ${botUserSelect()} FROM reader_users WHERE lower(COALESCE(telegram_username, '')) = $1 LIMIT 1`,

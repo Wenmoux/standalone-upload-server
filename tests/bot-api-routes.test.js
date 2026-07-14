@@ -299,6 +299,102 @@ test("bot api user routes validate currency mutation input", async () => {
     });
 });
 
+test("bot user registration and sign-in ignore client-controlled privilege and reward fields", async () => {
+    const calls = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        normalizeTelegramId: (value) => String(value || "").trim(),
+        botUsernameForTelegram: (id) => `tg_${id}`,
+        botPublicUser: (user) => user,
+        registerBotUser: async (input) => {
+            calls.push(["register", input]);
+            return { existed: false, user: { id: 1, telegram_id: input.telegramId, copper_coins: 100, is_admin: false } };
+        },
+        checkInUser: async (input) => {
+            calls.push(["sign", input]);
+            return {
+                user: { id: 1, telegram_id: input.telegramId, copper_coins: 200 },
+                reward: { copper: 100, silver: 0, exp: 10, day: 1 }
+            };
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const registered = await fetch(`${base}/bot-api/users/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "42", nickname: "Reader", is_admin: true, copper: 999999999, silver: 999999999 })
+        });
+        assert.equal(registered.status, 200);
+        const registration = await registered.json();
+        assert.equal(registration.user.is_admin, false);
+        assert.equal(registration.user.copper_coins, 100);
+
+        const signed = await fetch(`${base}/bot-api/users/42/sign`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ copper: 999999999, silver: 999999999, exp: 999999999 })
+        });
+        assert.equal(signed.status, 200);
+        assert.equal((await signed.json()).reward.copper, 100);
+    });
+
+    assert.deepEqual(calls[0], ["register", { telegramId: "42", telegramUsername: "", nickname: "Reader", inviterTelegramId: "" }]);
+    assert.deepEqual(calls[1], ["sign", { telegramId: "42", source: "telegram_bot" }]);
+});
+
+test("bot currency rewards require settlement identity and event rows cannot forge balances", async () => {
+    const calls = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        normalizeTelegramId: (value) => String(value || "").trim(),
+        botPublicUser: (user) => user,
+        botUserSelect: () => "id, telegram_id, copper_coins",
+        findBotUserByTelegramId: async (telegramId) => ({ id: 1, telegram_id: telegramId, copper_coins: 300 }),
+        adjustUserCurrency: async (input) => {
+            calls.push(["currency", input]);
+            return { user: { id: 1, telegram_id: input.telegramId, copper_coins: 400 }, transaction: null };
+        },
+        recordTransaction: async (input) => {
+            calls.push(["event", input]);
+            return { id: 9, ...input };
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const reward = await fetch(`${base}/bot-api/users/42/currency`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ delta: 100, type: "po18_bookshelf_share_reward" })
+        });
+        assert.equal(reward.status, 400);
+        assert.match((await reward.json()).error, /idempotency_key/);
+
+        const forged = await fetch(`${base}/bot-api/users/42/transactions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ amount: 999, currency: "silver", source: "admin", type: "fake" })
+        });
+        assert.equal(forged.status, 400);
+
+        const event = await fetch(`${base}/bot-api/users/42/transactions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ amount: 0, currency: "silver", source: "admin", type: "export_epub" })
+        });
+        assert.equal(event.status, 200);
+    });
+
+    assert.equal(
+        calls.some((call) => call[0] === "currency"),
+        false
+    );
+    const eventCall = calls.find((call) => call[0] === "event")[1];
+    assert.equal(eventCall.amount, 0);
+    assert.equal(eventCall.currency, "copper");
+    assert.equal(eventCall.source, "telegram_bot");
+});
+
 test("bot api user routes claim extra export quota and redeem cdk", async () => {
     const calls = [];
     const router = createBotApiRoutes({

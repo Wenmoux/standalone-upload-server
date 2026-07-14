@@ -57,6 +57,8 @@ postgres-values.js: PostgreSQL 值边界，统一 int4/boolean 转换、空字�
 rank.js: 动态榜单服务，定义榜单口径、热度计算、缓存刷新和分页输出元数据。
 rate-limit.js: 进程内限流原语，按请求身份维护时间窗并生成标准 429 与 Retry-After。
 reader-rum.js: Reader RUM 服务，清洗前端性能事件、批量落库并输出路由与指标聚合。
+reader-account.js: Reader 账户生命周期服务，以事务锁定 CDK、处理密码/Telegram 身份唯一键竞争，并原子结算 Bot 注册赠送、邀请计数与强类型批量导入。
+reader-check-in.js: Reader 签到用例服务，在用户行锁事务内统一结算签到周期、余额、学者经验和全部奖励流水。
 remote-backups.js: WebDAV/S3/R2 远端备份适配器，负责签名上传、加密文件选择、状态和保留策略。
 review-governance.js: 书评治理领域服务，处理举报阈值、隐藏状态、申诉和审核决议事务。
 runtime-observability.js: 运行观测适配层，统一短期状态缓存、慢搜索事件和进程级数据库/致命错误分流。

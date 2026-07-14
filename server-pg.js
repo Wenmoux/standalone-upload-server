@@ -1,5 +1,5 @@
 ﻿/**
- * [INPUT]: 依赖 Express/PostgreSQL、应用生命周期、启动流量闸门、routes/services 领域模块、Admin 静态产物及 /config 配置
+ * [INPUT]: 依赖 Express/PostgreSQL、账户/签到等领域服务、应用生命周期、启动流量闸门、Admin 静态产物及 /config 配置
  * [OUTPUT]: 装配并启动 3100 端口服务，在迁移及初始化完成前仅开放健康检查、拒绝业务流量
  * [POS]: 项目后端唯一组合根，只声明依赖图、HTTP 管线和启动入口，领域规则与生命周期下沉到 services
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -39,6 +39,8 @@ const { createBookManifestService } = require("./services/book-manifest");
 const { createAdminOverviewService } = require("./services/admin-overview");
 const { createReaderRumService } = require("./services/reader-rum");
 const { createUserCurrencyService } = require("./services/user-currency");
+const { createReaderAccountService } = require("./services/reader-account");
+const { createReaderCheckInService } = require("./services/reader-check-in");
 const { createBookChapterService } = require("./services/book-chapters");
 const { createConfigService } = require("./services/config");
 const { createEpubStyle2AssetService } = require("./services/epub-style2-assets");
@@ -61,7 +63,7 @@ const { createCredentialCrypto, encryptStoredPo18Credentials } = require("./serv
 const { botScopeForRequest, createApiTokenService } = require("./services/api-tokens");
 const { createBackupRestoreDrillScheduler } = require("./services/backup-restore-drill");
 const { listAdminAuditLogs } = require("./services/admin-audit");
-const { createScholarProgression, currencyLabel: serverCurrencyLabel, positiveNumber } = require("./services/scholar-progression");
+const { createScholarProgression, currencyLabel: serverCurrencyLabel } = require("./services/scholar-progression");
 const { cleanPgObject, cleanPgText, cleanPgValue, nowSql, safePgBool, safePgInt } = require("./services/postgres-values");
 const { correctionCharLength, normalizeCorrectionText, replaceFirstText, replaceTextAtCharOffset } = require("./services/correction-text");
 const {
@@ -231,6 +233,19 @@ const {
     verifyPassword,
     verifyTelegramLoginPayload
 } = authService;
+const readerAccountService = createReaderAccountService({
+    query,
+    pool,
+    crypto,
+    hashPassword,
+    verifyPassword,
+    cdkDuration,
+    botUserSelect,
+    normalizeTelegramId,
+    botUsernameForTelegram,
+    telegramLoginNickname
+});
+const readerCheckInService = createReaderCheckInService({ pool, botUserSelect, todayDateKey, signExpReward, scholarProfile });
 const eventService = createEventService({
     query,
     cleanPgText,
@@ -593,7 +608,6 @@ const botApiRoutes = createBotApiRoutes({
     requireBotApi,
     query,
     pool,
-    hashPassword,
     botUserSelect,
     botPublicUser,
     normalizeTelegramId,
@@ -609,10 +623,9 @@ const botApiRoutes = createBotApiRoutes({
     redeemExportQuotaCdk: userCurrencyService.redeemExportQuotaCdk,
     spendUserCurrency: userCurrencyService.spendUserCurrency,
     adjustUserCurrency: userCurrencyService.adjustUserCurrency,
-    todayDateKey,
-    positiveNumber,
-    signExpReward,
-    scholarProfile,
+    registerBotUser: readerAccountService.registerBotUser,
+    importBotUsers: readerAccountService.importBotUsers,
+    checkInUser: readerCheckInService.checkInUser,
     randomRedPacketAmount,
     normalizeFeedback,
     bookFeedbackCounts,
@@ -649,23 +662,17 @@ const readerApiRoutes = createReaderApiRoutes({
     query,
     currentReaderUser,
     publicReaderUser,
-    hashPassword,
-    verifyPassword,
-    cdkDuration,
     botUserSelect,
     telegramLoginBotToken,
     telegramLoginBotIdFromToken,
     verifyTelegramLoginPayload,
-    normalizeTelegramId,
-    botUsernameForTelegram,
-    telegramLoginNickname,
     requireReader,
     requireLibraryAccess,
     requireReaderContentAccess,
-    todayDateKey,
-    signExpReward,
-    scholarProfile,
-    recordTransaction: userCurrencyService.recordTransaction,
+    registerReaderWithCdk: readerAccountService.registerReaderWithCdk,
+    loginReaderWithPassword: readerAccountService.loginReaderWithPassword,
+    loginReaderWithTelegram: readerAccountService.loginReaderWithTelegram,
+    checkInUser: readerCheckInService.checkInUser,
     getHotKeywords,
     platformConfigPayload,
     isCacheCountSort: bookChapterService.isCacheCountSort,
