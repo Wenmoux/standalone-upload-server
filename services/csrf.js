@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 http-security 的可信 CORS 来源、请求 Origin/Host、浏览器 Fetch Metadata 与 session cookie
- * [OUTPUT]: 对外提供 CSRF 防护中间件以及来源提取、可信判断和保护条件函数
+ * [OUTPUT]: 对外提供兼容代理丢失 Origin 的 CSRF 防护中间件以及来源提取、可信判断和保护条件函数
  * [POS]: services 的浏览器会话写操作防线，与 CORS 共用来源真源以避免安全策略分叉
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -71,11 +71,12 @@ function createCsrfProtection(options = {}) {
         if (!needsCsrfProtection(req, cookieName)) return next();
         const origin = requestOrigin(req);
         const fetchSite = String(req.headers?.["sec-fetch-site"] || "").toLowerCase();
+        if (fetchSite === "cross-site") return res.status(403).json({ error: "跨站写请求已拒绝" });
         if (origin) {
             if (trustedOrigins(req, env).has(origin) || fetchSite === "same-origin") return next();
             return res.status(403).json({ error: "跨站写请求已拒绝" });
         }
-        if (fetchSite === "cross-site") return res.status(403).json({ error: "跨站写请求已拒绝" });
+        if (fetchSite === "same-origin") return next();
         if (hasSessionCookie(req, cookieName) && env.PO18_CSRF_ALLOW_MISSING_ORIGIN !== "1") {
             return res.status(403).json({ error: "缺少写请求来源信息" });
         }

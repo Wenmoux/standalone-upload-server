@@ -1,12 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供CSRF Token 与受保护请求判定的自动化回归断言
- * [POS]: tests 的CSRF Token 与受保护请求判定守卫，防止实现或部署契约在后续变更中静默退化
- * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
- */
-/**
- * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供CSRF Token 与受保护请求判定的自动化回归断言
+ * [OUTPUT]: 提供可信来源、代理缺失 Origin 和跨站拒绝场景的 CSRF 自动化回归断言
  * [POS]: tests 的CSRF Token 与受保护请求判定守卫，防止实现或部署契约在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -75,6 +69,15 @@ test("CSRF protection accepts same-origin and configured Reader origins", () => 
         }
     }));
     assert.equal(proxyRewrittenHost.continued, true);
+
+    const legacyProxyWithoutOrigin = run(middleware, request({
+        headers: {
+            host: "127.0.0.1:3100",
+            cookie: "po18_upload_admin_pg=session",
+            "sec-fetch-site": "same-origin"
+        }
+    }));
+    assert.equal(legacyProxyWithoutOrigin.continued, true);
 });
 
 test("CSRF protection rejects cross-site and origin-less Session writes", () => {
@@ -90,11 +93,31 @@ test("CSRF protection rejects cross-site and origin-less Session writes", () => 
     assert.equal(crossSite.continued, false);
     assert.equal(crossSite.res.statusCode, 403);
 
+    const contradictoryCrossSite = run(middleware, request({
+        headers: {
+            host: "reader.example.com",
+            cookie: "po18_upload_admin_pg=session",
+            origin: "https://reader.example.com",
+            "sec-fetch-site": "cross-site"
+        }
+    }));
+    assert.equal(contradictoryCrossSite.continued, false);
+    assert.equal(contradictoryCrossSite.res.statusCode, 403);
+
     const missing = run(middleware, request({
         headers: { host: "reader.example.com", cookie: "po18_upload_admin_pg=session" }
     }));
     assert.equal(missing.res.statusCode, 403);
     assert.match(missing.res.body.error, /来源信息/);
+
+    const sameSiteWithoutOrigin = run(middleware, request({
+        headers: {
+            host: "reader.example.com",
+            cookie: "po18_upload_admin_pg=session",
+            "sec-fetch-site": "same-site"
+        }
+    }));
+    assert.equal(sameSiteWithoutOrigin.res.statusCode, 403);
 });
 
 test("CSRF protection preserves token clients and safe methods", () => {
