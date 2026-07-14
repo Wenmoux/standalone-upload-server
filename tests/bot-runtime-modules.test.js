@@ -20,8 +20,8 @@ const { markTelegramSystemPush } = require("../telegram-push-contract");
 
 test("bot entrypoint initializes PO18 account handlers before task schedulers", async () => {
     const source = await fs.readFile(path.join(__dirname, "..", "bot", "telegram-bot.js"), "utf8");
-    const accountHandlers = source.indexOf("} = createPo18AccountHandlers({");
-    const taskSchedulers = source.indexOf("} = createTaskSchedulers({");
+    const accountHandlers = source.indexOf("createPo18AccountHandlers(");
+    const taskSchedulers = source.indexOf("createTaskSchedulers(", accountHandlers + 1);
     assert.ok(accountHandlers >= 0, "PO18 account handler initialization is missing");
     assert.ok(taskSchedulers > accountHandlers, "task schedulers must not read handleMyBookshelf before initialization");
 });
@@ -90,15 +90,10 @@ test("bot search cache evicts old keys and help lines follow command groups", ()
             { enabled: true, group: "搜书", command: "/search" }
         ]
     };
-    assert.deepEqual(helpLinesFromCommands(registry, (value) => `[${value}]`), [
-        "",
-        "<b>[搜书]</b>",
-        "[/search]",
-        "",
-        "<b>[导出]</b>",
-        "[/exporttxt 书号]",
-        "大书会进入后台队列，群里不会卡住其它消息。"
-    ]);
+    assert.deepEqual(
+        helpLinesFromCommands(registry, (value) => `[${value}]`),
+        ["", "<b>[搜书]</b>", "[/search]", "", "<b>[导出]</b>", "[/exporttxt 书号]", "大书会进入后台队列，群里不会卡住其它消息。"]
+    );
 });
 
 test("review draft store isolates users, validates Unicode length and expires bounded state", () => {
@@ -147,7 +142,10 @@ test("broadcast handler only allows admins and records bounded delivery failures
         client: {
             createBroadcast: async () => ({ job: { id: 7 } }),
             broadcastRecipients: async () => ({
-                rows: [{ id: 1, telegram_id: "100" }, { id: 2, telegram_id: "200" }],
+                rows: [
+                    { id: 1, telegram_id: "100" },
+                    { id: 2, telegram_id: "200" }
+                ],
                 has_more: false
             })
         },
@@ -187,18 +185,27 @@ test("bot account formatters keep wallet and status copy stable", () => {
     assert.match(startHelpText({ user, payload: "INV", helpLines: ["/search"], escapeHtml, scholarText }), /邀请码：<code>INV<\/code>/);
     assert.match(registerText({ existed: false, user }, { escapeHtml, scholarText }), /注册成功/);
     assert.match(walletText(user, { escapeHtml, scholarText }), /Alice&lt;/);
-    assert.match(meText({
-        user,
-        stats: { free_export: { available: true }, download_count: 1, bookshelf_count: 2, share_count: 3 },
-        telegramId: "42",
-        escapeHtml,
-        scholarText,
-        freeExportText
-    }), /权限：未开通导出（今日可免费）/);
-    assert.match(signSuccessText({
-        reward: { copper: 10, silver: 1, exp: 5, day: 3, level_up: true },
-        user
-    }, { escapeHtml, scholarText }), /已升级/);
+    assert.match(
+        meText({
+            user,
+            stats: { free_export: { available: true }, download_count: 1, bookshelf_count: 2, share_count: 3 },
+            telegramId: "42",
+            escapeHtml,
+            scholarText,
+            freeExportText
+        }),
+        /权限：未开通导出（今日可免费）/
+    );
+    assert.match(
+        signSuccessText(
+            {
+                reward: { copper: 10, silver: 1, exp: 5, day: 3, level_up: true },
+                user
+            },
+            { escapeHtml, scholarText }
+        ),
+        /已升级/
+    );
 });
 
 test("telegram polling runtime advances offset and reports handler errors", async () => {
@@ -231,7 +238,10 @@ test("telegram polling runtime advances offset and reports handler errors", asyn
 
     assert.equal(updates.length, 2);
     assert.equal(second.length, 2);
-    assert.deepEqual(calls.map((call) => call.payload.offset), [0, 12]);
+    assert.deepEqual(
+        calls.map((call) => call.payload.offset),
+        [0, 12]
+    );
     assert.deepEqual(messages, [
         { chatId: "c2", text: "处理失败：boom" },
         { chatId: "c2", text: "处理失败：boom" }
@@ -266,10 +276,12 @@ test("automatic push unpin only targets marked automatic forwards", async () => 
     assert.equal(await maybeUnpin(manualGroupPin), false);
     assert.equal(await maybeUnpin(humanChannelPost), false);
     assert.equal(await maybeUnpin(systemPush), true);
-    assert.deepEqual(calls, [{
-        method: "unpinChatMessage",
-        payload: { chat_id: -1001, message_id: 12 }
-    }]);
+    assert.deepEqual(calls, [
+        {
+            method: "unpinChatMessage",
+            payload: { chat_id: -1001, message_id: 12 }
+        }
+    ]);
     assert.deepEqual(warnings, []);
 });
 
@@ -306,7 +318,9 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         },
         sendMessage: () => {},
         isGroup: (chat) => chat.type === "group",
-        sendExport: async (...args) => { exports.push(args); },
+        sendExport: async (...args) => {
+            exports.push(args);
+        },
         handleMyBookshelf: async () => {},
         handleShare: async () => {},
         handleShareBookshelf: async () => {},
