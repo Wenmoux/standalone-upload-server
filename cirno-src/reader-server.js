@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Express、http-proxy/fetch、dist-reader 构建产物、PO18_API_BASE 与监听配置
- * [OUTPUT]: 对外提供 3200 端口 Reader 静态站点、/reader-auth 和 /reader-api 代理及健康端点
- * [POS]: cirno-src 的生产静态服务器，只代理 Reader 专用 API，不承接 Upload/Bot/Admin 协议
+ * [OUTPUT]: 对外提供 3200 端口 Reader 静态站点、保留公网来源信息的 /reader-auth 和 /reader-api 代理及健康端点
+ * [POS]: cirno-src 的生产静态服务器，只代理 Reader 专用 API，并为 server-pg 的会话与 CSRF 判断传递原始 Host/协议
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -37,6 +37,20 @@ function healthPayload(extra = {}) {
     };
 }
 
+function firstForwardedValue(value) {
+    return String(value || "").split(",")[0].trim();
+}
+
+function proxyRequestHeaders(req, target) {
+    const headers = { ...req.headers, host: target.host };
+    const publicHost = String(req.headers?.host || "").trim();
+    const publicProtocol = firstForwardedValue(req.headers?.["x-forwarded-proto"])
+        || (req.socket?.encrypted ? "https" : String(req.protocol || "http"));
+    if (publicHost) headers["x-forwarded-host"] = publicHost;
+    if (publicProtocol) headers["x-forwarded-proto"] = publicProtocol;
+    return headers;
+}
+
 app.get("/health/live", (req, res) => {
     res.json(healthPayload());
 });
@@ -57,7 +71,7 @@ app.get(["/health/ready", "/health/status"], (req, res) => {
 function proxyToApi(req, res) {
     const target = new URL(req.originalUrl, API_BASE);
     const client = target.protocol === "https:" ? https : http;
-    const headers = { ...req.headers, host: target.host };
+    const headers = proxyRequestHeaders(req, target);
     const request = client.request(
         {
             protocol: target.protocol,
@@ -106,8 +120,14 @@ app.get("*", (req, res) => {
     res.sendFile(INDEX_HTML);
 });
 
-app.listen(PORT, HOST, () => {
-    console.log(`[reader] http://${HOST}:${PORT}`);
-    console.log(`[reader] API proxy -> ${API_BASE}`);
-    console.log(`[reader] static -> ${DIST_DIR}`);
-});
+function start() {
+    return app.listen(PORT, HOST, () => {
+        console.log(`[reader] http://${HOST}:${PORT}`);
+        console.log(`[reader] API proxy -> ${API_BASE}`);
+        console.log(`[reader] static -> ${DIST_DIR}`);
+    });
+}
+
+if (require.main === module) start();
+
+module.exports = { app, firstForwardedValue, healthPayload, proxyRequestHeaders, proxyToApi, start };

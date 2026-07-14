@@ -65,6 +65,16 @@ test("CSRF protection accepts same-origin and configured Reader origins", () => 
             origin: "https://web.example.net"
         }
     })).continued, true);
+
+    const proxyRewrittenHost = run(middleware, request({
+        headers: {
+            host: "127.0.0.1:3100",
+            cookie: "po18_upload_admin_pg=session",
+            origin: "https://reader.example.com",
+            "sec-fetch-site": "same-origin"
+        }
+    }));
+    assert.equal(proxyRewrittenHost.continued, true);
 });
 
 test("CSRF protection rejects cross-site and origin-less Session writes", () => {

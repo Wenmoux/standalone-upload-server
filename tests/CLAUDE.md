@@ -70,6 +70,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `reader-navigation.test.js`: Reader 章节导航与边界定位。
 - `reader-offline.test.js`: 离线缓存、更新与失效策略。
 - `reader-pwa.test.js`: PWA manifest、Service Worker 与安装资源。
+- `reader-proxy.test.js`: Reader 3200 到 3100 代理的公网 Host、协议与 CSRF 来源传递契约。
 - `reader-rum.test.js`: Reader 性能事件采样和写入。
 - `reader-virtual-list.test.js`: 虚拟章节列表窗口计算。
 - `review-governance.test.js`: 书评举报、申诉、审核与状态机。

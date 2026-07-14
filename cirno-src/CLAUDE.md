@@ -22,7 +22,7 @@ Vue 3 Reader 前端与独立静态服务器。浏览器只访问同源 `/reader-
 `package-lock.json`: Reader 子项目依赖锁，必须与 `package.json` 同步提交。
 `package.json`: Vue/Vite 依赖和 dev/build/build:standalone/reader/转换报告命令。
 `prettier.config.js`: Reader 子项目格式化规则。
-`reader-server.js`: 生产静态服务与 Reader 专用反向代理，提供 live/ready/status 健康端点。
+`reader-server.js`: 生产静态服务与 Reader 专用反向代理，向 server-pg 保留公网 Host/协议以维持会话与 CSRF 同源语义，并提供 live/ready/status 健康端点。
 `README.md`: 当前 Reader 能力、构建、代理、PWA 缓存和维护边界说明。
 `vite.config.mjs`: Vue 构建、路径别名、PWA 插件、生产输出与本地 3100 代理配置。
 
@@ -37,6 +37,7 @@ Browser → Vue Router / Store / Views
 - PWA Service Worker 只缓存应用壳并绕过 Reader Auth/API；章节离线数据由账号隔离的 Reader 存储显式管理。
 - `dist-reader` 是源码构建结果，代码变化后必须执行 `npm --prefix cirno-src run build:standalone`。
 - Upload/Bot/Admin API 直接访问 `3100`，不得为了“方便”扩展 Reader 代理面。
+- Reader 代理改写上游 `Host` 时必须把浏览器访问的公网 Host/协议传入 `X-Forwarded-Host`、`X-Forwarded-Proto`，否则双域名部署会被后端误判为跨站写请求。
 - `scf/` 是历史兼容边界；当前部署事实以根 Dockerfile、Compose 和 `reader-server.js` 为准。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

@@ -2,7 +2,7 @@
 
 <img src="./src/assets/cirno.png" width="96" alt="Cirno logo" />
 
-Reader 是 PO18 Reader Stack 的浏览器阅读前端。Vue 应用负责登录、书架、检索、详情与正文交互；`reader-server.js` 只提供生产静态文件、健康检查，并把 `/reader-auth` 与 `/reader-api` 原样代理到 `server-pg:3100`。
+Reader 是 PO18 Reader Stack 的浏览器阅读前端。Vue 应用负责登录、书架、检索、详情与正文交互；`reader-server.js` 只提供生产静态文件、健康检查，并把 `/reader-auth` 与 `/reader-api` 代理到 `server-pg:3100`。代理会保留浏览器访问的公网 Host 与协议，让后端在 3100/3200 分别绑定不同域名时仍能正确判断同源会话写请求。
 
 它不提供 Upload、Bot 或 Admin API，也不直接连接 PostgreSQL。
 
@@ -70,6 +70,7 @@ Reader ready 只证明静态产物存在；部署级健康还应同时检查 `se
 ## 维护规则
 
 - Reader API 只能通过 `/reader-auth`、`/reader-api`；新增代理前缀必须同步 `reader-server.js`、Vite、部署文档和测试。
+- 外层 HTTPS 反向代理应保留请求 `Host` 并设置 `X-Forwarded-Proto`；Reader server 会把这组公网来源信息继续传给 3100，不能只留下内部容器地址。
 - 修改 Reader 源码后运行 `npm --prefix cirno-src run build:standalone`，不要手改 `dist-reader`。
 - 修改 PWA 壳文件或图标后必须重新构建，确认旧缓存版本在 activate 阶段被清理。
 - 不在浏览器日志、离线缓存键名、示例或测试报告中写入 Token、Cookie、账号密码或私人正文。

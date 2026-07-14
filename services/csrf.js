@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 http-security 的可信 CORS 来源、请求 Origin/Host 与 session cookie
+ * [INPUT]: 依赖 http-security 的可信 CORS 来源、请求 Origin/Host、浏览器 Fetch Metadata 与 session cookie
  * [OUTPUT]: 对外提供 CSRF 防护中间件以及来源提取、可信判断和保护条件函数
  * [POS]: services 的浏览器会话写操作防线，与 CORS 共用来源真源以避免安全策略分叉
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -72,7 +72,7 @@ function createCsrfProtection(options = {}) {
         const origin = requestOrigin(req);
         const fetchSite = String(req.headers?.["sec-fetch-site"] || "").toLowerCase();
         if (origin) {
-            if (trustedOrigins(req, env).has(origin)) return next();
+            if (trustedOrigins(req, env).has(origin) || fetchSite === "same-origin") return next();
             return res.status(403).json({ error: "跨站写请求已拒绝" });
         }
         if (fetchSite === "cross-site") return res.status(403).json({ error: "跨站写请求已拒绝" });
