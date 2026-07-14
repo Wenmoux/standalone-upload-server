@@ -8,7 +8,11 @@
       <button class="secondary" type="button" @click="loadAll">刷新</button>
     </div>
 
-    <section class="panel">
+    <nav class="view-tabs" aria-label="TG Bot 工作区">
+      <button v-for="tab in telegramTabs" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" :aria-current="activeTab === tab.key ? 'page' : undefined" @click="activeTab = tab.key">{{ tab.label }}</button>
+    </nav>
+
+    <section v-show="activeTab === 'runtime'" class="panel">
       <div class="section">
         <div class="section-head">
           <div><p class="section-title">Bot 运行概览</p><p class="section-desc">在线状态、后台任务队列、限流、PikPak 和最近失败原因。</p></div>
@@ -74,7 +78,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'messages'" class="panel">
       <div class="section">
         <div class="section-head">
           <div><p class="section-title">全员消息推送</p><p class="section-desc">通过 Bot 私聊推送给已注册、未封禁且绑定 Telegram 的用户；任务在后台限速执行。</p></div>
@@ -95,7 +99,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'messages'" class="panel">
       <div class="section">
         <div class="section-head"><div><p class="section-title">Telegram 推送</p><p class="section-desc">选择推送到指定频道或群组的更新内容。</p></div></div>
         <label class="check-row"><input v-model="form.enabled" type="checkbox" /><span>启用频道推送</span></label>
@@ -116,7 +120,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'messages'" class="panel">
       <div class="section">
         <div class="section-head"><div><p class="section-title">管理员日报</p><p class="section-desc">每日按北京时间推送新增书籍、章节、活跃人数等数据。</p></div></div>
         <label class="check-row"><input v-model="form.dailyReportEnabled" type="checkbox" /><span>启用日报</span></label>
@@ -136,7 +140,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'export'" class="panel">
       <div class="section">
         <div class="section-head"><div><p class="section-title">TG 网页登录</p><p class="section-desc">Cirno 登录页的 TG 图标复用上面的 Bot Token。</p></div></div>
         <div class="dashboard">
@@ -152,7 +156,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'export'" class="panel">
       <div class="section">
         <div class="section-head"><div><p class="section-title">导出扣费</p><p class="section-desc">配置免费额度用完后的导出授权和章节扣费。</p></div></div>
         <div class="split">
@@ -175,7 +179,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'commands'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -221,16 +225,25 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、EpubStyleEditor/StatCard、Bot/Telegram/全员通知/导出 Admin API 与全局提示和确认服务
- * [OUTPUT]: 提供 Bot 状态与命令、注册用户全员通知、Telegram 类型推送/日报、连接测试及 TXT/EPUB 导出配置页面
- * [POS]: admin-ui/src/views 的 Telegram 运营与导出配置组合页，高风险广播经全局确认后进入任务中心，EPUB 细节委托 EpubStyleEditor
+ * [INPUT]: 依赖 Vue、EpubStyleEditor/StatCard、Bot/Telegram/全员通知/导出 Admin API、剪贴板适配与全局反馈服务
+ * [OUTPUT]: 提供按运行、消息、导出、命令分区的 Bot 状态、广播、推送/日报、登录及 EPUB 配置页面
+ * [POS]: admin-ui/src/views 的 Telegram 运营工作台，高风险广播经全局确认进入任务中心，EPUB 细节委托 EpubStyleEditor
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { computed, inject, onMounted, reactive, ref } from "vue";
 import EpubStyleEditor from "../components/EpubStyleEditor.vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";
+import { copyText } from "../utils/clipboard";
 import { number } from "../utils/format";
+
+const activeTab = ref("runtime");
+const telegramTabs = [
+  { key: "runtime", label: "运行" },
+  { key: "messages", label: "消息推送" },
+  { key: "export", label: "导出与登录" },
+  { key: "commands", label: "命令" }
+];
 
 const toast = inject("toast", () => {});
 const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
@@ -453,12 +466,8 @@ async function publishBroadcast() {
 }
 
 async function copyDomain() {
-  try {
-    await navigator.clipboard.writeText(origin);
-    toast("已复制域名");
-  } catch {
-    window.prompt("复制这个域名到 BotFather", origin);
-  }
+  const copied = await copyText(origin);
+  toast(copied ? "已复制域名" : `复制失败，请手动复制：${origin}`, copied ? "success" : "error");
 }
 
 function loadAll() {

@@ -55,6 +55,7 @@
             <p class="section-desc">四种来源共用并发、跳过缓存和覆盖策略；元信息库模式直接从 book_metadata 的 PO18 书籍补缺。</p>
           </div>
           <div class="row-actions">
+            <span v-if="unsavedChanges" class="tag warn">有未保存修改</span>
             <button class="secondary" type="button" :disabled="testing" @click="testCookie">{{ testing ? "检测中..." : "检测 Cookie" }}</button>
             <button type="button" :disabled="saving" @click="save">{{ saving ? "保存中..." : "保存配置" }}</button>
           </div>
@@ -68,7 +69,10 @@
           </label>
         </div>
 
-        <div class="split crawler-form-grid">
+        <details class="config-disclosure">
+          <summary>计划与性能参数</summary>
+          <p class="section-desc">低频参数会影响抓取速度与站点压力，普通运行保持默认即可。</p>
+        <div class="split crawler-form-grid config-disclosure-body">
           <label class="field">
             <span>启用定时</span>
             <select v-model="form.enabled">
@@ -113,6 +117,7 @@
             <input v-model.number="form.requestRetryDelayMs" type="number" min="0" max="60000" step="500" />
           </label>
         </div>
+        </details>
 
         <div v-if="form.sourceMode === 'discover'" class="split crawler-form-grid crawler-mode-settings">
           <label class="field">
@@ -188,7 +193,10 @@
           <small>当前识别 {{ number(subscriptionCount) }} 本；可直接粘贴 tmp/po18-cache90-bookids.txt 的内容。</small>
         </label>
 
-        <div class="split crawler-form-grid crawler-mode-settings">
+        <details class="config-disclosure">
+          <summary>内容筛选规则</summary>
+          <p class="section-desc">留空表示不过滤；规则应用范围以每项说明为准。</p>
+        <div class="split crawler-form-grid crawler-mode-settings config-disclosure-body">
           <label class="field field-wide">
             <span>只选分类/标签</span>
             <textarea v-model="includeCategoriesText" placeholder="留空为全部；多个分类用逗号、换行或顿号分隔，例如：甜文、校园"></textarea>
@@ -212,6 +220,7 @@
           </label>
           <p class="inline-hint field-wide">标签和关键字适用于所有来源；章节数范围只作用于发现页，元信息库、订阅和书架补缺不会按章节数跳过。</p>
         </div>
+        </details>
 
         <div class="tag-row crawler-checks">
           <label class="check-row"><input v-model="form.uploadMetadata" type="checkbox" /><span>更新元信息</span></label>
@@ -220,7 +229,10 @@
           <label class="check-row"><input v-model="form.overwrite" type="checkbox" /><span>覆盖已缓存章节</span></label>
         </div>
 
-        <div class="crawler-cookie-grid">
+        <details class="config-disclosure" :open="status.paused">
+          <summary>Cookie 档案与登录状态</summary>
+          <p class="section-desc">Cookie 属于敏感配置，仅在失效、暂停或切换账号时需要编辑。</p>
+        <div class="crawler-cookie-grid config-disclosure-body">
           <label class="field">
             <span>当前 Cookie 档案</span>
             <select v-model="form.activeCookieProfile">
@@ -252,6 +264,7 @@
             <small>{{ profile.lastStatus || "未检测" }}{{ profile.lastUsedAt ? ` · ${time(profile.lastUsedAt)}` : "" }}</small>
           </div>
         </div>
+        </details>
       </div>
     </section>
 
@@ -276,8 +289,8 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、StatCard、PO18 Crawler Admin API、格式化工具与全局确认/提示服务
- * [OUTPUT]: 提供遍历来源、Cookie/计划配置、实时日志和运行/暂停/恢复/停止控制台
- * [POS]: admin-ui/src/views 的外部抓取任务编排视图，持久状态与并发规则由服务端负责
+ * [OUTPUT]: 提供常驻运行状态、分层高级配置、未保存提示、实时日志和运行/暂停/恢复/停止控制台
+ * [POS]: admin-ui/src/views 的外部抓取任务编排视图，将低频风险参数折叠，持久状态与并发规则由服务端负责
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
@@ -302,6 +315,7 @@ const blockedTagsText = ref("");
 const blockedKeywordsText = ref("");
 let pollTimer = null;
 let disposed = false;
+const savedSnapshot = ref("");
 
 const sourceOptions = [
   { value: "discover", label: "发现页", desc: "按 PO18 发现页分页遍历，适合找新书和定期补缓存。" },
@@ -343,6 +357,8 @@ const form = reactive({
   cookieName: "",
   cookie: ""
 });
+
+const unsavedChanges = computed(() => !!savedSnapshot.value && JSON.stringify(savePayload()) !== savedSnapshot.value);
 
 const statusLabel = computed(() => {
   if (status.value.paused) return "已暂停";
@@ -455,6 +471,7 @@ function assignForm(next = {}) {
   includeCategoriesText.value = Array.isArray(next.includeCategories) ? next.includeCategories.join("\n") : "";
   blockedTagsText.value = Array.isArray(next.blockedTags) ? next.blockedTags.join("\n") : "";
   blockedKeywordsText.value = Array.isArray(next.blockedKeywords) ? next.blockedKeywords.join("\n") : "";
+  savedSnapshot.value = JSON.stringify(savePayload());
 }
 
 function savePayload() {
@@ -526,6 +543,18 @@ watch(logLines, async () => {
 });
 
 async function save() {
+  if (form.overwrite || (form.enabled && (Number(form.bookConcurrency) > 3 || Number(form.chapterConcurrency) > 8))) {
+    const confirmation = await confirmAction({
+      title: "保存高风险遍历配置",
+      message: [
+        form.overwrite ? "已开启覆盖缓存章节。" : "",
+        form.enabled ? `定时任务将启用，书籍并发 ${form.bookConcurrency}，章节并发 ${form.chapterConcurrency}。` : "",
+        "这些设置会增加站点请求和本地写入，请确认后保存。"
+      ].filter(Boolean).join("\n"),
+      confirmLabel: "保存配置"
+    });
+    if (!confirmation.confirmed) return;
+  }
   saving.value = true;
   try {
     const data = await api("/admin-api/po18-crawler/config", {

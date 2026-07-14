@@ -12,7 +12,6 @@ const MAX_CONTEXT_BYTES = Number(process.env.PO18_CONTEXT_MAX_BYTES || 80 * 1024
 const TOP_LIMIT = Number(process.env.PO18_CONTEXT_TOP_LIMIT || 20);
 const REQUIRED_CONTEXT_FILES = Object.freeze([
     "telegram-push-contract.js",
-    "scripts/purge-fanqie-chapter-cache.js",
     "cirno-src/scripts/reader-pwa-plugin.mjs",
     "cirno-src/public/manifest.webmanifest",
     "cirno-src/public/pwa-icon-192.png",

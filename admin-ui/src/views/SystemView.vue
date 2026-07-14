@@ -12,7 +12,11 @@
       </div>
     </div>
 
-    <section class="panel">
+    <nav class="view-tabs" aria-label="系统工作区">
+      <button v-for="tab in systemTabs" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" :aria-current="activeTab === tab.key ? 'page' : undefined" @click="activeTab = tab.key">{{ tab.label }}</button>
+    </nav>
+
+    <section v-show="activeTab === 'runtime'" class="panel">
       <div class="section">
         <div class="section-head"><div><p class="section-title">系统状态</p><p class="section-desc">检查 server-pg、阅读器、Bot、数据库连接和表结构。</p></div></div>
         <div v-if="statusLoading" class="empty-block">加载中...</div>
@@ -26,7 +30,7 @@
       </div>
     </section>
 
-    <section v-if="user?.role === 'owner'" class="panel">
+    <section v-if="user?.role === 'owner'" v-show="activeTab === 'access'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -60,7 +64,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'access'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -89,7 +93,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'runtime'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -144,7 +148,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'backup'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -306,7 +310,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'logs'" class="panel">
       <div class="section">
         <div class="section-head"><div><p class="section-title">运行异常</p><p class="section-desc">从 runtime log 里提取，不替代完整日志。</p></div></div>
         <div class="split observability-grid">
@@ -328,7 +332,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'logs'" class="panel">
       <div class="section">
         <div class="section-head"><div><p class="section-title">运行日志</p><p class="section-desc">{{ logFile || "读取容器运行日志；完整日志仍可用 docker logs 查看。" }}</p></div></div>
         <div class="filter-row">
@@ -338,7 +342,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'logs'" class="panel">
       <div class="section">
         <div class="section-head">
           <div><p class="section-title">脱敏诊断</p><p class="section-desc">Token、密码、数据库连接密码会脱敏，适合排查部署问题。</p></div>
@@ -352,19 +356,27 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、StatCard、系统/备份/指标/认证 Admin API、格式化工具与当前管理员权限
- * [OUTPUT]: 提供运行状态、日志、备份恢复、远端备份、指标、管理员、Token、诊断和重启运维界面
- * [POS]: admin-ui/src/views 的系统运维组合页，高风险操作均经 App 确认服务和服务端授权
+ * [INPUT]: 依赖 Vue、StatCard、系统/备份/指标/认证 Admin API、剪贴板适配、格式化工具与当前管理员权限
+ * [OUTPUT]: 提供按运行、权限、备份、日志分区的状态、恢复、指标、管理员、Token、诊断和重启界面
+ * [POS]: admin-ui/src/views 的系统运维工作台，以页内分区降低信息负担，高风险操作经 App 确认与服务端授权
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { computed, inject, onMounted, reactive, ref } from "vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";
+import { copyText } from "../utils/clipboard";
 import { bytes, number, time, uptime } from "../utils/format";
 
 const toast = inject("toast", () => {});
 const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
 const { user } = defineProps({ user: { type: Object, default: () => ({}) } });
+const activeTab = ref("runtime");
+const systemTabs = [
+  { key: "runtime", label: "运行状态" },
+  { key: "access", label: "权限与 Token" },
+  { key: "backup", label: "备份恢复" },
+  { key: "logs", label: "监控日志" }
+];
 const statusLoading = ref(false);
 const statusRows = ref([]);
 const versionLine = ref("检查 server-pg、阅读器、Bot、数据库连接和表结构。");
@@ -755,12 +767,8 @@ async function loadDiagnostics() {
 }
 
 async function copyDiagnostics() {
-  try {
-    await navigator.clipboard.writeText(diagnosticsText.value);
-    toast("诊断信息已复制");
-  } catch {
-    window.prompt("复制诊断信息", diagnosticsText.value);
-  }
+  const copied = await copyText(diagnosticsText.value);
+  toast(copied ? "诊断信息已复制" : "复制失败，请从诊断文本框手动复制", copied ? "success" : "error");
 }
 
 async function restart() {

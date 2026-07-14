@@ -8,7 +8,13 @@
       <button class="secondary" type="button" @click="load">刷新</button>
     </div>
 
-    <section class="panel">
+    <nav class="view-tabs" aria-label="反馈工作区">
+      <button v-for="tab in tabs" :key="tab.key" type="button" :class="{ active: activeTab === tab.key }" :aria-current="activeTab === tab.key ? 'page' : undefined" @click="activeTab = tab.key">
+        {{ tab.label }}<span v-if="tab.count" class="tab-count">{{ number(tab.count) }}</span>
+      </button>
+    </nav>
+
+    <section v-show="activeTab === 'feedback'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -47,7 +53,7 @@
       </div>
     </section>
 
-    <section v-if="canModerate" class="panel">
+    <section v-if="canModerate" v-show="activeTab === 'reports'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -71,7 +77,7 @@
       </div>
     </section>
 
-    <section v-if="canModerate" class="panel">
+    <section v-if="canModerate" v-show="activeTab === 'appeals'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -94,7 +100,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'requests'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -126,7 +132,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section v-show="activeTab === 'crowd'" class="panel">
       <div class="section">
         <div class="section-head">
           <div>
@@ -162,8 +168,8 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、DataTable/FormModal、Admin/Reader API、格式化工具和当前管理员权限
- * [OUTPUT]: 提供反馈、热词、求书、众筹与书评举报/申诉的聚合查询和治理动作
- * [POS]: admin-ui/src/views 的用户反馈治理中心，按权限调用服务端审核状态机
+ * [OUTPUT]: 提供按工作区分栏的反馈、热词、求书、众筹与书评举报/申诉治理动作
+ * [POS]: admin-ui/src/views 的用户反馈治理中心，以待办徽标引导审核并按权限调用服务端状态机
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { computed, inject, onMounted, ref } from "vue";
@@ -185,9 +191,16 @@ const requestSummary = ref({});
 const reviewReports = ref([]);
 const reviewAppeals = ref([]);
 const sortValue = ref("like_desc");
+const activeTab = ref("feedback");
 const resolveOpen = ref(false);
 const resolveRow = ref(null);
 const resolveForm = ref({ book_id: "", note: "", notify: true });
+const tabs = computed(() => [
+  { key: "feedback", label: "反馈与热词", count: 0 },
+  ...(canModerate.value ? [{ key: "reports", label: "待审举报", count: reviewReports.value.length }, { key: "appeals", label: "待审申诉", count: reviewAppeals.value.length }] : []),
+  { key: "requests", label: "缺书需求", count: Number(requestSummary.value.pending || searchRequests.value.filter((row) => !row.status || row.status === "pending").length) },
+  { key: "crowd", label: "众筹榜", count: 0 }
+]);
 const resolveFields = [{ key: "book_id", label: "已缓存书号", placeholder: "必填" }];
 const resolveTextareaFields = [{ key: "note", label: "处理说明", rows: 4, placeholder: "可选，会随通知发送" }];
 const resolveChecks = [{ key: "notify", label: "通知此前提交过该需求的 Telegram 用户" }];

@@ -1,15 +1,24 @@
 <template>
-  <div v-if="open" class="modal confirm-modal" role="dialog" aria-modal="true" @keydown.esc.prevent="cancel">
-    <section class="modal-card confirm-card">
+  <div v-if="open" class="modal confirm-modal" @keydown.esc.prevent="cancel">
+    <section
+      ref="dialogRef"
+      class="modal-card confirm-card"
+      role="alertdialog"
+      aria-modal="true"
+      :aria-labelledby="titleId"
+      :aria-describedby="messageId"
+      tabindex="-1"
+      @keydown="handleDialogKeydown"
+    >
       <header class="modal-head">
         <div>
           <span class="confirm-eyebrow">高风险操作</span>
-          <h3>{{ title }}</h3>
+          <h3 :id="titleId">{{ title }}</h3>
         </div>
-        <button class="secondary" type="button" :disabled="busy" @click="cancel">关闭</button>
+        <button class="secondary" type="button" :disabled="busy" aria-label="关闭确认弹窗" @click="cancel">关闭</button>
       </header>
       <div class="modal-body confirm-body">
-        <p class="confirm-message">{{ message }}</p>
+        <p :id="messageId" class="confirm-message">{{ message }}</p>
         <label v-if="requireReason" class="field field-wide">
           <span>操作原因</span>
           <textarea v-model.trim="reason" rows="3" maxlength="500" placeholder="说明本次操作原因，便于后续审计"></textarea>
@@ -33,12 +42,13 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue 响应式能力以及标题、正文、风险级别和原因要求等 props
- * [OUTPUT]: 提供带焦点管理的确认/取消对话框，并向调用方回传确认原因
- * [POS]: admin-ui/src/components 的高风险操作门禁，由 App 全局确认服务统一驱动
+ * [INPUT]: 依赖 Vue、useDialogFocus 以及标题、正文、确认短语和原因要求等 props
+ * [OUTPUT]: 提供 alertdialog 语义、焦点闭环/恢复、提交锁定并向调用方回传确认原因
+ * [POS]: admin-ui/src/components 的高风险操作门禁，由 App 全局确认服务统一驱动并阻止误操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import { useDialogFocus } from "../utils/dialogFocus";
 
 const props = defineProps({
   open: Boolean,
@@ -54,6 +64,13 @@ const props = defineProps({
 const emit = defineEmits(["cancel", "confirm"]);
 const reason = ref("");
 const phraseInput = ref("");
+const dialogId = `confirm-dialog-${Math.random().toString(36).slice(2, 10)}`;
+const titleId = `${dialogId}-title`;
+const messageId = `${dialogId}-message`;
+const { dialogRef, handleDialogKeydown } = useDialogFocus(
+  () => props.open,
+  { initialSelector: "textarea:not([disabled]), input:not([disabled]), .danger:not([disabled])" }
+);
 const canConfirm = computed(() => {
   if (props.requireReason && reason.value.trim().length < props.minimumReasonLength) return false;
   if (props.phrase && phraseInput.value !== props.phrase) return false;
@@ -70,12 +87,10 @@ function confirm() {
 
 watch(
   () => props.open,
-  async (open) => {
+  (open) => {
     if (!open) return;
     reason.value = "";
     phraseInput.value = "";
-    await nextTick();
-    document.querySelector(".confirm-card textarea, .confirm-card input")?.focus();
   }
 );
 </script>

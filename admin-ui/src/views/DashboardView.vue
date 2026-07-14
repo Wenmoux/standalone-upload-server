@@ -10,8 +10,28 @@
 
     <div v-if="error" class="error-block">{{ error }}</div>
     <div v-else-if="loading" class="panel"><div class="section">加载中...</div></div>
-    <div v-else class="dashboard">
-      <section v-for="section in sections" :key="section.title" class="stat-section" :class="{ wide: section.wide }">
+    <div v-else>
+      <section class="attention-panel" aria-labelledby="attention-title">
+        <div class="section-head">
+          <div>
+            <p id="attention-title" class="section-title">需要处理</p>
+            <p class="section-desc">先处理会影响读者体验或持续积压的事项。</p>
+          </div>
+          <span class="tag" :class="attentionTotal ? 'warn' : 'success'">{{ attentionTotal ? `${number(attentionTotal)} 项` : "暂无积压" }}</span>
+        </div>
+        <div class="attention-grid">
+          <button v-for="item in attentionItems" :key="item.label" class="attention-card" type="button" @click="navigate(item.action)">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+            <small>{{ item.hint }}</small>
+          </button>
+        </div>
+      </section>
+
+      <details class="dashboard-details">
+        <summary>查看全部运营指标</summary>
+        <div class="dashboard">
+          <section v-for="section in sections" :key="section.title" class="stat-section" :class="{ wide: section.wide }">
         <div class="stat-head">
           <h3>{{ section.title }}</h3>
           <small>{{ section.note }}</small>
@@ -46,7 +66,9 @@
             <template v-else>{{ item.hint }}</template>
           </StatCard>
         </div>
-      </section>
+          </section>
+        </div>
+      </details>
     </div>
   </section>
 </template>
@@ -54,8 +76,8 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、StatCard、Admin 统计 API 与容量/数值/百分比/时间格式化工具
- * [OUTPUT]: 提供书库、缓存、用户、反馈和 Bot 关键指标的只读总览
- * [POS]: admin-ui/src/views 的登陆后默认视图，只聚合服务端统计，不持有领域写操作
+ * [OUTPUT]: 提供任务优先的积压工作台，以及可展开的书库、用户、反馈和 Bot 全量指标
+ * [POS]: admin-ui/src/views 的登录后默认视图，把服务端统计转成处理入口但不持有领域写操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { computed, inject, onMounted, ref } from "vue";
@@ -67,6 +89,20 @@ const navigate = inject("navigate", () => {});
 const loading = ref(true);
 const error = ref("");
 const stats = ref({});
+
+const attentionItems = computed(() => {
+  const s = stats.value || {};
+  const uncached = Math.max(0, Number(s.books || 0) - Number(s.cachedBooks || 0));
+  const incomplete = Math.max(0, Number(s.cachedBooks || 0) - Number(s.completeBooks || 0));
+  return [
+    { label: "待审核纠错", value: number(s.correctionsPending), hint: "审核正文修改与奖励", action: "corrections", count: Number(s.correctionsPending || 0) },
+    { label: "无章节缓存", value: number(uncached), hint: "定位只有元信息的书籍", action: "books", count: uncached },
+    { label: "缓存未完整", value: number(incomplete), hint: "检查章节缺口与顺序", action: "quality", count: incomplete },
+    { label: "最近章节写入", value: time(s.lastChapterAt), hint: "查看最近内容更新", action: "events", count: 0 }
+  ];
+});
+
+const attentionTotal = computed(() => attentionItems.value.reduce((total, item) => total + item.count, 0));
 
 const sections = computed(() => {
   const s = stats.value || {};

@@ -34,6 +34,7 @@ PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平�
 
 - Setup 向导负责数据库测试、初始管理员、安全 Token、Bot 和 WebDAV 配置。
 - Admin 覆盖书库、章节、用户、交易、CDK、反馈、纠错、平台映射、榜单和数据质量。
+- Admin 采用分组导航与任务优先总览；系统、TG Bot、反馈按工作区分栏，移动端使用抽屉导航，长任务运行时自动刷新。
 - 支持 owner/operator/moderator/viewer RBAC、追加式操作审计和内部 API Token 管理。
 - 任务中心统一展示备份、恢复、排行榜、Bot 导出、书架同步、Crawler 和维护任务。
 - Book Manifest 支持逐章 SHA-256、校验、增量导入以及跨平台同号冲突拒绝。
@@ -226,14 +227,6 @@ npm run check:utf8
 npm run check:schema
 npm run lint
 ```
-
-删除番茄平台正文缓存、保留书籍元信息，并返回受影响书籍 ID：
-
-```bash
-docker exec po18-app npm run db:purge-fanqie-cache
-```
-
-该命令识别 `fanqie`、`fq`、`tomato`，事务成功后只输出一行 JSON 汇总；执行前应先完成数据库备份。Compose 部署可改用 `docker compose -f docker-compose.hub.yml exec server-pg npm run db:purge-fanqie-cache`。
 
 发布默认流程是命令行提交并推送 `main`，由 GitHub Actions 更新 Docker Hub；不要把 Docker Hub Token 或 GitHub Token 写入仓库、远端 URL 或命令历史。
 

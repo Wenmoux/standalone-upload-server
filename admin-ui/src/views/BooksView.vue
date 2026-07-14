@@ -93,7 +93,7 @@
           @sort="setSort"
         >
           <template #cell-select="{ row }">
-            <input class="row-check" type="checkbox" :checked="isSelected(row)" @change="toggleRow(row)" />
+            <input class="row-check" type="checkbox" :checked="isSelected(row)" :aria-label="`选择《${row.title || row.book_id}》`" @change="toggleRow(row)" />
           </template>
           <template #cell-book_id="{ row }"><code>{{ row.book_id }}</code></template>
           <template #cell-title="{ row }">
@@ -128,11 +128,11 @@
           <template #cell-updated_at="{ row }">{{ time(row.updated_at || row.created_at) }}</template>
           <template #cell-actions="{ row }">
             <div class="row-actions compact-actions">
-              <button class="secondary" type="button" @click="openBookEditor(row)">改</button>
-              <button class="secondary" type="button" @click="loadChapters(row.book_id, row.title)">查</button>
+              <button class="secondary" type="button" @click="openBookEditor(row)">编辑</button>
+              <button class="secondary" type="button" @click="loadChapters(row.book_id, row.title)">章节</button>
               <button class="secondary" type="button" @click="exportBookTxt(row.book_id)">TXT</button>
-              <button class="secondary" type="button" @click="exportBookManifest(row)">Manifest</button>
-              <button class="danger secondary" type="button" @click="deleteBook(row)">删</button>
+              <button class="secondary" type="button" @click="exportBookManifest(row)">清单</button>
+              <button class="danger secondary" type="button" @click="deleteBook(row)">删除</button>
             </div>
           </template>
         </DataTable>
@@ -157,6 +157,7 @@
             <button class="secondary" type="button" @click="exportBookTxt(currentBookId)">导出 TXT</button>
             <button class="secondary" type="button" @click="openChapterEditor()">新增</button>
             <button class="danger secondary" type="button" @click="deleteCurrentBookChapters">删除本书全部缓存</button>
+            <button class="secondary" type="button" @click="closeChapters">关闭章节区</button>
           </div>
         </div>
         <div class="bulk-bar">
@@ -199,6 +200,8 @@
       :model="bookModal.model"
       :fields="bookFields"
       :textarea-fields="bookTextareaFields"
+      :busy="bookModal.busy"
+      :error="bookModal.error"
       @close="bookModal.open = false"
       @save="saveBook"
     />
@@ -208,6 +211,8 @@
       :model="chapterModal.model"
       :fields="chapterFields"
       :textarea-fields="chapterTextareaFields"
+      :busy="chapterModal.busy"
+      :error="chapterModal.error"
       @close="chapterModal.open = false"
       @save="saveChapter"
     />
@@ -216,7 +221,7 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、DataTable/FormModal、Admin API、格式化工具与全局确认/提示服务
+ * [INPUT]: 依赖 Vue、DataTable/FormModal、Admin API、格式化工具与全局确认/输入/提示服务
  * [OUTPUT]: 提供书籍/章节查询编辑、清单校验导入、陈旧清理和章节批量维护页面
  * [POS]: admin-ui/src/views 的书库管理主视图，编排 books/chapters 多组受审计写接口
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -229,6 +234,7 @@ import { number, splitTags, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
 const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
+const inputAction = inject("inputAction", async () => ({ confirmed: false, value: "" }));
 
 const filters = reactive({ q: "", tag: "", category: "", platform: "" });
 const sortValue = ref("updated_desc");
@@ -344,8 +350,8 @@ const chapterTextareaFields = [
   { key: "html", label: "HTML", rows: 10 }
 ];
 
-const bookModal = reactive({ open: false, id: null, title: "", model: {} });
-const chapterModal = reactive({ open: false, id: null, title: "", model: {} });
+const bookModal = reactive({ open: false, id: null, title: "", model: {}, busy: false, error: "" });
+const chapterModal = reactive({ open: false, id: null, title: "", model: {}, busy: false, error: "" });
 
 function oppositeSort(sort) {
   if (sort.endsWith("_desc")) return sort.replace("_desc", "_asc");
@@ -566,9 +572,17 @@ async function batchExportTxt() {
 
 async function batchChangePlatform() {
   if (!selectedRows.value.length) return;
-  const platform = window.prompt("输入新的站别代码，例如 po18 / popo / fanqie / haitang", filters.platform || "po18");
-  if (!platform) return;
-  const label = platform.trim();
+  const input = await inputAction({
+    title: "批量修改站别",
+    message: `已选择 ${selectedRows.value.length} 本书。站别会影响搜索、来源识别和后续上传匹配。`,
+    label: "新站别代码",
+    value: filters.platform || "po18",
+    placeholder: "例如 po18 / popo / fanqie / haitang",
+    hint: "请输入服务端已识别的平台代码。",
+    confirmLabel: "下一步"
+  });
+  if (!input.confirmed) return;
+  const label = input.value;
   const confirmation = await confirmAction({
     title: "批量修改站别",
     message: `将把已选 ${selectedRows.value.length} 本书的站别改为 ${label}，可能影响搜索和来源识别。`,
@@ -585,10 +599,9 @@ async function batchChangePlatform() {
 
 async function batchDeleteBooks() {
   if (!selectedRows.value.length) return;
-  const choice = window.prompt(["请选择批量删除方式：", "1 = 仅删除元信息", "2 = 仅删除章节缓存", "3 = 全部删除", "", "输入 1、2 或 3"].join("\n"), "1");
-  if (choice === null) return;
-  const deleteMode = { 1: "metadata", 2: "cache", 3: "all" }[String(choice).trim()];
-  if (!deleteMode) return toast("已取消：请输入 1、2 或 3");
+  const input = await chooseDeleteMode(`已选择 ${selectedRows.value.length} 本书，请先选择要删除的数据范围。`);
+  if (!input.confirmed) return;
+  const deleteMode = input.value;
   const labels = { metadata: "仅删除元信息", cache: "仅删除章节缓存", all: "全部删除" };
   const confirmation = await confirmAction({
     title: "批量删除书籍数据",
@@ -606,6 +619,7 @@ async function batchDeleteBooks() {
 }
 
 function openBookEditor(row = null) {
+  bookModal.error = "";
   bookModal.id = row?.id || null;
   bookModal.title = row ? "修改书籍元信息" : "新增书籍元信息";
   bookModal.model = {
@@ -645,24 +659,32 @@ function openBookEditor(row = null) {
 }
 
 async function saveBook(form) {
+  if (bookModal.busy) return;
+  bookModal.busy = true;
+  bookModal.error = "";
   const body = { ...form };
   for (const key of bookNumericFields) body[key] = Number(body[key] || 0);
   if (!body.created_at) delete body.created_at;
   if (!body.updated_at) delete body.updated_at;
-  await api(bookModal.id ? `/admin-api/books/${bookModal.id}` : "/admin-api/books", {
-    method: bookModal.id ? "PUT" : "POST",
-    body: JSON.stringify(body)
-  });
-  bookModal.open = false;
-  await loadBooks(page.value);
-  toast("书籍已保存");
+  try {
+    await api(bookModal.id ? `/admin-api/books/${bookModal.id}` : "/admin-api/books", {
+      method: bookModal.id ? "PUT" : "POST",
+      body: JSON.stringify(body)
+    });
+    bookModal.open = false;
+    await loadBooks(page.value);
+    toast("书籍已保存", "success");
+  } catch (error) {
+    bookModal.error = error.message || String(error);
+  } finally {
+    bookModal.busy = false;
+  }
 }
 
 async function deleteBook(row) {
-  const choice = window.prompt(["请选择删除方式：", "1 = 仅删除元信息", "2 = 仅删除章节缓存", "3 = 全部删除", "", "输入 1、2 或 3"].join("\n"), "1");
-  if (choice === null) return;
-  const deleteMode = { 1: "metadata", 2: "cache", 3: "all" }[String(choice).trim()];
-  if (!deleteMode) return toast("已取消：请输入 1、2 或 3");
+  const input = await chooseDeleteMode(`《${row.title || row.book_id}》可以单独删除元信息、章节缓存，或全部删除。`);
+  if (!input.confirmed) return;
+  const deleteMode = input.value;
   const labels = { metadata: "仅删除元信息", cache: "仅删除章节缓存", all: "全部删除" };
   const confirmation = await confirmAction({
     title: "删除书籍数据",
@@ -679,6 +701,22 @@ async function deleteBook(row) {
     chapters.value = [];
   }
   toast(`已执行：${labels[deleteMode]}`);
+}
+
+function chooseDeleteMode(message) {
+  return inputAction({
+    title: "选择删除范围",
+    message,
+    label: "删除方式",
+    inputType: "select",
+    value: "metadata",
+    options: [
+      { value: "metadata", label: "仅删除元信息（保留章节缓存）" },
+      { value: "cache", label: "仅删除章节缓存（保留元信息）" },
+      { value: "all", label: "全部删除" }
+    ],
+    confirmLabel: "下一步"
+  });
 }
 
 async function cleanupStaleBooks() {
@@ -738,6 +776,7 @@ async function loadChapters(bookId, title) {
 function openChapterEditor(row = null) {
   if (!row && !currentBookId.value) return toast("请先打开一本书的章节列表");
   chapterModal.id = row?.id || null;
+  chapterModal.error = "";
   chapterModal.title = row ? "章节查看/修改" : `新增章节 · ${currentBookTitle.value || currentBookId.value}`;
   chapterModal.model = {
     book_id: row?.book_id || currentBookId.value,
@@ -754,15 +793,31 @@ function openChapterEditor(row = null) {
 }
 
 async function saveChapter(form) {
+  if (chapterModal.busy) return;
+  chapterModal.busy = true;
+  chapterModal.error = "";
   const body = { ...form, chapter_order: Number(form.chapter_order || 0) };
-  const data = await api(chapterModal.id ? `/admin-api/chapters/${chapterModal.id}` : "/admin-api/chapters", {
-    method: chapterModal.id ? "PUT" : "POST",
-    body: JSON.stringify(body)
-  });
-  chapterModal.open = false;
-  upsertChapterRow(data.chapter || { ...body, id: chapterModal.id });
-  pruneChapterSelection();
-  toast("章节已保存");
+  try {
+    const data = await api(chapterModal.id ? `/admin-api/chapters/${chapterModal.id}` : "/admin-api/chapters", {
+      method: chapterModal.id ? "PUT" : "POST",
+      body: JSON.stringify(body)
+    });
+    chapterModal.open = false;
+    upsertChapterRow(data.chapter || { ...body, id: chapterModal.id });
+    pruneChapterSelection();
+    toast("章节已保存", "success");
+  } catch (error) {
+    chapterModal.error = error.message || String(error);
+  } finally {
+    chapterModal.busy = false;
+  }
+}
+
+function closeChapters() {
+  currentBookId.value = "";
+  currentBookTitle.value = "";
+  chapters.value = [];
+  clearChapterSelection();
 }
 
 async function deleteChapter(row) {

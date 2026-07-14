@@ -12,6 +12,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `admin-auth-routes.test.js`: Admin 登录、会话、角色和 CSRF 路由契约。
 - `admin-content-routes.test.js`: 管理端书籍、章节与 Reader/Bot 管理员授权路由契约。
 - `admin-modules.test.js`: Admin 领域服务组合与边界回归。
+- `admin-ui-contract.test.js`: Admin 导航、会话恢复、无障碍公共控件、非阻塞输入与高密度工作区分层契约。
 - `api-tokens.test.js`: API Token 创建、哈希、权限与吊销语义。
 - `auth-service.test.js`: 密码、会话用户和管理员鉴权服务。
 - `backups.test.js`: 备份索引、保留、远端上传与恢复演练状态。
@@ -60,7 +61,6 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `po18-account-handlers.test.js`: PO18 账号绑定、验证码与书架命令。
 - `po18-crawler-http.test.js`: 爬虫 HTTP 封装、Cookie 与错误策略。
 - `po18-crawler.test.js`: PO18 解析、缓存、抓取与落库流程。
-- `purge-fanqie-chapter-cache.test.js`: 番茄正文缓存清理的确认词、数据边界、事务与镜像收录契约。
 - `process-supervisor.test.js`: 子进程重启退避、信号和退出策略。
 - `rank-routes.test.js`: 排行 HTTP 参数与响应契约。
 - `rank.test.js`: 排行聚合、窗口与并列规则。

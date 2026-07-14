@@ -76,7 +76,7 @@ COPY assets ./assets
 COPY ui ./ui
 COPY routes ./routes
 COPY db ./db
-COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js scripts/purge-fanqie-chapter-cache.js ./scripts/
+COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
 COPY public/legado-po18-reader-source.json public/rank.html ./public/
 COPY --from=admin-build /build/admin-ui/dist ./public/
 COPY docker/control-panel.js docker/entrypoint.js docker/setup-wizard.js docker/status-check.js docker/backup-pg.js docker/structured-log.js docker/run-all.js docker/process-supervisor.js ./docker/
@@ -188,7 +188,7 @@ COPY assets ./assets
 COPY ui ./ui
 COPY routes ./routes
 COPY db ./db
-COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js scripts/purge-fanqie-chapter-cache.js ./scripts/
+COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
 COPY public/legado-po18-reader-source.json public/rank.html ./public/
 COPY --from=admin-build /build/admin-ui/dist ./public/
 COPY bot ./bot

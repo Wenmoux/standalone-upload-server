@@ -122,6 +122,8 @@
             :model="modal.model"
             :fields="userFields"
             :checks="checks"
+            :busy="modal.busy"
+            :error="modal.error"
             @close="modal.open = false"
             @save="save"
         />
@@ -130,7 +132,7 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、DataTable/FormModal、用户 Admin API、当前后台角色、格式化工具与全局确认/提示服务
+ * [INPUT]: 依赖 Vue、DataTable/FormModal、用户 Admin API、当前后台角色、格式化工具与全局确认/输入/提示服务
  * [OUTPUT]: 提供 Reader 用户筛选、账号/权限/会员/余额维护、owner 管理员切换和带原因删除页面
  * [POS]: admin-ui/src/views 的用户生命周期管理视图，会员与 Reader/Bot 管理员授权均由服务端最终裁决
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -143,10 +145,11 @@ import { dateOnly, number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
 const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
+const inputAction = inject("inputAction", async () => ({ confirmed: false, value: "" }));
 const rows = ref([]);
 const loading = ref(false);
 const adminBusy = ref(null);
-const modal = reactive({ open: false, id: null, title: "", model: {} });
+const modal = reactive({ open: false, id: null, title: "", model: {}, busy: false, error: "" });
 const filters = reactive({ q: "", telegram_id: "", membership: "", status: "" });
 const { user } = defineProps({ user: { type: Object, default: () => ({}) } });
 
@@ -209,6 +212,7 @@ function exportUsersCsv() {
 }
 
 function openEditor(row = null) {
+    modal.error = "";
     modal.id = row?.id || null;
     modal.title = row ? "修改用户" : "新增用户";
     userFields.value = row
@@ -229,6 +233,9 @@ function openEditor(row = null) {
 }
 
 async function save(form) {
+    if (modal.busy) return;
+    modal.busy = true;
+    modal.error = "";
     const body = {
         nickname: form.nickname,
         avatar_url: form.avatar_url,
@@ -243,18 +250,38 @@ async function save(form) {
     } else {
         body.reason = form.reason;
     }
-    await api(modal.id ? `/admin-api/users/${modal.id}` : "/admin-api/users", {
-        method: modal.id ? "PUT" : "POST",
-        body: JSON.stringify(body)
-    });
-    modal.open = false;
-    await load();
-    toast("用户已保存");
+    try {
+        await api(modal.id ? `/admin-api/users/${modal.id}` : "/admin-api/users", {
+            method: modal.id ? "PUT" : "POST",
+            body: JSON.stringify(body)
+        });
+        modal.open = false;
+        await load();
+        toast("用户已保存", "success");
+    } catch (error) {
+        modal.error = error.message || String(error);
+    } finally {
+        modal.busy = false;
+    }
 }
 
 async function grant(row) {
-    const duration = window.prompt("授权时长：7d / 30d / 365d / permanent", "30d");
-    if (!duration) return;
+    const input = await inputAction({
+        title: "会员授权",
+        message: `为 ${row.nickname || row.username || row.id} 选择会员有效期。`,
+        label: "授权时长",
+        inputType: "select",
+        value: "30d",
+        options: [
+            { value: "7d", label: "7 天" },
+            { value: "30d", label: "30 天" },
+            { value: "365d", label: "365 天" },
+            { value: "permanent", label: "永久会员" }
+        ],
+        confirmLabel: "下一步"
+    });
+    if (!input.confirmed) return;
+    const duration = input.value;
     const confirmation = await confirmAction({
         title: "调整会员权限",
         message: `将为 ${row.nickname || row.username || row.id} 设置会员时长：${duration}。`,

@@ -68,7 +68,7 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、Admin API、格式化工具与 App 注入的确认/提示服务
+ * [INPUT]: 依赖 Vue、Admin API、格式化工具与 App 注入的确认/输入/提示服务
  * [OUTPUT]: 提供正文纠错待办查询、原文对照及通过/驳回审核页面
  * [POS]: admin-ui/src/views 的内容治理视图，调用 corrections 状态机而不在前端重写审核规则
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -79,6 +79,7 @@ import { number, time } from "../utils/format";
 
 const toast = inject("toast", () => {});
 const confirmAction = inject("confirmAction", async () => ({ confirmed: false, reason: "" }));
+const inputAction = inject("inputAction", async () => ({ confirmed: false, value: "" }));
 const rows = ref([]);
 const counts = ref({});
 const status = ref("pending");
@@ -152,17 +153,31 @@ async function quickReject(row) {
 }
 
 async function approve(row) {
-  const note = window.prompt("通过备注，可留空", "");
-  if (note === null) return;
-  await api(`/admin-api/corrections/${row.id}/approve`, { method: "POST", body: JSON.stringify({ note }) });
+  const input = await inputAction({
+    title: "通过正文纠错",
+    message: `纠错 #${row.id} 通过后会更新正文并发放奖励。`,
+    label: "审核备注（可留空）",
+    inputType: "textarea",
+    required: false,
+    confirmLabel: "确认通过"
+  });
+  if (!input.confirmed) return;
+  await api(`/admin-api/corrections/${row.id}/approve`, { method: "POST", body: JSON.stringify({ note: input.value }) });
   await load();
   toast("已通过纠错并发放奖励");
 }
 
 async function reject(row) {
-  const note = window.prompt("驳回原因，可留空", "");
-  if (note === null) return;
-  await api(`/admin-api/corrections/${row.id}/reject`, { method: "POST", body: JSON.stringify({ note }) });
+  const input = await inputAction({
+    title: "驳回正文纠错",
+    message: `纠错 #${row.id} 被驳回后不会修改当前章节正文。`,
+    label: "驳回原因（可留空）",
+    inputType: "textarea",
+    required: false,
+    confirmLabel: "确认驳回"
+  });
+  if (!input.confirmed) return;
+  await api(`/admin-api/corrections/${row.id}/reject`, { method: "POST", body: JSON.stringify({ note: input.value }) });
   await load();
   toast("已驳回纠错");
 }

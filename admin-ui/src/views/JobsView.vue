@@ -6,6 +6,7 @@
         <p class="sub">查看备份、恢复、榜单刷新、Bot 长任务和批量维护任务的执行状态。</p>
       </div>
       <div class="row-actions">
+        <span class="sub" aria-live="polite">{{ autoRefreshing ? "有任务运行，自动刷新中" : "按需刷新" }} · 更新于 {{ lastUpdated || "-" }}</span>
         <button class="secondary" type="button" @click="loadAll">刷新</button>
       </div>
     </div>
@@ -137,12 +138,12 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、DataTable/StatCard、Admin Jobs API、格式化工具和全局确认服务
- * [OUTPUT]: 提供持久任务筛选、详情观察以及受状态约束的重试/取消操作
- * [POS]: admin-ui/src/views 的异步任务控制台，展示服务端状态机而不在浏览器推断任务结果
+ * [INPUT]: 依赖 Vue 生命周期、页面可见性、DataTable/StatCard、Admin Jobs API、格式化工具和全局确认服务
+ * [OUTPUT]: 提供持久任务筛选、详情观察、运行期自动刷新以及受状态约束的重试/取消操作
+ * [POS]: admin-ui/src/views 的异步任务控制台，跟随服务端状态机刷新且在页面隐藏时停止轮询
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { computed, inject, onMounted, reactive, ref } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";
@@ -159,6 +160,9 @@ const cancelingId = ref(null);
 const selectedJob = ref(null);
 const overview = ref({ byStatus: {} });
 const filters = reactive({ status: "", type: "", limit: 30 });
+const lastUpdated = ref("");
+const autoRefreshing = ref(false);
+let pollTimer = null;
 
 const columns = [
   { key: "id", label: "ID" },
@@ -245,6 +249,30 @@ async function load(nextPage = page.value) {
 
 async function loadAll() {
   await Promise.all([load(page.value), loadOverview().catch(() => {})]);
+  lastUpdated.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  schedulePoll();
+}
+
+function hasActiveJobs() {
+  return statusCount("queued") + statusCount("running") > 0;
+}
+
+function schedulePoll() {
+  window.clearTimeout(pollTimer);
+  pollTimer = null;
+  autoRefreshing.value = hasActiveJobs() && !document.hidden;
+  if (!autoRefreshing.value) return;
+  pollTimer = window.setTimeout(() => loadAll(), 6000);
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    window.clearTimeout(pollTimer);
+    pollTimer = null;
+    autoRefreshing.value = false;
+  } else {
+    loadAll();
+  }
 }
 
 async function selectJob(id) {
@@ -319,5 +347,13 @@ async function cancelJob(row) {
   }
 }
 
-onMounted(loadAll);
+onMounted(() => {
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  loadAll();
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  window.clearTimeout(pollTimer);
+});
 </script>

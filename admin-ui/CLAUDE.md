@@ -18,12 +18,12 @@ Vue 3 管理后台的源码与独立构建边界。浏览器通过同源 `/admin
 
 ```text
 Browser -> router/App -> views/components -> services/api -> server-pg:3100
-                                      -> utils/format
+                                      -> utils/format|clipboard|dialogFocus
 Vite -> src + index.html -> ../public
 ```
 
 - 所有管理写操作复用 `src/services/api.js` 的凭证、错误和 CSRF 约定，视图不得平行创建 HTTP 客户端。
-- `App.vue` 是认证、权限、确认框与全局提示的组合根；领域视图只负责各自页面状态和 API 编排。
+- `App.vue` 是认证、权限、确认/输入框与全局消息队列的组合根；领域视图只负责各自页面状态和 API 编排。
 - 修改 `src/` 或构建配置后必须执行根命令 `npm run admin:build` 并检查 `public/` 产物。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
