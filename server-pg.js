@@ -1,31 +1,18 @@
 ﻿/**
- * [INPUT]: 依赖 Express/PostgreSQL、启动流量闸门、根级 Telegram 推送标记、routes/services 领域模块、Admin 静态产物及 /config 配置
- * [OUTPUT]: 启动 3100 端口的组合服务，并在迁移及初始化完成前仅开放健康检查、拒绝业务流量
- * [POS]: 项目后端唯一组合根，负责依赖注入、迁移就绪状态与生命周期，不把领域规则复制到入口层
+ * [INPUT]: 依赖 Express/PostgreSQL、应用生命周期、启动流量闸门、routes/services 领域模块、Admin 静态产物及 /config 配置
+ * [OUTPUT]: 装配并启动 3100 端口服务，在迁移及初始化完成前仅开放健康检查、拒绝业务流量
+ * [POS]: 项目后端唯一组合根，只声明依赖图、HTTP 管线和启动入口，领域规则与生命周期下沉到 services
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
-const cors = require("cors");
-const compression = require("compression");
-const session = require("express-session");
 const { markTelegramSystemPush } = require("./telegram-push-contract");
-const PgSessionStore = require("connect-pg-simple")(session);
 const crypto = require("crypto");
-const path = require("path");
 const { initPg, query, pool, databaseQueryMetrics, bookColumns, chapterColumns, pick } = require("./pg-store");
-const {
-    attachExpressPanel,
-    collectDiagnostics,
-    collectStatus,
-    filterLogText,
-    readLogTail,
-    versionPayload
-} = require("./docker/control-panel");
+const { collectDiagnostics, collectStatus, filterLogText, readLogTail, versionPayload } = require("./docker/control-panel");
 const {
     EVENT_LOG_FILE,
     REQUEST_LOG_FILE,
     SLOW_LOG_FILE,
-    createRequestLogger,
     logEvent,
     readJsonLinesTail,
     topSlowRequests
@@ -43,12 +30,7 @@ const {
     runTrackedJob,
     updateSystemJob
 } = require("./services/system-jobs");
-const {
-    DEFAULT_BACKUP_DIR,
-    backupListPayload,
-    createBackupPayload,
-    restoreBackupPayload
-} = require("./services/backups");
+const { DEFAULT_BACKUP_DIR, backupListPayload, createBackupPayload, restoreBackupPayload } = require("./services/backups");
 const { createHealthService } = require("./services/health");
 const { createStartupGate } = require("./services/startup-gate");
 const { createRankService } = require("./services/rank");
@@ -61,7 +43,6 @@ const { createBookChapterService } = require("./services/book-chapters");
 const { createConfigService } = require("./services/config");
 const { createEpubStyle2AssetService } = require("./services/epub-style2-assets");
 const { createBotSettingsService } = require("./services/bot-settings");
-const { createErrorResponseNormalizer } = require("./services/error-response");
 const { dbUnavailableMessage, isPgUnavailableError: isPgConnectionError } = require("./services/db-errors");
 const { sendCsv } = require("./services/admin-exports");
 const { remoteBackupStatus, uploadBackupToRemote } = require("./services/remote-backups");
@@ -78,17 +59,23 @@ const { createBotAuditService } = require("./services/bot-audit");
 const { createPo18CrawlerService } = require("./services/po18-crawler");
 const { createCredentialCrypto, encryptStoredPo18Credentials } = require("./services/credential-crypto");
 const { botScopeForRequest, createApiTokenService } = require("./services/api-tokens");
-const { createRateLimiter } = require("./services/rate-limit");
-const { installRouteBodyParsers } = require("./services/body-limits");
-const { createRequestSchemaValidation } = require("./services/schema-validation");
 const { createBackupRestoreDrillScheduler } = require("./services/backup-restore-drill");
-const { createCsrfProtection } = require("./services/csrf");
-const { createAdminAuditMiddleware, listAdminAuditLogs } = require("./services/admin-audit");
+const { listAdminAuditLogs } = require("./services/admin-audit");
+const { createScholarProgression, currencyLabel: serverCurrencyLabel, positiveNumber } = require("./services/scholar-progression");
+const { cleanPgObject, cleanPgText, cleanPgValue, nowSql, safePgBool, safePgInt } = require("./services/postgres-values");
+const { correctionCharLength, normalizeCorrectionText, replaceFirstText, replaceTextAtCharOffset } = require("./services/correction-text");
 const {
-    assertProductionSecurity,
-    corsOriginCallback,
-    trustProxySetting
-} = require("./services/http-security");
+    createCachedSystemStatusCollector,
+    createSlowSearchLogger,
+    getFreshCache,
+    installProcessErrorHandlers,
+    setFreshCache,
+    slowSearchContext
+} = require("./services/runtime-observability");
+const { createBookReviewChannelService, createLatestBookMetadataLookup } = require("./services/book-review-channel");
+const { createApplicationRuntime, installStaticAndErrorRoutes } = require("./services/application-runtime");
+const { installHttpPipeline } = require("./services/http-pipeline");
+const { assertProductionSecurity, trustProxySetting } = require("./services/http-security");
 const { createHealthRoutes } = require("./routes/health");
 const { createRankRoutes } = require("./routes/rank");
 const { createAdminSystemRoutes } = require("./routes/admin-system");
@@ -135,9 +122,7 @@ const apiTokenService = createApiTokenService({ query });
 const RUNTIME_LOG_FILE = process.env.PO18_RUNTIME_LOG_FILE || "/config/runtime.log";
 const ADMIN_STATS_CACHE_MS = Number(process.env.PO18_ADMIN_STATS_CACHE_MS || 30000);
 const ADMIN_SYSTEM_CACHE_MS = Number(process.env.PO18_ADMIN_SYSTEM_CACHE_MS || 3000);
-const REQUEST_SLOW_MS = Number.isFinite(Number(process.env.PO18_SLOW_REQUEST_MS))
-    ? Number(process.env.PO18_SLOW_REQUEST_MS)
-    : 800;
+const REQUEST_SLOW_MS = Number.isFinite(Number(process.env.PO18_SLOW_REQUEST_MS)) ? Number(process.env.PO18_SLOW_REQUEST_MS) : 800;
 const SEARCH_SLOW_QUERY_MS = Number.isFinite(Number(process.env.PO18_SEARCH_SLOW_QUERY_MS))
     ? Number(process.env.PO18_SEARCH_SLOW_QUERY_MS)
     : 800;
@@ -148,30 +133,30 @@ const STARTUP_FAILURE_RETRY_MS = Math.max(60000, STARTUP_DB_RETRY_MS);
 const app = express();
 const startupGate = createStartupGate({ retryAfterSeconds: Math.ceil(STARTUP_DB_RETRY_MS / 1000) });
 app.set("trust proxy", trustProxySetting());
-const sessionStore = new PgSessionStore({
-    pool,
-    tableName: "web_sessions",
-    createTableIfMissing: true,
-    errorLog: (err) => console.warn(`[session-store] ${err.message || err}`)
-});
-const authRateLimiter = createRateLimiter({
-    windowMs: Number(process.env.PO18_AUTH_RATE_WINDOW_MS || 15 * 60 * 1000),
-    max: Number(process.env.PO18_AUTH_RATE_MAX || 20)
-});
-const publicLookupRateLimiter = createRateLimiter({
-    windowMs: Number(process.env.PO18_PUBLIC_LOOKUP_RATE_WINDOW_MS || 60 * 1000),
-    max: Number(process.env.PO18_PUBLIC_LOOKUP_RATE_MAX || 120)
-});
-const ttsRateLimiter = createRateLimiter({
-    windowMs: Number(process.env.PO18_TTS_RATE_WINDOW_MS || 60 * 1000),
-    max: Number(process.env.PO18_TTS_RATE_MAX || 30)
-});
-const uploadRateLimiter = createRateLimiter({
-    windowMs: Number(process.env.PO18_UPLOAD_RATE_WINDOW_MS || 60 * 1000),
-    max: Number(process.env.PO18_UPLOAD_RATE_MAX || 600)
-});
 const adminStatsCache = { at: 0, payload: null };
 const adminSystemStatusCache = { at: 0, payload: null };
+const { scholarProfile, signExpReward, randomRedPacketAmount } = createScholarProgression({
+    expBase: process.env.PO18_SCHOLAR_EXP_BASE,
+    expGrowth: process.env.PO18_SCHOLAR_EXP_GROWTH,
+    signExpBase: process.env.PO18_SIGN_EXP_BASE,
+    signExpStreakBonus: process.env.PO18_SIGN_EXP_STREAK_BONUS
+});
+const logSlowSearch = createSlowSearchLogger({
+    thresholdMs: SEARCH_SLOW_QUERY_MS,
+    logEvent,
+    logger: console
+});
+const collectCachedSystemStatus = createCachedSystemStatusCollector({
+    cache: adminSystemStatusCache,
+    ttlMs: ADMIN_SYSTEM_CACHE_MS,
+    collectStatus,
+    configFile: CONFIG_FILE
+});
+const latestBookMetadata = createLatestBookMetadataLookup(query);
+installProcessErrorHandlers({
+    isDatabaseError: isPgConnectionError,
+    logger: console
+});
 const numericBookFields = new Set([
     "word_count",
     "chapter_count",
@@ -257,10 +242,7 @@ const hotKeywordService = createHotKeywordService({
     configGet,
     configSet
 });
-const {
-    addHotKeyword,
-    getHotKeywords
-} = hotKeywordService;
+const { addHotKeyword, getHotKeywords } = hotKeywordService;
 const wordCloudService = createWordCloudService({
     query,
     getHotKeywords
@@ -384,6 +366,17 @@ const {
     startDailyReportScheduler,
     telegramPushConfig
 } = telegramPushService;
+const { pushBookReviewToChannel } = createBookReviewChannelService({
+    latestBookMetadata,
+    telegramPushConfig,
+    telegramLoginBotToken,
+    configGet,
+    updateBookReviewChannelMessage,
+    postJson,
+    telegramApiUrl,
+    telegramHtml,
+    markTelegramSystemPush
+});
 const bookChapterService = createBookChapterService({
     query,
     pool,
@@ -719,50 +712,19 @@ pool.on("error", (err) => {
     logEvent("warn", "server-pg", "pg-pool-error", { error: err.message || String(err) });
 });
 
-app.use(createRequestLogger({ service: "server-pg", slowMs: REQUEST_SLOW_MS, skip: (req) => req.path === "/favicon.ico" }));
-app.use(createErrorResponseNormalizer());
-app.use(cors({ origin: corsOriginCallback(), credentials: true }));
-attachExpressPanel(app, { configFile: CONFIG_FILE });
-app.use(compression());
-app.use([
-    "/admin-api/auth/login",
-    "/reader-auth/login",
-    "/reader-auth/register",
-    "/reader-auth/telegram",
-    "/signup/login",
-    "/signup/register"
-], authRateLimiter);
-app.use("/api/parse/check-cache", publicLookupRateLimiter);
-app.use("/reader-api/tts", ttsRateLimiter);
-app.use(["/api/parse/chapter-content", "/api/metadata/batch"], uploadRateLimiter);
-installRouteBodyParsers(app, express);
-app.use(createRequestSchemaValidation());
-app.use(startupGate.middleware);
-app.use(["/reader-api", "/reader-auth"], (req, res, next) => {
-    delete req.headers["if-none-match"];
-    delete req.headers["if-modified-since"];
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    next();
+installHttpPipeline({
+    app,
+    express,
+    pool,
+    startupGate,
+    configFile: CONFIG_FILE,
+    sessionSecret: SESSION_SECRET,
+    requestSlowMs: REQUEST_SLOW_MS,
+    query,
+    logEvent,
+    env: process.env,
+    logger: console
 });
-app.use(
-    session({
-        name: "po18_upload_admin_pg",
-        secret: SESSION_SECRET,
-        store: sessionStore,
-        resave: false,
-        saveUninitialized: false,
-        cookie: {
-            httpOnly: true,
-            sameSite: "lax",
-            secure: process.env.NODE_ENV === "production" ? "auto" : false,
-            maxAge: 1000 * 60 * 60 * 24 * 30
-        }
-    })
-);
-app.use(createCsrfProtection({ cookieName: "po18_upload_admin_pg" }));
-app.use(createAdminAuditMiddleware({ query, logEvent }));
 app.use(healthRoutes);
 app.use(rankRoutes);
 app.use(adminSystemRoutes);
@@ -778,433 +740,48 @@ app.use(readerApiRoutes);
 app.use(uploadApiRoutes);
 app.use(openApiRoutes);
 
-function getFreshCache(cache, ttlMs) {
-    if (!ttlMs || ttlMs <= 0 || !cache.payload) return null;
-    return Date.now() - cache.at <= ttlMs ? cache.payload : null;
-}
-
-function setFreshCache(cache, payload) {
-    cache.at = Date.now();
-    cache.payload = payload;
-    return payload;
-}
-
-function slowSearchContext(req, extra = {}) {
-    const queryParams = req.query || {};
-    return {
-        path: req.originalUrl || req.path,
-        q: queryParams.q || "",
-        keyword: queryParams.keyword || "",
-        tag: queryParams.tag || "",
-        author: queryParams.author || "",
-        platform: queryParams.platform || "",
-        sort: queryParams.sort || "",
-        page: queryParams.page || "",
-        limit: queryParams.limit || "",
-        ...extra
-    };
-}
-
-function logSlowSearch(label, startedAt, context = {}) {
-    const ms = Date.now() - startedAt;
-    if (SEARCH_SLOW_QUERY_MS <= 0 || ms < SEARCH_SLOW_QUERY_MS) return;
-    console.warn(`[slow-search] ${label} ${ms}ms ${JSON.stringify({ ...context, elapsedMs: ms })}`);
-    logEvent("warn", "server-pg", "slow-search", { label, duration_ms: ms, context });
-}
-
-async function collectCachedSystemStatus() {
-    const cached = getFreshCache(adminSystemStatusCache, ADMIN_SYSTEM_CACHE_MS);
-    if (cached) return cached;
-    return setFreshCache(adminSystemStatusCache, await collectStatus(CONFIG_FILE));
-}
-
-process.on("unhandledRejection", (reason) => {
-    const message = reason && reason.message ? reason.message : String(reason || "");
-    if (isPgConnectionError(reason)) {
-        console.warn(`[unhandled-db] ${message}`);
-        return;
-    }
-    console.error(`[unhandled-rejection] ${message}`);
-    process.exit(1);
+installStaticAndErrorRoutes({
+    app,
+    express,
+    projectDir: __dirname,
+    readerPublicUrlProvider: () => process.env.PO18_READER_PUBLIC_URL || process.env.READER_PUBLIC_URL || "",
+    isDatabaseError: isPgConnectionError,
+    databaseErrorMessage: dbUnavailableMessage,
+    logger: console
 });
 
-process.on("uncaughtException", (err) => {
-    const message = err && err.message ? err.message : String(err || "");
-    if (isPgConnectionError(err)) {
-        console.warn(`[uncaught-db] ${message}`);
-        return;
-    }
-    console.error(`[uncaught-exception] ${message}`);
-    process.exit(1);
-});
-
-const SCHOLAR_LEVEL_NAMES = [
-    "卷首书童",
-    "青灯蒙学",
-    "砚边童生",
-    "案前秀才",
-    "藏书廪生",
-    "乡试举人",
-    "春闱贡士",
-    "金榜进士",
-    "翰林编修",
-    "御阁侍读",
-    "文渊学士",
-    "兰台大学士",
-    "一代文宗",
-    "稷下鸿儒",
-    "万卷书圣"
-];
-
-function positiveNumber(value, fallback, min = 1) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.max(min, parsed) : fallback;
-}
-
-const SCHOLAR_EXP_BASE = positiveNumber(process.env.PO18_SCHOLAR_EXP_BASE, 1200, 1);
-const SCHOLAR_EXP_GROWTH = positiveNumber(process.env.PO18_SCHOLAR_EXP_GROWTH, 1.38, 1.01);
-const SIGN_EXP_BASE = Math.trunc(positiveNumber(process.env.PO18_SIGN_EXP_BASE, 60, 1));
-const SIGN_EXP_STREAK_BONUS = Math.trunc(positiveNumber(process.env.PO18_SIGN_EXP_STREAK_BONUS, 8, 0));
-
-function scholarExpForNextLevel(level = 1) {
-    const safeLevel = Math.max(1, Math.trunc(Number(level || 1)));
-    return Math.max(1, Math.round(SCHOLAR_EXP_BASE * Math.pow(SCHOLAR_EXP_GROWTH, safeLevel - 1)));
-}
-
-function scholarProfile(expValue = 0) {
-    const totalExp = Math.max(0, Math.trunc(Number(expValue || 0)));
-    let level = 1;
-    let levelExp = totalExp;
-    const maxLevel = 99;
-    while (level < maxLevel) {
-        const need = scholarExpForNextLevel(level);
-        if (levelExp < need) break;
-        levelExp -= need;
-        level += 1;
-    }
-    const nextLevelExp = scholarExpForNextLevel(level);
-    const name = SCHOLAR_LEVEL_NAMES[Math.min(level - 1, SCHOLAR_LEVEL_NAMES.length - 1)] || `藏书第${level}境`;
-    const nextName = SCHOLAR_LEVEL_NAMES[Math.min(level, SCHOLAR_LEVEL_NAMES.length - 1)] || `藏书第${level + 1}境`;
-    return {
-        level,
-        name,
-        exp: totalExp,
-        level_exp: levelExp,
-        next_level_exp: nextLevelExp,
-        exp_to_next: Math.max(0, nextLevelExp - levelExp),
-        progress: nextLevelExp ? Number((levelExp / nextLevelExp).toFixed(4)) : 1,
-        next_level_name: nextName,
-        daily_free_exports: level <= 2 ? 1 : 2
-    };
-}
-
-function signExpReward(day = 1) {
-    const safeDay = Math.max(1, Math.trunc(Number(day || 1)));
-    return SIGN_EXP_BASE + (safeDay - 1) * SIGN_EXP_STREAK_BONUS;
-}
-
-function randomRedPacketAmount(remainingAmount, remainingCount) {
-    if (remainingCount <= 1) return Math.max(1, Number(remainingAmount || 0));
-    const maxCan = Math.max(2, Math.floor(Number(remainingAmount || 0) * 0.6));
-    const raw = crypto.randomInt(1, maxCan + 1);
-    return Math.max(1, Math.min(raw, Number(remainingAmount || 0) - (remainingCount - 1)));
-}
-
-function safePgInt(value, fallback = 0) {
-    const num = Number.parseInt(value, 10);
-    if (!Number.isFinite(num)) return fallback;
-    if (num < -2147483648 || num > 2147483647) return fallback;
-    return num;
-}
-
-function safePgBool(value, fallback = false) {
-    if (value === undefined || value === null || value === "") return fallback;
-    if (typeof value === "boolean") return value;
-    if (typeof value === "number") return value !== 0;
-    const text = String(value).trim().toLowerCase();
-    if (["1", "true", "yes", "y", "on", "volume"].includes(text)) return true;
-    if (["0", "false", "no", "n", "off"].includes(text)) return false;
-    return fallback;
-}
-
-function nowSql() {
-    return new Date().toISOString().slice(0, 19).replace("T", " ");
-}
-
-function cleanPgText(value) {
-    if (typeof value !== "string") return value;
-    return value.replace(/\u0000/g, "");
-}
-
-function cleanPgValue(value) {
-    if (typeof value === "string") return cleanPgText(value);
-    if (Array.isArray(value)) return value.map(cleanPgValue);
-    if (value && typeof value === "object" && !(value instanceof Date) && !Buffer.isBuffer(value)) {
-        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cleanPgValue(item)]));
-    }
-    return value;
-}
-
-function cleanPgObject(data = {}) {
-    for (const key of Object.keys(data)) {
-        data[key] = cleanPgValue(data[key]);
-    }
-    return data;
-}
-
-function normalizeCorrectionText(value = "") {
-    return String(value || "").replace(/\r\n?/g, "\n");
-}
-
-function correctionCharLength(value = "") {
-    return Array.from(String(value || "")).length;
-}
-
-function replaceFirstText(source = "", search = "", replacement = "") {
-    const text = String(source || "");
-    const target = String(search || "");
-    if (!target) return { changed: false, value: text };
-    const index = text.indexOf(target);
-    if (index < 0) return { changed: false, value: text };
-    return {
-        changed: true,
-        value: text.slice(0, index) + String(replacement || "") + text.slice(index + target.length)
-    };
-}
-
-function replaceTextAtCharOffset(source = "", search = "", replacement = "", offset = null) {
-    const index = Number(offset);
-    const text = String(source || "");
-    const target = String(search || "");
-    if (!Number.isInteger(index) || index < 0 || !target) return { changed: false, value: text };
-    const chars = Array.from(text);
-    const targetLength = correctionCharLength(target);
-    if (chars.slice(index, index + targetLength).join("") !== target) return { changed: false, value: text };
-    chars.splice(index, targetLength, ...Array.from(String(replacement || "")));
-    return { changed: true, value: chars.join("") };
-}
-
-function serverCurrencyLabel(currency) {
-    return currency === "silver" ? "银币" : "铜币";
-}
-
-async function latestBookMetadata(bookId) {
-    if (!bookId) return null;
-    const result = await query(
-        `SELECT book_id, title, author, cover, category, tags, status, description, description_html, detail_url, platform
-         FROM book_metadata
-         WHERE book_id = $1
-         ORDER BY COALESCE(subscribed_chapters, 0) DESC, COALESCE(updated_at, created_at) DESC, id DESC
-         LIMIT 1`,
-        [String(bookId)]
-    );
-    return result.rows[0] || null;
-}
-
-function truncateTelegramText(value = "", max = 900) {
-    const text = String(value || "");
-    return text.length > max ? `${text.slice(0, max - 1)}...` : text;
-}
-
-function bookReviewChannelText(review = {}, book = {}) {
-    const title = book.title || review.book_title || review.book_id || "";
-    const author = book.author || review.book_author || "";
-    const reviewer = review.author_telegram_username
-        ? `@${review.author_telegram_username}`
-        : (review.author_nickname || review.nickname || "reader");
-    const lines = [
-        "<b>新书评</b>",
-        "",
-        `<b>${telegramHtml(title)}</b>`,
-        author ? `作者：${telegramHtml(author)}` : "",
-        `书号：<code>${telegramHtml(review.book_id || book.book_id || "")}</code>`,
-        `发布者：${telegramHtml(reviewer)}`,
-        "",
-        telegramHtml(truncateTelegramText(review.content || "", 900)),
-        "",
-        `赞 ${Number(review.like_count || 0)} · 踩 ${Number(review.dislike_count || 0)}`
-    ];
-    return lines.filter(Boolean).join("\n");
-}
-
-function bookReviewChannelMarkup(review = {}) {
-    const id = String(review.id || "");
-    const bookId = String(review.book_id || "");
-    const rows = [
-        [
-            { text: "赞 +100铜", callback_data: `rvup|${id}`.slice(0, 64) },
-            { text: "踩 -1铜", callback_data: `rvdn|${id}`.slice(0, 64) }
-        ]
-    ];
-    if (bookId) rows.push([{ text: "书籍详情", callback_data: `info|${bookId}`.slice(0, 64) }]);
-    return { inline_keyboard: rows };
-}
-
-async function pushBookReviewToChannel({ review, book } = {}) {
-    if (!review?.id) return { skipped: "missing_review" };
-    const [pushConfig, token, chatId] = await Promise.all([
-        telegramPushConfig(),
-        telegramLoginBotToken(),
-        configGet("telegram_chat_id")
-    ]);
-    if (!pushConfig.enabled || !pushConfig.pushTypes.includes("review")) {
-        await updateBookReviewChannelMessage(review.id, { status: "skipped", error: "review push disabled" }).catch(() => {});
-        return { skipped: "review_push_disabled" };
-    }
-    if (!token || !chatId) {
-        await updateBookReviewChannelMessage(review.id, { status: "skipped", error: "missing telegram_bot_token or telegram_chat_id" }).catch(() => {});
-        return { skipped: "missing_channel_config" };
-    }
-    try {
-        const raw = await postJson(telegramApiUrl(token, "sendMessage"), {
-            chat_id: chatId,
-            text: markTelegramSystemPush(bookReviewChannelText(review, book)),
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-            reply_markup: bookReviewChannelMarkup(review)
-        });
-        const parsed = JSON.parse(raw || "{}");
-        const messageId = parsed?.result?.message_id ? String(parsed.result.message_id) : "";
-        await updateBookReviewChannelMessage(review.id, {
-            channel_chat_id: String(chatId),
-            channel_message_id: messageId,
-            status: "sent",
-            error: ""
-        }).catch(() => {});
-        return { sent: true, chat_id: String(chatId), message_id: messageId };
-    } catch (err) {
-        await updateBookReviewChannelMessage(review.id, {
-            status: "failed",
-            error: String(err.message || err).slice(0, 500)
-        }).catch(() => {});
-        throw err;
-    }
-}
-
-
-async function initAdmin() {
-    const found = await query("SELECT id FROM admin_users WHERE username = $1", [DEFAULT_ADMIN]);
-    if (found.rows.length) return;
-    const { salt, hash } = hashPassword(DEFAULT_PASSWORD);
-    await query("INSERT INTO admin_users(username, password_hash, salt, role) VALUES ($1,$2,$3,'owner')", [DEFAULT_ADMIN, hash, salt]);
-}
-
-function requestHostWithoutPort(req) {
-    const raw = String(req.headers["x-forwarded-host"] || req.get("host") || "").split(",")[0].trim();
-    if (!raw) return "localhost";
-    if (raw.startsWith("[")) return raw.replace(/:\d+$/, "");
-    return raw.split(":")[0] || "localhost";
-}
-
-function readerRedirectUrl(req) {
-    const configured = String(process.env.PO18_READER_PUBLIC_URL || process.env.READER_PUBLIC_URL || "").trim();
-    if (configured) return configured;
-    const protocol = String(req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim() || "http";
-    return `${protocol}://${requestHostWithoutPort(req)}:3200/`;
-}
-
-app.get("/favicon.ico", (req, res) => res.status(204).end());
-
-app.get("/reader", (req, res) => res.redirect(302, readerRedirectUrl(req)));
-
-app.use((req, res, next) => {
-    const blockedPrefixes = ["/cirno", "/cirno-app", "/cirno-root"];
-    if (blockedPrefixes.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) {
-        res.status(404).json({ error: "Not Found" });
-        return;
-    }
-    next();
-});
-
-app.get("/rank", (req, res) => {
-    res.setHeader("Cache-Control", "no-cache");
-    res.sendFile(path.join(__dirname, "public", "rank.html"));
-});
-
-app.get(["/admin", "/admin/*"], (req, res) => {
-    res.setHeader("Cache-Control", "no-cache");
-    res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-app.use(
-    "/",
-    express.static(path.join(__dirname, "public"), {
-        etag: true,
-        lastModified: true,
-        maxAge: "1h",
-        setHeaders(res, filePath) {
-            if (filePath.endsWith("index.html")) {
-                res.setHeader("Cache-Control", "no-cache");
-            }
-        }
-    })
-);
-app.use((err, req, res, _next) => {
-    const isDbConnectionError = isPgConnectionError(err);
-    if (isDbConnectionError) {
-        console.warn(`[request-db] ${req.method} ${req.originalUrl}: ${err.message}`);
-        return res.status(503).json({ error: dbUnavailableMessage(err), code: err.code || "" });
-    }
-    console.error(err);
-    const body = { error: err.message || "Internal Server Error" };
-    if (err.expectedConfirm) body.expectedConfirm = err.expectedConfirm;
-    res.status(err.status || 500).json(body);
-});
-
-async function bootApplication() {
-    await initPg();
-    await apiTokenService.syncConfiguredTokens({
+const applicationRuntime = createApplicationRuntime({
+    query,
+    initPg,
+    syncConfiguredTokens: apiTokenService.syncConfiguredTokens,
+    configuredTokensProvider: () => ({
         botToken: process.env.PO18_BOT_API_TOKEN || "",
         botScopes: process.env.PO18_BOT_API_SCOPES || "",
         botAllowedIps: process.env.PO18_BOT_API_ALLOWED_IPS || "",
         uploadToken: UPLOAD_API_TOKEN,
         uploadAllowedIps: process.env.PO18_UPLOAD_API_ALLOWED_IPS || ""
-    });
-    const encryptedCredentials = await encryptStoredPo18Credentials(query, credentialCrypto);
-    if (encryptedCredentials.updated) console.log(`[startup] encrypted ${encryptedCredentials.updated}/${encryptedCredentials.scanned} PO18 credential rows`);
-    await initAdmin();
-}
-
-function startBackgroundSchedulers() {
-    const schedulers = [
+    }),
+    encryptStoredCredentials: encryptStoredPo18Credentials,
+    credentialCrypto,
+    defaultAdmin: DEFAULT_ADMIN,
+    defaultPassword: DEFAULT_PASSWORD,
+    hashPassword,
+    startupGate,
+    schedulers: [
         ["daily-report", () => startDailyReportScheduler()],
         ["rank-refresh", () => rankService.startRefreshScheduler()],
         ["backup-restore-drill", () => backupRestoreDrillScheduler.start()],
         ["po18-crawler", () => po18CrawlerService.startScheduler()]
-    ];
-    for (const [name, start] of schedulers) {
-        Promise.resolve()
-            .then(start)
-            .catch((err) => console.warn(`[startup] optional ${name} scheduler disabled: ${err.message || String(err)}`));
-    }
-}
-
-function bootApplicationWithRetry(attempt = 1) {
-    startupGate.markWaiting(attempt > 1 ? `Database initialization retry ${attempt}` : "Database migrations and startup initialization are in progress");
-    bootApplication()
-        .then(() => {
-            startupGate.markReady();
-            console.log("[startup] database initialized");
-            startBackgroundSchedulers();
-        })
-        .catch((err) => {
-            const message = err.message || String(err);
-            if (isPgConnectionError(err)) {
-                startupGate.markWaiting("Database unavailable; startup will retry");
-                console.warn(`[startup] database unavailable (${message}); retrying in ${STARTUP_DB_RETRY_MS}ms`);
-                setTimeout(() => bootApplicationWithRetry(attempt + 1), STARTUP_DB_RETRY_MS).unref();
-                return;
-            }
-            startupGate.markFailed("Application startup failed; inspect server logs");
-            console.error(`[startup] ${message}; retrying in ${STARTUP_FAILURE_RETRY_MS}ms`);
-            setTimeout(() => bootApplicationWithRetry(attempt + 1), STARTUP_FAILURE_RETRY_MS).unref();
-        });
-}
+    ],
+    isDatabaseError: isPgConnectionError,
+    startupDbRetryMs: STARTUP_DB_RETRY_MS,
+    startupFailureRetryMs: STARTUP_FAILURE_RETRY_MS,
+    logger: console
+});
 
 assertProductionSecurity();
 
 app.listen(PORT, HOST, () => {
     console.log(`[sidecar-pg] upload/admin server: http://${HOST}:${PORT}`);
-    bootApplicationWithRetry();
+    applicationRuntime.bootApplicationWithRetry();
 });
-

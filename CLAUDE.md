@@ -29,7 +29,7 @@ package.json - 根运行、测试、构建、检查和发布命令
 Dockerfile - server/reader/bot/app 多阶段构建
 docker-compose.yml - 仅本地源码构建与调试
 docker-compose.hub.yml - Docker Hub 生产部署拓扑
-server-pg.js - 后端组合根，装配 routes/services 与启动迁移
+server-pg.js - 后端组合根，只声明 routes/services 依赖图与 HTTP/启动入口，生命周期和安全管线由 services 承担
 pg-store.js - PostgreSQL Pool、迁移执行和数据访问兼容层
 README.md - 项目入口与最短上手
 DOCKER.md - Docker 部署、升级、备份和发布手册

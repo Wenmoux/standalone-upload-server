@@ -78,6 +78,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `schema-drift.test.js`: schema snapshot 与迁移目录一致性。
 - `schema-validation.test.js`: 高成本请求体 JSON Schema 注册与拒绝契约。
 - `search-benchmark.test.js`: 搜索基准预算和结果解析。
+- `server-runtime-modules.test.js`: server-pg 下沉模块的成长/值清洗/纠错/观测/书评发布/启动重试与 HTTP 管线顺序契约。
 - `share-handlers.test.js`: TXT/EPUB 分享、样式选择与投递流程。
 - `source-health.test.js`: 内容来源熔断与健康评分。
 - `startup-gate.test.js`: 数据库迁移及应用初始化期间的业务流量拒绝、健康放行与就绪切换契约。
