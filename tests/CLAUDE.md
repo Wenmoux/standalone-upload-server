@@ -62,7 +62,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `pg-flows.test.js`: 真实 PostgreSQL 迁移、事务、领域流与查询计划集成测试。
 - `po18-account-handlers.test.js`: PO18 账号绑定、验证码与书架命令。
 - `po18-crawler-http.test.js`: 爬虫 HTTP 封装、Cookie 与错误策略。
-- `po18-crawler.test.js`: PO18 解析、缓存、抓取与落库流程。
+- `po18-crawler.test.js`: PO18 配置/策略/运行状态/数据库来源边界、解析、抓取与落库流程。
 - `process-supervisor.test.js`: 子进程重启退避、信号和退出策略。
 - `rank-routes.test.js`: 排行 HTTP 参数与响应契约。
 - `rank.test.js`: 排行聚合、窗口与并列规则。

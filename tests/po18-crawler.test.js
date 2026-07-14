@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供PO18 解析、缓存、抓取与落库流程的自动化回归断言
- * [POS]: tests 的PO18 解析、缓存、抓取与落库流程守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供 PO18 配置/策略/运行时/数据库来源边界、解析、抓取与落库流程的自动化回归断言
+ * [POS]: tests 的 PO18 模块边界与端到端编排守卫，防止拆分后公共接口或任务状态语义静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -23,11 +23,98 @@ const {
     formatBookDetailLog,
     formatChapterListLog
 } = require("../services/po18-crawler");
+const crawlerConfig = require("../services/po18-crawler-config");
+const crawlerPolicy = require("../services/po18-crawler-policy");
+const { listIncompletePo18Books } = require("../services/po18-crawler-cache-source");
+const { createCrawlerRuntime } = require("../services/po18-crawler-runtime");
 const { createCredentialCrypto } = require("../services/credential-crypto");
 
 function po18Fixture(name) {
     return fs.readFileSync(path.join(__dirname, "fixtures", "po18", name), "utf8");
 }
+
+test("po18 crawler entrypoint preserves config and policy compatibility exports", () => {
+    assert.equal(sanitizeConfig, crawlerConfig.sanitizeConfig);
+    assert.equal(bookFilterDecision, crawlerPolicy.bookFilterDecision);
+    assert.equal(isCompleteCachedBook, crawlerPolicy.isCompleteCachedBook);
+    assert.equal(formatBookDetailLog, crawlerPolicy.formatBookDetailLog);
+    assert.equal(formatChapterListLog, crawlerPolicy.formatChapterListLog);
+});
+
+test("po18 crawler runtime owns task lifecycle, progress, control and bounded snapshots", () => {
+    const messages = [];
+    const runtime = createCrawlerRuntime({
+        defaultConfig: { startPage: 1, endPage: 10 },
+        maxLogs: 2,
+        logger: { log: (message) => messages.push(message), warn: (message) => messages.push(message) }
+    });
+
+    assert.equal(runtime.pause(), false);
+    runtime.beginJob(91);
+    runtime.state.stats.pagesScanned = 5;
+    assert.equal(runtime.currentProgress(), 50);
+    assert.equal(runtime.pause("manual pause"), true);
+    assert.equal(runtime.state.paused, true);
+    assert.equal(runtime.resume(), true);
+    runtime.log("info", "one");
+    runtime.log("info", "two");
+    runtime.log("error", "three");
+    assert.equal(runtime.snapshot({ state: "closed" }).logs.length, 2);
+    assert.deepEqual(runtime.snapshot({ state: "closed" }).sourceHealth, { state: "closed" });
+    assert.equal(runtime.stop(), true);
+    assert.throws(() => runtime.checkStopped(), { code: "PO18_CRAWLER_STOPPED" });
+    runtime.releaseJob();
+    assert.equal(runtime.state.running, false);
+    assert.ok(messages.some((message) => message.includes("three")));
+});
+
+test("po18 cache source maps incomplete metadata and reports complete-book skips", async () => {
+    const calls = [];
+    const query = async (sql, params = []) => {
+        calls.push({ sql, params });
+        return {
+            rows: [
+                {
+                    skipped_complete: 3,
+                    books: [
+                        {
+                            book_id: "700001",
+                            title: "待续书",
+                            author: "作者",
+                            status: "连载",
+                            total_chapters: 12,
+                            cache_count: 7,
+                            expected_chapters: 12
+                        }
+                    ]
+                }
+            ]
+        };
+    };
+
+    const result = await listIncompletePo18Books({ query, limit: 9, defaultLimit: 500 });
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].params, [9]);
+    assert.equal(result.skippedComplete, 3);
+    assert.deepEqual(result.books[0], {
+        bookId: "700001",
+        book_id: "700001",
+        title: "待续书",
+        author: "作者",
+        tags: "",
+        category: "",
+        status: "连载",
+        totalChapters: 12,
+        subscribedChapters: 0,
+        chapterCount: 0,
+        freeChapters: 0,
+        paidChapters: 0,
+        cacheCount: 7,
+        expectedChapters: 12,
+        platform: "po18",
+        detailUrl: "https://www.po18.tw/books/700001"
+    });
+});
 
 test("po18 sanitized HTML fixtures cover auth, challenge, pagination and mixed chapter rows", () => {
     assert.equal(looksLikeAuthPage(po18Fixture("login-page.html")), true);

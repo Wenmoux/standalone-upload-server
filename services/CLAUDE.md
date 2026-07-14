@@ -45,10 +45,14 @@ http-pipeline.js: 服务端安全管线，按固定顺序安装请求日志、CO
 job-retry.js: system_jobs 重试策略，把可重试任务类型映射回领域执行器并保护破坏性确认语义。
 network-security.js: 出站网络 SSRF 防线，解析 DNS、阻断内网/保留地址并支持显式主机白名单。
 openapi.js: 运行时 OpenAPI 索引生成器，从 Express 栈收集端点并绑定已登记请求/响应 Schema。
-po18-crawler.js: PO18 爬取编排器，驱动来源、Cookie、HTTP、解析、缓存写入、断点任务和暂停恢复状态机。
+po18-crawler.js: PO18 爬取编排器，驱动来源访问、书章处理、缓存写入与 system_jobs 结算，并兼容转发历史公共接口。
+po18-crawler-cache-source.js: PO18 数据库来源适配器，以单次元信息去重/完整性查询返回仍需抓取的书籍和全缓存跳过计数。
+po18-crawler-config.js: PO18 爬虫配置边界，集中字段默认值、不可信输入收敛、Cookie 档案投影与持久化脱敏语义。
 po18-crawler-cookies.js: 爬虫 Cookie 纯函数层，负责多配置归一化、合并、响应更新、Header 生成与脱敏展示。
 po18-crawler-http.js: 爬虫 HTTP 适配器，在安全 fetch 之上实现 Cookie 演进、限流识别、退避重试与来源熔断反馈。
 po18-crawler-parsers.js: PO18 HTML 解析边界，把发现页、书架、详情、目录与正文转换为稳定领域数据并识别登录失效。
+po18-crawler-policy.js: PO18 选书策略纯函数层，统一分类、关键词、章节区间、完结缓存判定和运行日志摘要口径。
+po18-crawler-runtime.js: PO18 单进程运行状态机，集中统计初值、日志窗口、任务生命周期、进度、暂停恢复、停止和管理快照。
 postgres-values.js: PostgreSQL 值边界，统一 int4/boolean 转换、空字节与嵌套 JSON 清洗以及 SQL 时间文本。
 rank.js: 动态榜单服务，定义榜单口径、热度计算、缓存刷新和分页输出元数据。
 rate-limit.js: 进程内限流原语，按请求身份维护时间窗并生成标准 429 与 Retry-After。

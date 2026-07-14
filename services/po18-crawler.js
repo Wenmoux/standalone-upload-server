@@ -1,18 +1,25 @@
 /**
- * [INPUT]: 依赖 source-health 熔断器、po18-crawler HTTP/Cookie/Parser 边界及注入的配置、缓存和 system_jobs 能力
- * [OUTPUT]: 对外提供 PO18 爬虫服务、任务/配置常量、状态机错误、解析兼容导出及书籍过滤/完整性辅助函数
- * [POS]: services 的 PO18 抓取编排核心，协调来源访问、断点持久化、缓存写入和暂停恢复而不重实现协议细节
+ * [INPUT]: 依赖 source-health、po18-crawler 配置/策略/运行时/HTTP/Cookie/Parser 边界及注入的缓存和 system_jobs 能力
+ * [OUTPUT]: 对外提供 PO18 爬虫服务，并兼容转发任务常量、停止错误、解析器、配置和选书策略公共接口
+ * [POS]: services 的 PO18 抓取编排核心，只协调来源访问、书章处理、缓存写入与任务结算，状态和纯规则下沉到兄弟模块
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-const CONFIG_KEY = "po18_crawler_config";
-const JOB_TYPE = "po18_crawler_run";
 const { createSourceHealthCircuit } = require("./source-health");
+const { listIncompletePo18Books } = require("./po18-crawler-cache-source");
 const { createPo18HttpClient } = require("./po18-crawler-http");
+const {
+    CONFIG_KEY,
+    DEFAULT_CONFIG,
+    JOB_TYPE,
+    maskedConfig,
+    normalizeBookIds,
+    publicConfig,
+    safeJsonParse,
+    sanitizeConfig
+} = require("./po18-crawler-config");
 const {
     PO18_BASE,
     CookieInvalidError,
-    normalizeText,
-    normalizeList,
     bookDetailUrl,
     findBooksBaseUrl,
     findBooksFormBody,
@@ -29,254 +36,15 @@ const {
     looksLikeAuthPage
 } = require("./po18-crawler-parsers");
 const {
-    cookieHeader,
     cookieProfileToHeader,
-    maskCookieProfiles,
     mergeCookies,
     normalizeCookieProfile,
     normalizeCookieProfiles,
     parseCookieString,
     profileKey
 } = require("./po18-crawler-cookies");
-const MAX_LOGS = 120;
-
-const DEFAULT_CONFIG = Object.freeze({
-    enabled: false,
-    startPage: 1,
-    endPage: 20,
-    maxBooksPerRun: 200,
-    categoryTag: "all",
-    categoryTid: "",
-    includeCategories: [],
-    blockedTags: [],
-    blockedKeywords: [],
-    minChapters: 0,
-    maxChapters: 0,
-    sort: "time",
-    status: "all",
-    words: "all",
-    newBook: "all",
-    bookConcurrency: 1,
-    chapterConcurrency: 3,
-    delayMs: 800,
-    requestIntervalMs: 250,
-    timeoutMs: 20000,
-    requestRetries: 2,
-    requestRetryDelayMs: 1200,
-    uploadMetadata: true,
-    uploadChapters: true,
-    skipCached: true,
-    overwrite: false,
-    intervalMinutes: 360,
-    sourceMode: "discover",
-    subscriptionBookIds: [],
-    cacheIdLimit: 500,
-    bookshelfStartYear: 2010,
-    bookshelfEmptyYearStop: 3,
-    cookie: "",
-    cookieProfiles: [],
-    activeCookieProfile: "",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
-});
-
-class CrawlerStoppedError extends Error {
-    constructor(message = "crawler stopped") {
-        super(message);
-        this.name = "CrawlerStoppedError";
-        this.code = "PO18_CRAWLER_STOPPED";
-    }
-}
-
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0))));
-}
-
-function intValue(value, fallback, min, max) {
-    const parsed = Number.parseInt(value, 10);
-    const safe = Number.isFinite(parsed) ? parsed : fallback;
-    return Math.max(min, Math.min(max, safe));
-}
-
-function boolValue(value, fallback = false) {
-    if (value === undefined || value === null || value === "") return fallback;
-    if (typeof value === "boolean") return value;
-    if (typeof value === "number") return value !== 0;
-    return ["1", "true", "yes", "on", "enabled"].includes(String(value).trim().toLowerCase());
-}
-
-function safeJsonParse(value, fallback = {}) {
-    try {
-        const parsed = JSON.parse(String(value || ""));
-        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
-    } catch {
-        return fallback;
-    }
-}
-
-function normalizeBookIds(value = []) {
-    const list = Array.isArray(value) ? value : String(value || "").split(/[\s,;，；]+/);
-    return [...new Set(list.map((item) => String(item || "").trim()).filter((item) => /^\d+$/.test(item)))];
-}
-
-function normalizeSmallToken(value = "", fallback = "") {
-    const textValue = normalizeText(value).replace(/[<>"'`&]/g, "").slice(0, 40);
-    if (!textValue) return fallback;
-    return textValue;
-}
-
-function sanitizeConfig(input = {}, current = {}) {
-    const merged = { ...DEFAULT_CONFIG, ...current, ...(input || {}) };
-    const startPage = intValue(merged.startPage, DEFAULT_CONFIG.startPage, 1, 100000);
-    const endPage = Math.max(startPage, intValue(merged.endPage, DEFAULT_CONFIG.endPage, 1, 100000));
-    const sourceMode = ["discover", "bookshelf", "cache", "subscription"].includes(String(merged.sourceMode || "").trim())
-        ? String(merged.sourceMode).trim()
-        : DEFAULT_CONFIG.sourceMode;
-    const rawCookie = String(merged.cookie || "").trim();
-    const cookie = cookieHeader(parseCookieString(rawCookie)) || rawCookie;
-    const cookieProfiles = normalizeCookieProfiles(merged.cookieProfiles, cookie);
-    const activeCookieProfile = String(merged.activeCookieProfile || profileKey(cookieProfiles[0]) || "").trim();
-    const minChapters = intValue(merged.minChapters, DEFAULT_CONFIG.minChapters, 0, 100000);
-    const rawMaxChapters = intValue(merged.maxChapters, DEFAULT_CONFIG.maxChapters, 0, 100000);
-    const maxChapters = rawMaxChapters > 0 && rawMaxChapters < minChapters ? minChapters : rawMaxChapters;
-    return {
-        enabled: boolValue(merged.enabled, DEFAULT_CONFIG.enabled),
-        startPage,
-        endPage,
-        maxBooksPerRun: intValue(merged.maxBooksPerRun, DEFAULT_CONFIG.maxBooksPerRun, 1, 5000),
-        categoryTag: normalizeSmallToken(merged.categoryTag, DEFAULT_CONFIG.categoryTag),
-        categoryTid: normalizeSmallToken(merged.categoryTid, DEFAULT_CONFIG.categoryTid),
-        includeCategories: normalizeList(merged.includeCategories),
-        blockedTags: normalizeList(merged.blockedTags),
-        blockedKeywords: normalizeList(merged.blockedKeywords, { maxItems: 120, maxLength: 60 }),
-        minChapters,
-        maxChapters,
-        sort: String(merged.sort || DEFAULT_CONFIG.sort).trim() || DEFAULT_CONFIG.sort,
-        status: String(merged.status || DEFAULT_CONFIG.status).trim() || DEFAULT_CONFIG.status,
-        words: String(merged.words || DEFAULT_CONFIG.words).trim() || DEFAULT_CONFIG.words,
-        newBook: String(merged.newBook || DEFAULT_CONFIG.newBook).trim() || DEFAULT_CONFIG.newBook,
-        bookConcurrency: intValue(merged.bookConcurrency, DEFAULT_CONFIG.bookConcurrency, 1, 8),
-        chapterConcurrency: intValue(merged.chapterConcurrency, DEFAULT_CONFIG.chapterConcurrency, 1, 20),
-        delayMs: intValue(merged.delayMs, DEFAULT_CONFIG.delayMs, 0, 60000),
-        requestIntervalMs: intValue(merged.requestIntervalMs, DEFAULT_CONFIG.requestIntervalMs, 0, 30000),
-        timeoutMs: intValue(merged.timeoutMs, DEFAULT_CONFIG.timeoutMs, 5000, 120000),
-        requestRetries: intValue(merged.requestRetries, DEFAULT_CONFIG.requestRetries, 0, 10),
-        requestRetryDelayMs: intValue(merged.requestRetryDelayMs, DEFAULT_CONFIG.requestRetryDelayMs, 0, 60000),
-        uploadMetadata: boolValue(merged.uploadMetadata, true),
-        uploadChapters: boolValue(merged.uploadChapters, true),
-        skipCached: boolValue(merged.skipCached, true),
-        overwrite: boolValue(merged.overwrite, false),
-        intervalMinutes: intValue(merged.intervalMinutes, DEFAULT_CONFIG.intervalMinutes, 5, 10080),
-        sourceMode,
-        subscriptionBookIds: normalizeBookIds(merged.subscriptionBookIds),
-        cacheIdLimit: intValue(merged.cacheIdLimit, DEFAULT_CONFIG.cacheIdLimit, 1, 10000),
-        bookshelfStartYear: intValue(merged.bookshelfStartYear, DEFAULT_CONFIG.bookshelfStartYear, 2008, new Date().getFullYear()),
-        bookshelfEmptyYearStop: intValue(merged.bookshelfEmptyYearStop, DEFAULT_CONFIG.bookshelfEmptyYearStop, 1, 12),
-        cookie,
-        cookieProfiles,
-        activeCookieProfile,
-        userAgent: String(merged.userAgent || DEFAULT_CONFIG.userAgent).trim() || DEFAULT_CONFIG.userAgent
-    };
-}
-
-function publicConfig(config = {}) {
-    const profiles = normalizeCookieProfiles(config.cookieProfiles, config.cookie);
-    return {
-        ...config,
-        cookieConfigured: !!String(config.cookie || "").trim() || profiles.some((profile) => !!cookieProfileToHeader(profile)),
-        cookieLength: String(config.cookie || "").length || (profiles[0] ? cookieProfileToHeader(profiles[0]).length : 0),
-        cookieProfileCount: profiles.length,
-        cookieProfiles: maskCookieProfiles(profiles)
-    };
-}
-
-function maskedConfig(config = {}) {
-    const out = publicConfig(config);
-    delete out.cookie;
-    return out;
-}
-
-function normalizedHaystack(...parts) {
-    return normalizeText(parts.filter(Boolean).join(" ")).toLowerCase();
-}
-
-function bookTagList(book = {}) {
-    return normalizeList([
-        book.category,
-        String(book.tags || "").replace(/[·]/g, "\n")
-    ].filter(Boolean).join("\n")).map((item) => item.toLowerCase());
-}
-
-function includesAnyToken(haystack = "", tokens = []) {
-    const value = String(haystack || "").toLowerCase();
-    return tokens.some((token) => token && value.includes(String(token).toLowerCase()));
-}
-
-function hasTagMatch(tags = [], tokens = []) {
-    const needles = tokens.map((item) => String(item || "").toLowerCase()).filter(Boolean);
-    if (!needles.length) return false;
-    return tags.some((tag) => needles.some((needle) => tag === needle || tag.includes(needle) || needle.includes(tag)));
-}
-
-function bookChapterCount(book = {}) {
-    return Math.max(
-        Number(book.totalChapters || book.total_chapters || 0),
-        Number(book.subscribedChapters || book.subscribed_chapters || 0),
-        Number(book.chapterCount || book.chapter_count || 0),
-        Number(book.freeChapters || book.free_chapters || 0) + Number(book.paidChapters || book.paid_chapters || 0)
-    ) || 0;
-}
-
-function formatBookDetailLog(detail = {}) {
-    const total = bookChapterCount(detail) || 0;
-    const free = Number(detail.freeChapters || detail.free_chapters || 0) || 0;
-    const paid = Number(detail.paidChapters || detail.paid_chapters || 0) || 0;
-    const split = free || paid ? `, free ${free}, paid ${paid}` : "";
-    return `book ${detail.bookId || detail.book_id || ""} detail loaded: chapters ${total}${split}, status ${detail.status || "-"}, pages ${detail.pageNum || detail.page_num || 1}`.trim();
-}
-
-function formatChapterListLog(detail = {}, chapters = [], candidates = [], skippedCached = 0, skippedLocked = 0, concurrency = 1) {
-    return `book ${detail.bookId || detail.book_id || ""} chapter list: accessible ${chapters.length}, candidates ${candidates.length}, cached ${skippedCached}, locked ${skippedLocked}, concurrency ${concurrency}`.trim();
-}
-
-function isFinishedStatus(value = "") {
-    return /完结|完結|完本|已完成/.test(normalizeText(value));
-}
-
-function isCompleteCachedBook(book = {}) {
-    const expected = bookChapterCount(book);
-    const cached = Number(book.cacheCount || book.cache_count || 0) || 0;
-    return expected > 0 && cached >= expected && isFinishedStatus(book.status || "");
-}
-
-function bookFilterDecision(book = {}, config = {}) {
-    const includeCategories = normalizeList(config.includeCategories);
-    const blockedTags = normalizeList(config.blockedTags);
-    const blockedKeywords = normalizeList(config.blockedKeywords, { maxItems: 120, maxLength: 60 });
-    const sourceMode = String(config.sourceMode || "discover").trim();
-    const tags = bookTagList(book);
-    if (includeCategories.length && !hasTagMatch(tags, includeCategories)) {
-        return { skip: true, reason: `category not selected: ${includeCategories.join("/")}` };
-    }
-    if (blockedTags.length && hasTagMatch(tags, blockedTags)) {
-        return { skip: true, reason: `blocked tag: ${blockedTags.join("/")}` };
-    }
-    const chapters = bookChapterCount(book);
-    const minChapters = Number(config.minChapters || 0);
-    const maxChapters = Number(config.maxChapters || 0);
-    if (sourceMode === "discover") {
-        if (minChapters > 0 && chapters > 0 && chapters < minChapters) {
-            return { skip: true, reason: `chapters ${chapters} < ${minChapters}` };
-        }
-        if (maxChapters > 0 && chapters > maxChapters) {
-            return { skip: true, reason: `chapters ${chapters} > ${maxChapters}` };
-        }
-    }
-    const haystack = normalizedHaystack(book.bookId, book.title, book.author, book.tags, book.category, book.status, book.description);
-    if (blockedKeywords.length && includesAnyToken(haystack, blockedKeywords)) {
-        return { skip: true, reason: `blocked keyword: ${blockedKeywords.find((keyword) => haystack.includes(String(keyword).toLowerCase())) || blockedKeywords[0]}` };
-    }
-    return { skip: false, reason: "" };
-}
+const { bookFilterDecision, formatBookDetailLog, formatChapterListLog, isCompleteCachedBook } = require("./po18-crawler-policy");
+const { CrawlerStoppedError, createCrawlerRuntime, sleep } = require("./po18-crawler-runtime");
 
 function createPo18CrawlerService(options = {}) {
     const {
@@ -301,67 +69,19 @@ function createPo18CrawlerService(options = {}) {
         cooldownMs: process.env.PO18_CRAWLER_CIRCUIT_COOLDOWN_MS
     });
 
-    const state = {
-        config: { ...DEFAULT_CONFIG },
-        loaded: false,
-        running: false,
-        paused: false,
-        pauseReason: "",
-        stopRequested: false,
-        activeJobId: null,
-        startedAt: null,
-        finishedAt: null,
-        nextRunAt: null,
-        lastRunAt: null,
-        lastResult: null,
-        lastError: "",
-        findBooksToken: "",
-        logs: [],
-        stats: freshStats(),
-        timer: null
-    };
-
-    function freshStats() {
-        return {
-            pagesScanned: 0,
-            booksFound: 0,
-            booksProcessed: 0,
-            booksSkippedFiltered: 0,
-            booksSkippedComplete: 0,
-            metadataUploaded: 0,
-            chaptersFound: 0,
-            chaptersUploaded: 0,
-            chaptersSkippedCached: 0,
-            chaptersSkippedPaid: 0,
-            chaptersFailed: 0,
-            errors: 0,
-            activeBooks: 0,
-            activeChapters: 0,
-            chapterCandidates: 0,
-            requestRetries: 0,
-            cookieRefreshes: 0,
-            currentPage: 0,
-            currentBookId: "",
-            currentBookTitle: "",
-            currentChapterId: "",
-            currentChapterTitle: "",
-            lastMessage: ""
-        };
-    }
-
-    function log(level, message, extra = {}) {
-        const item = {
-            at: new Date().toISOString(),
-            level,
-            message: String(message || ""),
-            ...extra
-        };
-        state.logs.push(item);
-        if (state.logs.length > MAX_LOGS) state.logs.splice(0, state.logs.length - MAX_LOGS);
-        state.stats.lastMessage = item.message;
-        if (level === "error") logger.warn?.(`[po18-crawler] ${item.message}`);
-        else logger.log?.(`[po18-crawler] ${item.message}`);
-    }
+    const {
+        beginJob,
+        checkStopped,
+        currentProgress,
+        log,
+        pause,
+        releaseJob,
+        resume,
+        snapshot: runtimeSnapshot,
+        state,
+        stop,
+        waitWhilePaused
+    } = createCrawlerRuntime({ defaultConfig: DEFAULT_CONFIG, logger });
 
     async function loadConfig() {
         if (state.loaded) return state.config;
@@ -374,10 +94,10 @@ function createPo18CrawlerService(options = {}) {
         }
         state.config = sanitizeConfig(decrypted);
         state.loaded = true;
-        if (credentialCrypto?.configured && (
-            credentialCrypto.needsStringRotation(stored.cookie)
-            || credentialCrypto.needsJsonRotation(stored.cookieProfiles)
-        )) {
+        if (
+            credentialCrypto?.configured &&
+            (credentialCrypto.needsStringRotation(stored.cookie) || credentialCrypto.needsJsonRotation(stored.cookieProfiles))
+        ) {
             await configSet(CONFIG_KEY, JSON.stringify(storedConfig(state.config)));
         }
         return state.config;
@@ -388,17 +108,23 @@ function createPo18CrawlerService(options = {}) {
         const patch = { ...(input || {}) };
         const incomingCookie = String(patch.cookie || "").trim();
         if (incomingCookie) {
-            const name = String(patch.cookieName || patch.activeCookieProfile || "default").trim().slice(0, 80) || "default";
+            const name =
+                String(patch.cookieName || patch.activeCookieProfile || "default")
+                    .trim()
+                    .slice(0, 80) || "default";
             const profiles = normalizeCookieProfiles(current.cookieProfiles, current.cookie);
             const index = profiles.findIndex((profile) => profileKey(profile) === name || profile.name === name);
-            const nextProfile = normalizeCookieProfile({
-                id: index >= 0 ? profiles[index].id : name,
-                name,
-                cookie: incomingCookie,
-                enabled: true,
-                lastStatus: "saved",
-                lastUsedAt: new Date().toISOString()
-            }, Math.max(index, 0));
+            const nextProfile = normalizeCookieProfile(
+                {
+                    id: index >= 0 ? profiles[index].id : name,
+                    name,
+                    cookie: incomingCookie,
+                    enabled: true,
+                    lastStatus: "saved",
+                    lastUsedAt: new Date().toISOString()
+                },
+                Math.max(index, 0)
+            );
             if (index >= 0) profiles[index] = nextProfile;
             else profiles.unshift(nextProfile);
             patch.cookieProfiles = profiles;
@@ -432,8 +158,9 @@ function createPo18CrawlerService(options = {}) {
     }
 
     function activeCookieProfile(config = state.config) {
-        const profiles = normalizeCookieProfiles(config.cookieProfiles, config.cookie)
-            .filter((profile) => profile.enabled !== false && cookieProfileToHeader(profile));
+        const profiles = normalizeCookieProfiles(config.cookieProfiles, config.cookie).filter(
+            (profile) => profile.enabled !== false && cookieProfileToHeader(profile)
+        );
         if (!profiles.length) return null;
         const active = String(config.activeCookieProfile || "").trim();
         return profiles.find((profile) => profileKey(profile) === active || profile.name === active) || profiles[0];
@@ -532,17 +259,6 @@ function createPo18CrawlerService(options = {}) {
         await waitWhilePaused();
     }
 
-    async function waitWhilePaused() {
-        while (state.paused) {
-            checkStopped();
-            await sleep(1000);
-        }
-    }
-
-    function checkStopped() {
-        if (state.stopRequested) throw new CrawlerStoppedError();
-    }
-
     async function ensureFindBooksToken() {
         if (state.findBooksToken) return state.findBooksToken;
         const html = await withCookiePause(() => requestText(findBooksBaseUrl(), { referer: PO18_BASE }), { label: "findbooks token" });
@@ -574,24 +290,33 @@ function createPo18CrawlerService(options = {}) {
     }
 
     async function fetchFindBooksPage(page, config) {
-        return withCookiePause(async () => {
-            try {
-                return await postFindBooksPage(page, config);
-            } catch (err) {
-                if (Number(err?.status || 0) !== 404) throw err;
-                state.findBooksToken = "";
-                log("warn", `findbooks POST returned 404 (${findBooksFilterLog(page, config)}); refreshing form token and retrying once`);
-                await ensureFindBooksToken();
-                return postFindBooksPage(page, config);
-            }
-        }, { label: "findbooks" });
+        return withCookiePause(
+            async () => {
+                try {
+                    return await postFindBooksPage(page, config);
+                } catch (err) {
+                    if (Number(err?.status || 0) !== 404) throw err;
+                    state.findBooksToken = "";
+                    log(
+                        "warn",
+                        `findbooks POST returned 404 (${findBooksFilterLog(page, config)}); refreshing form token and retrying once`
+                    );
+                    await ensureFindBooksToken();
+                    return postFindBooksPage(page, config);
+                }
+            },
+            { label: "findbooks" }
+        );
     }
 
     async function fetchBookDetail(bookId) {
-        return withCookiePause(async () => {
-            const html = await requestText(bookDetailUrl(bookId), { referer: PO18_BASE });
-            return parseBookDetailHtml(html, bookId);
-        }, { bookId });
+        return withCookiePause(
+            async () => {
+                const html = await requestText(bookDetailUrl(bookId), { referer: PO18_BASE });
+                return parseBookDetailHtml(html, bookId);
+            },
+            { bookId }
+        );
     }
 
     async function fetchChapterList(bookId, pageCount) {
@@ -600,10 +325,13 @@ function createPo18CrawlerService(options = {}) {
         for (let page = 1; page <= Math.max(1, Number(pageCount || 1)); page++) {
             checkStopped();
             await waitWhilePaused();
-            const parsed = await withCookiePause(async () => {
-                const html = await requestText(bookArticlesUrl(bookId, page), { referer: bookDetailUrl(bookId) });
-                return parseChapterListHtml(html, bookId, startIndex);
-            }, { bookId });
+            const parsed = await withCookiePause(
+                async () => {
+                    const html = await requestText(bookArticlesUrl(bookId, page), { referer: bookDetailUrl(bookId) });
+                    return parseChapterListHtml(html, bookId, startIndex);
+                },
+                { bookId }
+            );
             chapters.push(...parsed.chapters);
             startIndex += parsed.scanned;
             if (page < pageCount) await sleep(200);
@@ -612,13 +340,16 @@ function createPo18CrawlerService(options = {}) {
     }
 
     async function fetchChapterContent(bookId, chapter) {
-        return withCookiePause(async () => {
-            const html = await requestText(chapterContentUrl(bookId, chapter.chapterId), {
-                referer: chapterRefererUrl(bookId, chapter.chapterId),
-                headers: { "X-Requested-With": "XMLHttpRequest" }
-            });
-            return parseChapterContentHtml(html, chapter.title);
-        }, { bookId });
+        return withCookiePause(
+            async () => {
+                const html = await requestText(chapterContentUrl(bookId, chapter.chapterId), {
+                    referer: chapterRefererUrl(bookId, chapter.chapterId),
+                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                });
+                return parseChapterContentHtml(html, chapter.title);
+            },
+            { bookId }
+        );
     }
 
     async function cachedChapterIds(bookId) {
@@ -627,107 +358,10 @@ function createPo18CrawlerService(options = {}) {
     }
 
     async function cacheBookIds(limit) {
-        const cappedLimit = Math.max(1, Number(limit || DEFAULT_CONFIG.cacheIdLimit));
-        const result = await query(
-            `WITH latest AS (
-                SELECT DISTINCT ON (m.book_id)
-                    m.book_id,
-                    m.title,
-                    m.author,
-                    m.tags,
-                    m.category,
-                    m.status,
-                    m.platform,
-                    m.detail_url,
-                    m.total_chapters,
-                    m.subscribed_chapters,
-                    m.chapter_count,
-                    m.free_chapters,
-                    m.paid_chapters,
-                    COALESCE(m.updated_at, m.created_at) AS metadata_at
-                FROM book_metadata m
-                WHERE LOWER(TRIM(COALESCE(m.platform, ''))) = 'po18'
-                  AND TRIM(COALESCE(m.book_id, '')) <> ''
-                ORDER BY m.book_id, COALESCE(m.updated_at, m.created_at) DESC NULLS LAST, m.id DESC
-             ),
-             ranked AS (
-                SELECT
-                    latest.*,
-                    COALESCE(s.cache_count, 0)::int AS cache_count,
-                    GREATEST(
-                        COALESCE(latest.total_chapters, 0),
-                        COALESCE(latest.subscribed_chapters, 0),
-                        COALESCE(latest.chapter_count, 0),
-                        COALESCE(latest.free_chapters, 0) + COALESCE(latest.paid_chapters, 0)
-                    )::int AS expected_chapters
-                FROM latest
-                LEFT JOIN book_stats s ON s.book_id = latest.book_id
-             )
-             SELECT *
-             FROM ranked
-             WHERE NOT (
-                expected_chapters > 0
-                AND cache_count >= expected_chapters
-                AND COALESCE(status, '') ~ '(完结|完結|完本|已完成)'
-             )
-             ORDER BY metadata_at DESC NULLS LAST, book_id DESC
-             LIMIT $1`,
-            [cappedLimit]
-        );
-        const skipped = await query(
-            `WITH latest AS (
-                SELECT DISTINCT ON (m.book_id)
-                    m.book_id,
-                    m.status,
-                    m.total_chapters,
-                    m.subscribed_chapters,
-                    m.chapter_count,
-                    m.free_chapters,
-                    m.paid_chapters,
-                    COALESCE(m.updated_at, m.created_at) AS metadata_at
-                FROM book_metadata m
-                WHERE LOWER(TRIM(COALESCE(m.platform, ''))) = 'po18'
-                  AND TRIM(COALESCE(m.book_id, '')) <> ''
-                ORDER BY m.book_id, COALESCE(m.updated_at, m.created_at) DESC NULLS LAST, m.id DESC
-             )
-             SELECT COUNT(*)::int count
-             FROM latest
-             LEFT JOIN book_stats s ON s.book_id = latest.book_id
-             WHERE GREATEST(
-                    COALESCE(latest.total_chapters, 0),
-                    COALESCE(latest.subscribed_chapters, 0),
-                    COALESCE(latest.chapter_count, 0),
-                    COALESCE(latest.free_chapters, 0) + COALESCE(latest.paid_chapters, 0)
-                ) > 0
-               AND COALESCE(s.cache_count, 0) >= GREATEST(
-                    COALESCE(latest.total_chapters, 0),
-                    COALESCE(latest.subscribed_chapters, 0),
-                    COALESCE(latest.chapter_count, 0),
-                    COALESCE(latest.free_chapters, 0) + COALESCE(latest.paid_chapters, 0)
-                )
-               AND COALESCE(latest.status, '') ~ '(完结|完結|完本|已完成)'`
-        ).catch(() => ({ rows: [] }));
-        const skippedComplete = Number(skipped.rows?.[0]?.count || 0);
-        state.stats.booksSkippedComplete += skippedComplete;
-        if (skippedComplete) log("info", `metadata source skipped ${skippedComplete} finished books with 100% cache`);
-        return (result.rows || []).map((row) => ({
-            bookId: String(row.book_id),
-            book_id: String(row.book_id),
-            title: row.title || "",
-            author: row.author || "",
-            tags: row.tags || "",
-            category: row.category || "",
-            status: row.status || "",
-            totalChapters: Number(row.total_chapters || 0),
-            subscribedChapters: Number(row.subscribed_chapters || 0),
-            chapterCount: Number(row.chapter_count || 0),
-            freeChapters: Number(row.free_chapters || 0),
-            paidChapters: Number(row.paid_chapters || 0),
-            cacheCount: Number(row.cache_count || 0),
-            expectedChapters: Number(row.expected_chapters || 0),
-            platform: "po18",
-            detailUrl: row.detail_url || bookDetailUrl(row.book_id)
-        }));
+        const result = await listIncompletePo18Books({ query, limit, defaultLimit: DEFAULT_CONFIG.cacheIdLimit });
+        state.stats.booksSkippedComplete += result.skippedComplete;
+        if (result.skippedComplete) log("info", `metadata source skipped ${result.skippedComplete} finished books with 100% cache`);
+        return result.books;
     }
 
     async function fetchBookshelfBooks(config) {
@@ -740,12 +374,15 @@ function createPo18CrawlerService(options = {}) {
             checkStopped();
             await waitWhilePaused();
             log("info", `scanning PO18 bookshelf year ${year}`);
-            const rows = await withCookiePause(async () => {
-                const html = await requestText(`${PO18_BASE}/panel/stock_manage/buyed_lists?sort=order&date_year=${year}`, {
-                    referer: `${PO18_BASE}/panel/stock_manage/buyed_lists`
-                });
-                return parseBookshelfHtml(html);
-            }, { label: `bookshelf ${year}` });
+            const rows = await withCookiePause(
+                async () => {
+                    const html = await requestText(`${PO18_BASE}/panel/stock_manage/buyed_lists?sort=order&date_year=${year}`, {
+                        referer: `${PO18_BASE}/panel/stock_manage/buyed_lists`
+                    });
+                    return parseBookshelfHtml(html);
+                },
+                { label: `bookshelf ${year}` }
+            );
             if (!rows.length) {
                 empty += 1;
                 if (empty >= Number(config.bookshelfEmptyYearStop || DEFAULT_CONFIG.bookshelfEmptyYearStop)) break;
@@ -764,14 +401,16 @@ function createPo18CrawlerService(options = {}) {
     }
 
     function subscriptionBooks(config) {
-        return normalizeBookIds(config.subscriptionBookIds).slice(0, config.maxBooksPerRun).map((bookId) => ({
-            bookId,
-            book_id: bookId,
-            title: "",
-            author: "",
-            platform: "po18",
-            detailUrl: bookDetailUrl(bookId)
-        }));
+        return normalizeBookIds(config.subscriptionBookIds)
+            .slice(0, config.maxBooksPerRun)
+            .map((bookId) => ({
+                bookId,
+                book_id: bookId,
+                title: "",
+                author: "",
+                platform: "po18",
+                detailUrl: bookDetailUrl(bookId)
+            }));
     }
 
     async function sourceBooks(config) {
@@ -917,15 +556,12 @@ function createPo18CrawlerService(options = {}) {
         const uploaded = Number(state.stats.chaptersUploaded || 0) - beforeUploaded;
         const failed = Number(state.stats.chaptersFailed || 0) - beforeFailed;
         state.stats.booksProcessed += 1;
-        log("info", `book ${detail.bookId} finished: uploaded ${uploaded}, cached ${skippedCached}, locked ${skippedPaid}, failed ${failed}`);
+        log(
+            "info",
+            `book ${detail.bookId} finished: uploaded ${uploaded}, cached ${skippedCached}, locked ${skippedPaid}, failed ${failed}`
+        );
         await updateJobProgress();
         return { success: true, bookId: detail.bookId, title: detail.title, chapters: candidates.length };
-    }
-
-    function currentProgress() {
-        const totalPages = Math.max(1, state.config.endPage - state.config.startPage + 1);
-        const pageProgress = Math.max(0, Math.min(totalPages, state.stats.pagesScanned));
-        return Math.max(1, Math.min(95, Math.floor((pageProgress / totalPages) * 90) + 5));
     }
 
     async function updateJobProgress() {
@@ -969,15 +605,7 @@ function createPo18CrawlerService(options = {}) {
     }
 
     async function executeJob(job, input = {}) {
-        state.running = true;
-        state.paused = false;
-        state.pauseReason = "";
-        state.stopRequested = false;
-        state.activeJobId = job.id;
-        state.startedAt = new Date().toISOString();
-        state.finishedAt = null;
-        state.lastError = "";
-        state.stats = freshStats();
+        beginJob(job.id);
         await updateSystemJob(job.id, { status: "running", progress: 1, started: true });
         await recordEvent({
             eventType: "system",
@@ -1004,18 +632,25 @@ function createPo18CrawlerService(options = {}) {
             state.finishedAt = new Date().toISOString();
             state.lastError = err.message || String(err);
             if (err instanceof CrawlerStoppedError || err?.code === "PO18_CRAWLER_STOPPED") {
-                await updateSystemJob(job.id, { status: "canceled", progress: currentProgress(), error: state.lastError, finished: true }).catch(() => {});
+                await updateSystemJob(job.id, {
+                    status: "canceled",
+                    progress: currentProgress(),
+                    error: state.lastError,
+                    finished: true
+                }).catch(() => {});
                 log("warn", "crawler stopped");
             } else {
-                await updateSystemJob(job.id, { status: "failed", progress: 100, error: state.lastError, result: state.stats, finished: true }).catch(() => {});
+                await updateSystemJob(job.id, {
+                    status: "failed",
+                    progress: 100,
+                    error: state.lastError,
+                    result: state.stats,
+                    finished: true
+                }).catch(() => {});
                 log("error", `crawler failed: ${state.lastError}`);
             }
         } finally {
-            state.running = false;
-            state.paused = false;
-            state.pauseReason = "";
-            state.stopRequested = false;
-            state.activeJobId = null;
+            releaseJob();
             scheduleNext();
         }
     }
@@ -1040,31 +675,6 @@ function createPo18CrawlerService(options = {}) {
         return job;
     }
 
-    function pause(reason = "paused by admin") {
-        if (!state.running) return false;
-        state.paused = true;
-        state.pauseReason = String(reason || "paused by admin").slice(0, 500);
-        log("warn", state.pauseReason);
-        return true;
-    }
-
-    function resume() {
-        if (!state.running) return false;
-        state.paused = false;
-        state.pauseReason = "";
-        log("info", "crawler resumed");
-        return true;
-    }
-
-    function stop() {
-        if (!state.running) return false;
-        state.stopRequested = true;
-        state.paused = false;
-        state.pauseReason = "";
-        log("warn", "crawler stop requested");
-        return true;
-    }
-
     async function testCookie(input = {}) {
         const previous = state.config;
         const patch = { ...(input || {}) };
@@ -1077,7 +687,12 @@ function createPo18CrawlerService(options = {}) {
             state.findBooksToken = token || "";
             const books = parseFindBooksHtml(await fetchFindBooksPage(1, state.config)).slice(0, 3);
             const profile = activeCookieProfile(state.config);
-            return { ok: true, token: !!token, activeCookieProfile: profile ? { id: profile.id, name: profile.name } : null, sampleBooks: books.map((book) => ({ bookId: book.bookId, title: book.title })) };
+            return {
+                ok: true,
+                token: !!token,
+                activeCookieProfile: profile ? { id: profile.id, name: profile.name } : null,
+                sampleBooks: books.map((book) => ({ bookId: book.bookId, title: book.title }))
+            };
         } finally {
             state.config = previous;
             state.findBooksToken = "";
@@ -1085,21 +700,7 @@ function createPo18CrawlerService(options = {}) {
     }
 
     function snapshot() {
-        return {
-            running: state.running,
-            paused: state.paused,
-            pauseReason: state.pauseReason,
-            activeJobId: state.activeJobId,
-            startedAt: state.startedAt,
-            finishedAt: state.finishedAt,
-            nextRunAt: state.nextRunAt,
-            lastRunAt: state.lastRunAt,
-            lastError: state.lastError,
-            lastResult: state.lastResult,
-            sourceHealth: sourceHealth.snapshot(),
-            stats: state.stats,
-            logs: state.logs.slice(-MAX_LOGS)
-        };
+        return runtimeSnapshot(sourceHealth.snapshot());
     }
 
     function scheduleNext() {
