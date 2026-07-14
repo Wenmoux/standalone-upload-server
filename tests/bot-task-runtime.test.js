@@ -79,14 +79,26 @@ test("bot task runtime persists and claims a job before executing it", async () 
         systemJobType: "bot_share_upload",
         systemJobInput: { telegram_id: "1", book_id: "2" },
         idempotencyKey: "bot:share:1:2",
-        task: async () => { executed = true; return { uploaded: 1 }; }
+        task: async () => {
+            executed = true;
+            return { uploaded: 1 };
+        }
     });
     assert.equal(accepted, true);
     await waitFor(() => executed && runtime.botTaskQueue.stats().running === 0);
     assert.equal(client.calls[0][0], "create");
     assert.equal(client.calls[0][1].idempotency_key, "bot:share:1:2");
-    assert.equal(client.calls.some((call) => call[0] === "claim"), true);
-    assert.equal(client.calls.some((call) => call[0] === "update" && call[2].status === "succeeded"), true);
+    assert.equal(
+        client.calls.some((call) => call[0] === "claim"),
+        true
+    );
+    const succeeded = client.calls.find((call) => call[0] === "update" && call[2].status === "succeeded");
+    assert.equal(succeeded[2].worker_id, "test-worker");
+    assert.equal(succeeded[2].attempt, 1);
+    assert.equal(
+        client.calls.some((call) => call[0] === "update" && call[2].status === "queued"),
+        false
+    );
 });
 
 test("bot task runtime rebuilds jobs claimed during startup recovery", async () => {
@@ -112,10 +124,15 @@ test("bot task runtime rebuilds jobs claimed during startup recovery", async () 
         chatId: "8",
         systemJobType: row.type,
         systemJobInput: row.input_json,
-        task: async () => { recovered = true; }
+        task: async () => {
+            recovered = true;
+        }
     }));
     assert.equal(count, 1);
     await waitFor(() => recovered && runtime.botTaskQueue.stats().running === 0);
     assert.equal(client.calls[0][0], "claim-many");
-    assert.equal(client.calls.some((call) => call[0] === "create"), false);
+    assert.equal(
+        client.calls.some((call) => call[0] === "create"),
+        false
+    );
 });

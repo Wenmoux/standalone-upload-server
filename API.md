@@ -1277,6 +1277,8 @@ Content-Type: application/json
 {
     "status": "running",
     "progress": 50,
+    "worker_id": "bot:host:1234",
+    "attempt": 2,
     "result": { "message": "half done" },
     "error": "",
     "started": true,
@@ -1285,6 +1287,16 @@ Content-Type: application/json
 ```
 
 状态允许：`queued`、`running`、`succeeded`、`failed`、`canceled`。`progress` 会限制到 `0-100`，`result` 超过限制时会被压缩成摘要。
+
+所有任务 PATCH 回写都必须携带 claim 响应中的当前 `locked_by`（作为 `worker_id`）和 `attempt`。服务端以两者作为 fencing token；租约过期并被新 Worker 接管后，旧 Worker 的迟到更新返回 `409 job lease ownership lost`，不能覆盖新执行。任务创建本身已经写入 queued 状态，Worker 不应在进入内存队列时重复 PATCH queued。
+
+```http
+POST /bot-api/jobs/:id/heartbeat
+X-Bot-Token: <PO18_BOT_API_TOKEN>
+Content-Type: application/json
+```
+
+心跳同样必须提交 `worker_id`、claim 返回的正整数 `attempt`，以及可选的 `progress`、`lease_seconds`。只有当前 attempt 且租约尚未过期时才能续租；过期心跳不能复活旧租约，返回 `409 job lease not owned`。
 
 ### Bot 内部审计写入
 

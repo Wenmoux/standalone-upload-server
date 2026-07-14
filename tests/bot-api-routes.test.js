@@ -7,6 +7,7 @@
 const assert = require("assert/strict");
 const http = require("http");
 const test = require("node:test");
+const { botJobPatch } = require("../routes/bot-api-system");
 const express = require("express");
 const { createBotApiRoutes } = require("../routes/bot-api");
 const { createCredentialCrypto } = require("../services/credential-crypto");
@@ -32,6 +33,41 @@ function botOnly(req, res, next) {
     if (req.get("X-Test-Bot") !== "1") return res.status(401).json({ error: "bot token required" });
     next();
 }
+
+test("bot job updates require worker fencing after a lease claim", () => {
+    assert.throws(
+        () => botJobPatch({ status: "queued", progress: 0 }),
+        (err) => err.status === 409
+    );
+    assert.throws(
+        () => botJobPatch({ status: "running", started: true }),
+        (err) => err.status === 409
+    );
+    assert.throws(
+        () => botJobPatch({ status: "succeeded", finished: true, worker_id: "worker-a" }),
+        (err) => err.status === 400
+    );
+    assert.deepEqual(botJobPatch({ status: "succeeded", progress: 100, finished: true, worker_id: "worker-a", attempt: 2 }), {
+        status: "succeeded",
+        progress: 100,
+        finished: true,
+        workerId: "worker-a",
+        attempt: 2
+    });
+});
+
+test("bot job update route reports lost lease ownership", async () => {
+    const router = createBotApiRoutes({ requireBotApi: botOnly, updateSystemJob: async () => null });
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/bot-api/jobs/7`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ status: "succeeded", finished: true, worker_id: "worker-a", attempt: 2 })
+        });
+        assert.equal(response.status, 409);
+        assert.match((await response.json()).error, /ownership lost/);
+    });
+});
 
 test("bot api routes expose health behind bot middleware", async () => {
     const router = createBotApiRoutes({ requireBotApi: botOnly });
@@ -153,7 +189,7 @@ test("bot api routes delegate user and hot keyword handlers", async () => {
     const router = createBotApiRoutes({
         requireBotApi: botOnly,
         findBotUserByTelegramId: async (telegramId) => ({ id: 7, telegram_id: telegramId, username: `tg_${telegramId}` }),
-        botPublicUser: (user) => user ? ({ id: user.id, telegram_id: user.telegram_id }) : null,
+        botPublicUser: (user) => (user ? { id: user.id, telegram_id: user.telegram_id } : null),
         getHotKeywords: async (limit) => {
             calls.push({ getHotKeywords: Number(limit) });
             return [{ keyword: "alpha", count: 2 }];
@@ -180,11 +216,7 @@ test("bot api routes delegate user and hot keyword handlers", async () => {
         assert.equal((await added.json()).row.keyword, "beta");
     });
 
-    assert.deepEqual(calls, [
-        { getHotKeywords: 3 },
-        { addHotKeyword: "beta", type: "search", resultCount: 5 },
-        { getHotKeywords: 20 }
-    ]);
+    assert.deepEqual(calls, [{ getHotKeywords: 3 }, { addHotKeyword: "beta", type: "search", resultCount: 5 }, { getHotKeywords: 20 }]);
 });
 
 test("bot api routes expose word cloud payload behind bot middleware", async () => {
@@ -274,11 +306,17 @@ test("bot api user routes claim extra export quota and redeem cdk", async () => 
         botPublicUser: (user) => user,
         claimExtraExportQuota: async (payload) => {
             calls.push(["claim", payload]);
-            return { user: { telegram_id: payload.telegramId, export_extra_quota: 1 }, usage: { charge_type: "extra_quota", extra_remaining: 1 } };
+            return {
+                user: { telegram_id: payload.telegramId, export_extra_quota: 1 },
+                usage: { charge_type: "extra_quota", extra_remaining: 1 }
+            };
         },
         redeemExportQuotaCdk: async (payload) => {
             calls.push(["redeem", payload]);
-            return { user: { telegram_id: payload.telegramId, export_extra_quota: 6 }, cdk: { code: String(payload.code).toUpperCase(), export_quota: 5 } };
+            return {
+                user: { telegram_id: payload.telegramId, export_extra_quota: 6 },
+                cdk: { code: String(payload.code).toUpperCase(), export_quota: 5 }
+            };
         }
     });
 
@@ -302,7 +340,10 @@ test("bot api user routes claim extra export quota and redeem cdk", async () => 
         assert.equal(body.user.export_extra_quota, 6);
     });
 
-    assert.deepEqual(calls.map((call) => call[0]), ["claim", "redeem"]);
+    assert.deepEqual(
+        calls.map((call) => call[0]),
+        ["claim", "redeem"]
+    );
     assert.equal(calls[0][1].bookId, "b1");
     assert.equal(calls[1][1].code, "cdk-quota");
 });
@@ -349,7 +390,14 @@ test("bot api routes let bot tasks create and update system jobs", async () => {
         const updated = await fetch(`${base}/bot-api/jobs/9`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
-            body: JSON.stringify({ status: "succeeded", progress: 100, result: { ok: true }, finished: true })
+            body: JSON.stringify({
+                status: "succeeded",
+                progress: 100,
+                result: { ok: true },
+                finished: true,
+                worker_id: "worker-a",
+                attempt: 1
+            })
         });
         assert.equal(updated.status, 200);
         assert.equal((await updated.json()).job.status, "succeeded");
@@ -372,7 +420,14 @@ test("bot api routes let bot tasks create and update system jobs", async () => {
         },
         {
             update: 9,
-            patch: { status: "succeeded", progress: 100, result: { ok: true }, finished: true }
+            patch: {
+                status: "succeeded",
+                progress: 100,
+                result: { ok: true },
+                finished: true,
+                workerId: "worker-a",
+                attempt: 1
+            }
         }
     ]);
 });

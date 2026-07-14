@@ -38,7 +38,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `search-query.js`: 解析搜索词、标签、平台后缀与书号，集中处理用户输入边界。
 `share-handlers.js`: 编排单书/书架共享、上传进度与奖励结算，通过幂等任务避免重复奖励。
 `social-handlers.js`: 实现收藏列表、红包、众筹、私聊普通输入/群聊手动回复收集且取消时清理提示的书评发布、举报和申诉交互层；禁止 ForceReply 遗留客户端回复状态。
-`task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、重试、恢复、取消和审计。
+`task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、重试、恢复、取消、审计及 worker/attempt fencing token 回写。
 `task-schedulers.js`: 定义导出、书架同步、共享和全员通知任务的持久类型、幂等键、互斥键与恢复工厂。
 `task-status-handlers.js`: 提供 `/tasks`、`/task`、`/canceljob` 的状态查询与权限边界。
 `telegram.js`: Telegram HTTP API 客户端，统一请求超时、消息编辑、文件发送和文本截断。
@@ -58,7 +58,7 @@ Telegram update
 ```
 
 - `command-catalog.js` 管声明，`commands/` 管注册，领域 handler 管行为；三者不可互相复制命令分支。
-- `job-queue.js` 只管理单进程并发，跨重启/跨实例正确性由 `task-runtime.js` 与服务端 lease 保证。
+- `job-queue.js` 只管理单进程并发，跨重启/跨实例正确性由 `task-runtime.js` 与服务端 lease/fencing token 保证；恢复任务不得在 `onQueued` 阶段回写数据库状态。
 - EPUB 样式只扩展 `epub-styles/` 插件契约，ZIP、长屏封面、清单、全屏 spine 和转义始终由 `epub-builder.js` 统一。
 - 自动取消置顶只消费 `pinned_message.is_automatic_forward` 且携带根级系统标记的消息，并始终传入精确 `message_id`；普通群消息和未标记频道帖不受影响。
 

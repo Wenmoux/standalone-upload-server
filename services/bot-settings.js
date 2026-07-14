@@ -7,6 +7,7 @@
 const { BOT_COMMAND_CATALOG, normalizeBotCommand } = require("../bot/command-catalog");
 
 const BOT_COMMAND_SETTINGS_KEY = "bot_command_settings";
+const BOT_COMMANDS = new Set(BOT_COMMAND_CATALOG.map((item) => normalizeBotCommand(item.command)));
 
 function parseBotCommandSettings(value = "") {
     try {
@@ -20,12 +21,26 @@ function parseBotCommandSettings(value = "") {
 
 function cleanCommandPatch(row = {}) {
     const command = normalizeBotCommand(row.command);
-    if (!command) return null;
+    if (!command || !BOT_COMMANDS.has(command)) return null;
+    const disabledValues = new Set(["0", "false", "off", "disabled"]);
+    const enabled =
+        typeof row.enabled === "boolean"
+            ? row.enabled
+            : !disabledValues.has(
+                  String(row.enabled === undefined ? "true" : row.enabled)
+                      .trim()
+                      .toLowerCase()
+              );
+    const cleanText = (value, maxLength) =>
+        String(value || "")
+            .replace(/[\u0000-\u001f\u007f]+/g, " ")
+            .trim()
+            .slice(0, maxLength);
     return {
         command,
-        enabled: row.enabled !== false,
-        description: String(row.description || "").trim().slice(0, 120),
-        disabledMessage: String(row.disabledMessage || row.disabled_message || "").trim().slice(0, 240)
+        enabled,
+        description: cleanText(row.description, 120),
+        disabledMessage: cleanText(row.disabledMessage || row.disabled_message, 240)
     };
 }
 
@@ -60,8 +75,12 @@ function mergeCommandSettings(stored = {}) {
 }
 
 function serializeCommandSettings(payload = {}) {
-    const commands = (Array.isArray(payload.commands) ? payload.commands : [])
-        .map(cleanCommandPatch)
+    const overrides = new Map();
+    for (const item of Array.isArray(payload.commands) ? payload.commands : []) {
+        const row = cleanCommandPatch(item);
+        if (row) overrides.set(row.command, row);
+    }
+    const commands = BOT_COMMAND_CATALOG.map((item) => overrides.get(normalizeBotCommand(item.command)))
         .filter(Boolean)
         .map((row) => ({
             command: row.command,
@@ -96,6 +115,7 @@ function createBotSettingsService(options = {}) {
 
 module.exports = {
     BOT_COMMAND_SETTINGS_KEY,
+    cleanCommandPatch,
     createBotSettingsService,
     mergeCommandSettings,
     parseBotCommandSettings,

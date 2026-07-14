@@ -11,6 +11,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `admin-audit.test.js`: 管理审计 actor/target/reason、查询、过滤与脱敏契约。
 - `admin-lazy-workspace.test.js`: Admin 页内工作区按需加载、并发去重、失败重试与缓存刷新语义。
 - `admin-auth-routes.test.js`: Admin 登录、会话、角色和 CSRF 路由契约。
+- `admin-exports.test.js`: Admin CSV 公式注入防护、编码、文件名与响应协议。
 - `admin-content-routes.test.js`: 管理端书籍、章节与 Reader/Bot 管理员授权路由契约。
 - `admin-modules.test.js`: Admin 领域服务组合与边界回归。
 - `admin-ui-contract.test.js`: Admin 导航、会话恢复、无障碍公共控件、非阻塞输入与高密度工作区分层契约。
@@ -20,18 +21,20 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `body-limits.test.js`: 分路由请求体限制与拒绝语义。
 - `book-chapters.test.js`: 章节读取、写入、顺序与缓存行为。
 - `book-manifest.test.js`: 书籍清单导入导出、校验和及确认边界。
+- `book-maintenance.test.js`: 陈旧 PO18 书籍预览、事务锁定、平台隔离清理与回滚。
 - `book-social.test.js`: 收藏、评论、互动聚合与权限语义。
 - `bot-adapters.test.js`: Bot 外部适配器的请求和错误规范化。
-- `bot-api-routes.test.js`: Bot API 账户、书籍和任务路由契约。
+- `bot-api-routes.test.js`: Bot API 账户、书籍、任务及 Worker fencing token 路由契约。
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
 - `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、发送后结算、权限与文案契约。
+- `bot-settings.test.js`: Bot 命令目录配置清洗、去重、合并与持久化语义。
 - `bot-export-errors.test.js`: 导出错误分类与面向用户消息。
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。
 - `bot-runtime-modules.test.js`: Bot 运行模块装配、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
 - `bot-search-platforms.test.js`: 搜索平台参数和别名解析。
 - `bot-search-social-handlers.test.js`: 搜索与社交处理器交互契约，覆盖私聊普通输入、群聊手动回复、书评草稿隔离、失败保留及取消时清理提示。
-- `bot-task-runtime.test.js`: 持久任务领取、执行、续租和完成语义。
+- `bot-task-runtime.test.js`: 持久任务领取、执行、续租、fencing token 回写和完成语义。
 - `bot-task-status-handlers.test.js`: 任务查询、详情与取消命令。
 - `bot-text-share-utils.test.js`: 文本分享切分、长度与文件名规则。
 - `bot-ui-formatters.test.js`: Telegram 文案、书卡/书评发布按钮和转义格式。
@@ -83,6 +86,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `share-handlers.test.js`: TXT/EPUB 分享、样式选择与投递流程。
 - `source-health.test.js`: 内容来源熔断与健康评分。
 - `startup-gate.test.js`: 数据库迁移及应用初始化期间的业务流量拒绝、健康放行与就绪切换契约。
+- `system-jobs.test.js`: 持久任务创建、幂等、原子取消、领取租约、worker/attempt fencing、回滚和指标状态机。
 - `telegram-push.test.js`: Telegram 推送类型、注册用户收件人分页、批次和失败恢复。
 - `test-runner-script.test.js`: 根测试发现器和覆盖率门槛。
 - `tts.test.js`: TTS 供应商、分段与代理安全。

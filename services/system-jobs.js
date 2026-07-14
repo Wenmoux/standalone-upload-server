@@ -1,10 +1,10 @@
 /**
- * [INPUT]: 依赖 pg-store 的 Pool/query 和 PostgreSQL system_jobs 表、事务锁与租约时钟
- * [OUTPUT]: 对外提供任务创建、认领、心跳、更新、取消、列表、跟踪执行及状态/指标聚合原语
- * [POS]: services 的持久任务基础设施，为 Bot、备份、爬虫与维护作业提供统一恢复和并发所有权语义
+ * [INPUT]: 依赖可注入的 pg-store Pool/query 和 PostgreSQL system_jobs 表、事务锁与租约时钟
+ * [OUTPUT]: 对外提供可测试服务工厂、默认任务创建/认领/心跳/原子取消/列表/跟踪执行及状态指标原语
+ * [POS]: services 的持久任务基础设施，为 Bot、备份、爬虫与维护作业提供统一恢复、原子状态转换和并发所有权语义
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-const { pool, query } = require("../pg-store");
+const defaultPgStore = require("../pg-store");
 
 function adminActor(req) {
     return req?.session?.adminUser?.username || "admin";
@@ -30,39 +30,49 @@ function compactJobResult(payload = {}) {
     };
 }
 
-async function collectSystemJobInfo() {
-    const info = { available: false, total: 0, byStatus: {}, recent: [] };
-    try {
-        const exists = await query("SELECT to_regclass('public.system_jobs')::text regclass");
-        if (!exists.rows[0]?.regclass) return info;
-        info.available = true;
-        const [statusRows, recentRows] = await Promise.all([
-            query("SELECT status, COUNT(*)::int count FROM system_jobs GROUP BY status ORDER BY status"),
-            query(
-                `SELECT id, type, status, progress, error, created_by, created_at, started_at, finished_at, updated_at
+function boundedInteger(value, fallback, min, max) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
+function createSystemJobService(options = {}) {
+    const pool = options.pool || defaultPgStore.pool;
+    const query = options.query || defaultPgStore.query;
+
+    async function collectSystemJobInfo() {
+        const info = { available: false, total: 0, byStatus: {}, recent: [] };
+        try {
+            const exists = await query("SELECT to_regclass('public.system_jobs')::text regclass");
+            if (!exists.rows[0]?.regclass) return info;
+            info.available = true;
+            const [statusRows, recentRows] = await Promise.all([
+                query("SELECT status, COUNT(*)::int count FROM system_jobs GROUP BY status ORDER BY status"),
+                query(
+                    `SELECT id, type, status, progress, error, created_by, created_at, started_at, finished_at, updated_at
                  FROM system_jobs
                  ORDER BY created_at DESC
                  LIMIT 12`
-            )
-        ]);
-        for (const row of statusRows.rows) {
-            const count = Number(row.count || 0);
-            info.byStatus[row.status || "unknown"] = count;
-            info.total += count;
+                )
+            ]);
+            for (const row of statusRows.rows) {
+                const count = Number(row.count || 0);
+                info.byStatus[row.status || "unknown"] = count;
+                info.total += count;
+            }
+            info.recent = recentRows.rows || [];
+        } catch (err) {
+            info.error = err.message || String(err);
         }
-        info.recent = recentRows.rows || [];
-    } catch (err) {
-        info.error = err.message || String(err);
+        return info;
     }
-    return info;
-}
 
-async function collectSystemJobMetrics() {
-    try {
-        const exists = await query("SELECT to_regclass('public.system_jobs')::text regclass");
-        if (!exists.rows[0]?.regclass) return { available: false };
-        const result = await query(
-            `SELECT
+    async function collectSystemJobMetrics() {
+        try {
+            const exists = await query("SELECT to_regclass('public.system_jobs')::text regclass");
+            if (!exists.rows[0]?.regclass) return { available: false };
+            const result = await query(
+                `SELECT
                 COUNT(*) FILTER (WHERE status='queued')::int queued,
                 COUNT(*) FILTER (WHERE status='running')::int running,
                 COUNT(*) FILTER (WHERE status='succeeded')::int succeeded,
@@ -101,132 +111,160 @@ async function collectSystemJobMetrics() {
                 COALESCE(MAX(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at)) * 1000)
                     FILTER (WHERE status='running' AND started_at IS NOT NULL), 0)::bigint running_max_ms
              FROM system_jobs`
-        );
-        return { available: true, ...result.rows[0] };
-    } catch (err) {
-        return { available: false, error: err.message || String(err) };
+            );
+            return { available: true, ...result.rows[0] };
+        } catch (err) {
+            return { available: false, error: err.message || String(err) };
+        }
     }
-}
 
-async function createSystemJob({ type, input = {}, createdBy = "", priority = 0, maxAttempts = 3, idempotencyKey = "", nextRunAt = null } = {}) {
-    const params = [
-        String(type || "job").slice(0, 120),
-        JSON.stringify(input || {}),
-        String(createdBy || "").slice(0, 120),
-        Math.max(-1000, Math.min(1000, Math.trunc(Number(priority || 0)))),
-        Math.max(1, Math.min(100, Math.trunc(Number(maxAttempts || 3)))),
-        String(idempotencyKey || "").trim().slice(0, 240),
-        nextRunAt || null
-    ];
-    try {
-        const result = await query(
-            `INSERT INTO system_jobs(type, status, progress, input_json, created_by, priority, max_attempts, idempotency_key, next_run_at)
+    async function createSystemJob({
+        type,
+        input = {},
+        createdBy = "",
+        priority = 0,
+        maxAttempts = 3,
+        idempotencyKey = "",
+        nextRunAt = null
+    } = {}) {
+        const params = [
+            String(type || "job").slice(0, 120),
+            JSON.stringify(input || {}),
+            String(createdBy || "").slice(0, 120),
+            boundedInteger(priority, 0, -1000, 1000),
+            boundedInteger(maxAttempts, 3, 1, 100),
+            String(idempotencyKey || "")
+                .trim()
+                .slice(0, 240),
+            nextRunAt || null
+        ];
+        try {
+            const result = await query(
+                `INSERT INTO system_jobs(type, status, progress, input_json, created_by, priority, max_attempts, idempotency_key, next_run_at)
              VALUES ($1, 'queued', 0, $2::jsonb, $3, $4, $5, $6, $7)
              RETURNING id, type, status, progress, priority, max_attempts, attempt, idempotency_key, next_run_at, created_at`,
+                params
+            );
+            return result.rows[0];
+        } catch (err) {
+            if (err.code !== "23505" || !params[5]) throw err;
+            const existing = await query(
+                `SELECT id, type, status, progress, priority, max_attempts, attempt, idempotency_key, next_run_at, created_at
+             FROM system_jobs WHERE idempotency_key=$1 AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
+                [params[5]]
+            );
+            if (existing.rows[0]) return { ...existing.rows[0], duplicate: true };
+            throw err;
+        }
+    }
+
+    async function updateSystemJob(id, fields = {}) {
+        if (!id) return null;
+        const workerId = String(fields.workerId || fields.worker_id || "")
+            .trim()
+            .slice(0, 120);
+        const rawAttempt = fields.attempt;
+        const attempt = Number.isFinite(Number(rawAttempt)) ? Math.trunc(Number(rawAttempt)) : 0;
+        if ((workerId && attempt < 1) || (!workerId && rawAttempt !== undefined)) {
+            const err = new Error("job update ownership requires worker id and positive attempt");
+            err.status = 400;
+            throw err;
+        }
+        const patch = {
+            status: fields.status,
+            progress: fields.progress,
+            result_json: fields.result ? JSON.stringify(fields.result) : undefined,
+            error: fields.error,
+            next_run_at: fields.nextRunAt,
+            heartbeat_at: fields.heartbeat ? "CURRENT_TIMESTAMP" : undefined,
+            lease_expires_at: fields.leaseExpiresAt,
+            cancel_requested_at: fields.cancelRequested ? "CURRENT_TIMESTAMP" : undefined,
+            started_at: fields.started ? "CURRENT_TIMESTAMP" : undefined,
+            finished_at: fields.finished ? "CURRENT_TIMESTAMP" : undefined
+        };
+        const sets = [];
+        const params = [];
+        for (const [key, value] of Object.entries(patch)) {
+            if (value === undefined) continue;
+            if (["started_at", "finished_at", "heartbeat_at", "cancel_requested_at"].includes(key)) {
+                sets.push(`${key} = ${value}`);
+                continue;
+            }
+            params.push(value);
+            sets.push(`${key} = $${params.length}${key === "result_json" ? "::jsonb" : ""}`);
+        }
+        if (!sets.length) return null;
+        params.push(id);
+        const idPosition = params.length;
+        let ownershipSql = "";
+        if (workerId) {
+            params.push(workerId, attempt);
+            ownershipSql =
+                ` AND status='running' AND locked_by=$${params.length - 1} AND attempt=$${params.length}` +
+                " AND lease_expires_at IS NOT NULL AND lease_expires_at >= CURRENT_TIMESTAMP";
+        }
+        const result = await query(
+            `UPDATE system_jobs
+         SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $${idPosition}${ownershipSql}
+         RETURNING id, type, status, progress, error, priority, max_attempts, attempt, idempotency_key,
+                   next_run_at, lease_expires_at, heartbeat_at, cancel_requested_at, locked_by,
+                   created_at, started_at, finished_at, updated_at`,
             params
         );
-        return result.rows[0];
-    } catch (err) {
-        if (err.code !== "23505" || !params[5]) throw err;
-        const existing = await query(
-            `SELECT id, type, status, progress, priority, max_attempts, attempt, idempotency_key, next_run_at, created_at
-             FROM system_jobs WHERE idempotency_key=$1 AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`,
-            [params[5]]
-        );
-        if (existing.rows[0]) return { ...existing.rows[0], duplicate: true };
-        throw err;
+        return result.rows[0] || null;
     }
-}
 
-async function updateSystemJob(id, fields = {}) {
-    if (!id) return null;
-    const patch = {
-        status: fields.status,
-        progress: fields.progress,
-        result_json: fields.result ? JSON.stringify(fields.result) : undefined,
-        error: fields.error,
-        next_run_at: fields.nextRunAt,
-        heartbeat_at: fields.heartbeat ? "CURRENT_TIMESTAMP" : undefined,
-        lease_expires_at: fields.leaseExpiresAt,
-        cancel_requested_at: fields.cancelRequested ? "CURRENT_TIMESTAMP" : undefined,
-        started_at: fields.started ? "CURRENT_TIMESTAMP" : undefined,
-        finished_at: fields.finished ? "CURRENT_TIMESTAMP" : undefined
-    };
-    const sets = [];
-    const params = [];
-    for (const [key, value] of Object.entries(patch)) {
-        if (value === undefined) continue;
-        if (["started_at", "finished_at", "heartbeat_at", "cancel_requested_at"].includes(key)) {
-            sets.push(`${key} = ${value}`);
-            continue;
+    async function runTrackedJob(req, type, input, worker) {
+        let job = null;
+        try {
+            job = await createSystemJob({ type, input, createdBy: adminActor(req) });
+            await updateSystemJob(job.id, { status: "running", progress: 5, started: true });
+        } catch (err) {
+            console.warn(`[system-jobs] unable to create job ${type}: ${err.message || String(err)}`);
         }
-        params.push(value);
-        sets.push(`${key} = $${params.length}${key === "result_json" ? "::jsonb" : ""}`);
-    }
-    if (!sets.length) return null;
-    params.push(id);
-    const result = await query(
-        `UPDATE system_jobs
-         SET ${sets.join(", ")}, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $${params.length}
-         RETURNING id, type, status, progress, error, priority, max_attempts, attempt, idempotency_key,
-                   next_run_at, lease_expires_at, heartbeat_at, cancel_requested_at,
-                   created_at, started_at, finished_at, updated_at`,
-        params
-    );
-    return result.rows[0] || null;
-}
 
-async function runTrackedJob(req, type, input, worker) {
-    let job = null;
-    try {
-        job = await createSystemJob({ type, input, createdBy: adminActor(req) });
-        await updateSystemJob(job.id, { status: "running", progress: 5, started: true });
-    } catch (err) {
-        console.warn(`[system-jobs] unable to create job ${type}: ${err.message || String(err)}`);
-    }
-
-    try {
-        const payload = await worker(job);
-        const finalJob = job
-            ? await updateSystemJob(job.id, { status: "succeeded", progress: 100, result: compactJobResult(payload), finished: true })
-            : null;
-        return finalJob ? { ...payload, job: finalJob } : payload;
-    } catch (err) {
-        if (job) {
-            await updateSystemJob(job.id, {
-                status: "failed",
-                progress: 100,
-                error: String(err.message || err).slice(0, 2000),
-                finished: true
-            }).catch(() => {});
+        try {
+            const payload = await worker(job);
+            const finalJob = job
+                ? await updateSystemJob(job.id, { status: "succeeded", progress: 100, result: compactJobResult(payload), finished: true })
+                : null;
+            return finalJob ? { ...payload, job: finalJob } : payload;
+        } catch (err) {
+            if (job) {
+                await updateSystemJob(job.id, {
+                    status: "failed",
+                    progress: 100,
+                    error: String(err.message || err).slice(0, 2000),
+                    finished: true
+                }).catch(() => {});
+            }
+            throw err;
         }
-        throw err;
     }
-}
 
-async function listSystemJobs({ page = 1, limit = 30, status = "", type = "", createdBy = "" } = {}) {
-    const safePage = Math.max(1, Number(page || 1));
-    const safeLimit = Math.min(100, Math.max(1, Number(limit || 30)));
-    const offset = (safePage - 1) * safeLimit;
-    const where = [];
-    const params = [];
-    if (status) {
-        params.push(String(status).trim());
-        where.push(`status = $${params.length}`);
-    }
-    if (type) {
-        params.push(String(type).trim());
-        where.push(`type = $${params.length}`);
-    }
-    if (createdBy) {
-        params.push(String(createdBy).trim());
-        where.push(`created_by = $${params.length}`);
-    }
-    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const total = await query(`SELECT COUNT(*)::int count FROM system_jobs ${whereSql}`, params);
-    const rows = await query(
-        `SELECT id, type, status, progress, input_json, result_json, error, created_by,
+    async function listSystemJobs({ page = 1, limit = 30, status = "", type = "", createdBy = "" } = {}) {
+        const safePage = boundedInteger(page, 1, 1, Number.MAX_SAFE_INTEGER);
+        const safeLimit = boundedInteger(limit, 30, 1, 100);
+        const offset = (safePage - 1) * safeLimit;
+        const where = [];
+        const params = [];
+        if (status) {
+            params.push(String(status).trim());
+            where.push(`status = $${params.length}`);
+        }
+        if (type) {
+            params.push(String(type).trim());
+            where.push(`type = $${params.length}`);
+        }
+        if (createdBy) {
+            params.push(String(createdBy).trim());
+            where.push(`created_by = $${params.length}`);
+        }
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+        const total = await query(`SELECT COUNT(*)::int count FROM system_jobs ${whereSql}`, params);
+        const rows = await query(
+            `SELECT id, type, status, progress, input_json, result_json, error, created_by,
                 priority, max_attempts, attempt, idempotency_key, next_run_at, lease_expires_at,
                 heartbeat_at, cancel_requested_at, locked_by, locked_at,
                 created_at, started_at, finished_at, updated_at
@@ -234,60 +272,61 @@ async function listSystemJobs({ page = 1, limit = 30, status = "", type = "", cr
          ${whereSql}
          ORDER BY created_at DESC, id DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, safeLimit, offset]
-    );
-    return { rows: rows.rows, total: Number(total.rows[0]?.count || 0), page: safePage, limit: safeLimit };
-}
+            [...params, safeLimit, offset]
+        );
+        return { rows: rows.rows, total: Number(total.rows[0]?.count || 0), page: safePage, limit: safeLimit };
+    }
 
-async function getSystemJob(id) {
-    const result = await query(
-        `SELECT id, type, status, progress, input_json, result_json, error, created_by,
+    async function getSystemJob(id) {
+        const result = await query(
+            `SELECT id, type, status, progress, input_json, result_json, error, created_by,
                 priority, max_attempts, attempt, idempotency_key, next_run_at, lease_expires_at,
                 heartbeat_at, cancel_requested_at, locked_by, locked_at,
                 created_at, started_at, finished_at, updated_at
          FROM system_jobs
          WHERE id = $1`,
-        [id]
-    );
-    return result.rows[0] || null;
-}
+            [id]
+        );
+        return result.rows[0] || null;
+    }
 
-async function cancelSystemJob(id, { actor = "" } = {}) {
-    const job = await getSystemJob(id);
-    if (!job) return null;
-    const status = String(job.status || "");
-    if (!['queued', 'running'].includes(status)) {
+    async function cancelSystemJob(id, { actor = "" } = {}) {
+        const safeActor = String(actor || "").slice(0, 120);
+        const result = await query(
+            `UPDATE system_jobs
+         SET status=CASE WHEN status='queued' THEN 'canceled' ELSE status END,
+             error=CASE WHEN status='queued' THEN $2 ELSE $3 END,
+             cancel_requested_at=CASE WHEN status='running' THEN CURRENT_TIMESTAMP ELSE cancel_requested_at END,
+             finished_at=CASE WHEN status='queued' THEN CURRENT_TIMESTAMP ELSE finished_at END,
+             updated_at=CURRENT_TIMESTAMP
+         WHERE id=$1 AND status IN ('queued','running')
+         RETURNING id, type, status, progress, error, cancel_requested_at, finished_at, updated_at`,
+            [id, safeActor ? `canceled by ${safeActor}` : "canceled", safeActor ? `cancel requested by ${safeActor}` : "cancel requested"]
+        );
+        if (result.rows[0]) return result.rows[0];
+        const job = await getSystemJob(id);
+        if (!job) return null;
         const err = new Error("only queued or running jobs can be canceled");
         err.status = 409;
         throw err;
     }
-    if (status === "running") {
-        const result = await query(
-            `UPDATE system_jobs SET cancel_requested_at=CURRENT_TIMESTAMP, error=$2, updated_at=CURRENT_TIMESTAMP
-             WHERE id=$1 AND status='running'
-             RETURNING id, type, status, progress, error, cancel_requested_at, updated_at`,
-            [id, actor ? `cancel requested by ${String(actor).slice(0, 120)}` : "cancel requested"]
-        );
-        return result.rows[0] || null;
-    }
-    return updateSystemJob(id, {
-        status: "canceled",
-        progress: Number(job.progress || 0),
-        error: actor ? `canceled by ${String(actor).slice(0, 120)}` : "canceled",
-        finished: true
-    });
-}
 
-async function claimSystemJobs({ workerId, types = [], limit = 1, leaseSeconds = 120 } = {}) {
-    const worker = String(workerId || "worker").trim().slice(0, 120) || "worker";
-    const safeTypes = (Array.isArray(types) ? types : []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, 100);
-    const safeLimit = Math.max(1, Math.min(20, Math.trunc(Number(limit || 1))));
-    const safeLeaseSeconds = Math.max(15, Math.min(3600, Math.trunc(Number(leaseSeconds || 120))));
-    const client = await pool.connect();
-    try {
-        await client.query("BEGIN");
-        const result = await client.query(
-            `WITH candidates AS (
+    async function claimSystemJobs({ workerId, types = [], limit = 1, leaseSeconds = 120 } = {}) {
+        const worker =
+            String(workerId || "worker")
+                .trim()
+                .slice(0, 120) || "worker";
+        const safeTypes = (Array.isArray(types) ? types : [])
+            .map((item) => String(item || "").trim())
+            .filter(Boolean)
+            .slice(0, 100);
+        const safeLimit = boundedInteger(limit, 1, 1, 20);
+        const safeLeaseSeconds = boundedInteger(leaseSeconds, 120, 15, 3600);
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+            const result = await client.query(
+                `WITH candidates AS (
                 SELECT id
                 FROM system_jobs
                 WHERE (
@@ -309,23 +348,26 @@ async function claimSystemJobs({ workerId, types = [], limit = 1, leaseSeconds =
              FROM candidates
              WHERE job.id=candidates.id
              RETURNING job.*`,
-            [safeTypes, safeLimit, worker, safeLeaseSeconds]
-        );
-        await client.query("COMMIT");
-        return result.rows;
-    } catch (err) {
-        await client.query("ROLLBACK").catch(() => {});
-        throw err;
-    } finally {
-        client.release();
+                [safeTypes, safeLimit, worker, safeLeaseSeconds]
+            );
+            await client.query("COMMIT");
+            return result.rows;
+        } catch (err) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
     }
-}
 
-async function claimSystemJob(id, { workerId, leaseSeconds = 120 } = {}) {
-    const worker = String(workerId || "worker").trim().slice(0, 120) || "worker";
-    const safeLeaseSeconds = Math.max(15, Math.min(3600, Math.trunc(Number(leaseSeconds || 120))));
-    const result = await query(
-        `UPDATE system_jobs
+    async function claimSystemJob(id, { workerId, leaseSeconds = 120 } = {}) {
+        const worker =
+            String(workerId || "worker")
+                .trim()
+                .slice(0, 120) || "worker";
+        const safeLeaseSeconds = boundedInteger(leaseSeconds, 120, 15, 3600);
+        const result = await query(
+            `UPDATE system_jobs
          SET status='running', locked_by=$2, locked_at=CURRENT_TIMESTAMP,
              lease_expires_at=CURRENT_TIMESTAMP + ($3::text || ' seconds')::interval,
              heartbeat_at=CURRENT_TIMESTAMP, started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
@@ -338,41 +380,58 @@ async function claimSystemJob(id, { workerId, leaseSeconds = 120 } = {}) {
              OR (status='running' AND lease_expires_at IS NOT NULL AND lease_expires_at < CURRENT_TIMESTAMP)
            )
          RETURNING *`,
-        [id, worker, safeLeaseSeconds]
-    );
-    return result.rows[0] || null;
+            [id, worker, safeLeaseSeconds]
+        );
+        return result.rows[0] || null;
+    }
+
+    async function heartbeatSystemJob(id, { workerId, attempt, progress, leaseSeconds = 120 } = {}) {
+        const safeAttempt = boundedInteger(attempt, 0, 0, Number.MAX_SAFE_INTEGER);
+        if (!String(workerId || "").trim() || safeAttempt < 1) {
+            const err = new Error("job heartbeat ownership requires worker id and positive attempt");
+            err.status = 400;
+            throw err;
+        }
+        const safeLeaseSeconds = boundedInteger(leaseSeconds, 120, 15, 3600);
+        const params = [id, String(workerId).slice(0, 120), safeAttempt, safeLeaseSeconds];
+        let progressSql = "";
+        if (progress !== undefined && Number.isFinite(Number(progress))) {
+            params.push(Math.max(0, Math.min(100, Math.trunc(Number(progress)))));
+            progressSql = `, progress=$${params.length}`;
+        }
+        const result = await query(
+            `UPDATE system_jobs
+         SET heartbeat_at=CURRENT_TIMESTAMP,
+             lease_expires_at=CURRENT_TIMESTAMP + ($4::text || ' seconds')::interval,
+             updated_at=CURRENT_TIMESTAMP${progressSql}
+         WHERE id=$1 AND status='running' AND locked_by=$2 AND attempt=$3
+           AND lease_expires_at IS NOT NULL AND lease_expires_at >= CURRENT_TIMESTAMP
+         RETURNING id, status, progress, heartbeat_at, lease_expires_at, cancel_requested_at`,
+            params
+        );
+        return result.rows[0] || null;
+    }
+
+    return {
+        cancelSystemJob,
+        claimSystemJob,
+        claimSystemJobs,
+        collectSystemJobInfo,
+        collectSystemJobMetrics,
+        createSystemJob,
+        getSystemJob,
+        heartbeatSystemJob,
+        listSystemJobs,
+        runTrackedJob,
+        updateSystemJob
+    };
 }
 
-async function heartbeatSystemJob(id, { workerId, progress, leaseSeconds = 120 } = {}) {
-    const safeLeaseSeconds = Math.max(15, Math.min(3600, Math.trunc(Number(leaseSeconds || 120))));
-    const params = [id, String(workerId || "").slice(0, 120), safeLeaseSeconds];
-    let progressSql = "";
-    if (progress !== undefined && Number.isFinite(Number(progress))) {
-        params.push(Math.max(0, Math.min(100, Math.trunc(Number(progress)))));
-        progressSql = `, progress=$${params.length}`;
-    }
-    const result = await query(
-        `UPDATE system_jobs
-         SET heartbeat_at=CURRENT_TIMESTAMP,
-             lease_expires_at=CURRENT_TIMESTAMP + ($3::text || ' seconds')::interval,
-             updated_at=CURRENT_TIMESTAMP${progressSql}
-         WHERE id=$1 AND status='running' AND locked_by=$2
-         RETURNING id, status, progress, heartbeat_at, lease_expires_at, cancel_requested_at`,
-        params
-    );
-    return result.rows[0] || null;
-}
+const defaultSystemJobService = createSystemJobService();
 
 module.exports = {
-    cancelSystemJob,
-    claimSystemJob,
-    claimSystemJobs,
-    collectSystemJobInfo,
-    collectSystemJobMetrics,
-    createSystemJob,
-    getSystemJob,
-    heartbeatSystemJob,
-    listSystemJobs,
-    runTrackedJob,
-    updateSystemJob
+    ...defaultSystemJobService,
+    boundedInteger,
+    compactJobResult,
+    createSystemJobService
 };

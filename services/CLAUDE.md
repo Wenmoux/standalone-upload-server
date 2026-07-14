@@ -8,7 +8,7 @@
 
 CLAUDE.md: 本模块的语义地图，约束领域服务边界、直接成员与依赖方向。
 admin-audit.js: 管理操作审计中间件，脱敏请求上下文并以追加记录方式提供后台审计查询。
-admin-exports.js: CSV 输出适配器，统一单元格转义、文本编码和 Express 下载响应。
+admin-exports.js: CSV 输出安全适配器，统一公式注入防护、单元格转义、BOM/CRLF、文件名清洗和 Express 下载响应。
 admin-overview.js: 后台运行概览聚合器，汇总 schema、任务、慢请求、错误与安全状态而不把聚合逻辑泄漏到路由。
 application-runtime.js: 应用生命周期边界，安装静态/错误路由并编排默认管理员、迁移初始化、凭据加密、可选调度器与分级重试。
 api-tokens.js: 内部 API Token 领域服务，以哈希存储、Scope 和来源 IP 约束保护 Bot/Upload 调用。
@@ -18,12 +18,12 @@ backup-restore-drill.js: 恢复演练调度器，从本地备份清单选择归�
 backups.js: 备份用例编排层，连接 docker 备份原语与 system_jobs，负责创建、上传、校验、恢复和演练载荷。
 body-limits.js: 请求体预算策略，为不同路由安装分级 JSON/raw 解析器，避免全局超大 body。
 book-chapters.js: 书籍与章节持久化核心，统一字段清洗、可选时间类型、幂等写入、全平台 order-only 隔离更新、章节正文派生及目录排序语义。
-book-maintenance.js: 陈旧书籍维护用例，提供 PO18 清理预览、确认执行与任务记录。
+book-maintenance.js: 陈旧书籍维护用例，提供 PO18 清理预览、事务行锁定、平台隔离删除与事件审计。
 book-manifest.js: 可移植书籍清单协议，实现规范化、SHA-256 校验、导出、验证和幂等导入。
 book-review-channel.js: 书评频道外发适配器，读取最新书籍元信息、构造带系统标记的 Telegram 文案/按钮并回写投递状态。
 book-social.js: 书籍社区领域服务，集中书评、投票、红包与众筹等并发结算和公开视图规则。
 bot-audit.js: Telegram Bot 审计服务，规范化命令执行结果并提供聚合与筛选查询。
-bot-settings.js: Bot 命令开关服务，以命令目录为基准合并、持久化和读取后台配置。
+bot-settings.js: Bot 命令开关服务，以命令目录为白名单清洗、去重、稳定排序、持久化和读取后台配置。
 chapter-maintenance.js: 章节顺序修复服务，对重复顺序生成预览并在确认后通过事务重排。
 chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则去除重复编号和包裹噪声。
 config.js: `admin_config` 访问与配置语义层，统一平台标签、导出计价、EPUB 配置及数值归一化。
@@ -64,7 +64,7 @@ schema-validation.js: Ajv 请求契约注册表与中间件，在路由前执行
 scholar-progression.js: 阅读成长规则层，集中学者等级、签到经验、红包拆分和币种展示纯规则。
 source-health.js: 外部来源健康熔断器，跟踪连续失败、重试、打开窗口和 Prometheus 状态。
 startup-gate.js: 应用启动流量闸门，以显式生命周期状态阻止迁移提交前的业务请求，并为健康检查保留可观测通道。
-system-jobs.js: PostgreSQL 持久任务原语，提供创建、认领、心跳、租约、取消、完成及指标聚合。
+system-jobs.js: PostgreSQL 持久任务原语，通过可注入服务工厂提供创建、认领、心跳、租约、原子取消及 worker/attempt fencing token 状态回写。
 telegram-push.js: Telegram 通知服务，统一多 Chat 推送、注册用户收件人分页/计数、消息转义、来源链接、书评等类型过滤与日报时间窗。
 tts.js: TTS 提供商适配层，封装 Edge、火山、阿里云、Azure、ElevenLabs 与 Cartesia 的请求和重试语义。
 user-currency.js: 用户经济领域服务，以事务处理签到、任务、转账、兑换、导出配额和流水一致性。

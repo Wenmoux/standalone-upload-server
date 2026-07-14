@@ -7,7 +7,7 @@
 const assert = require("assert/strict");
 const crypto = require("crypto");
 const test = require("node:test");
-const { adminRoleAllows, createAuthService, cdkDuration, csvCell, normalizeAdminRole, todayDateKey } = require("../services/auth");
+const { adminRoleAllows, createAuthService, cdkDuration, normalizeAdminRole, todayDateKey } = require("../services/auth");
 
 function mockRes() {
     return {
@@ -102,11 +102,10 @@ test("auth service protects upload, bot and reader access", async () => {
     assert.equal(readerReq.readerUser.id, 10);
 });
 
-test("auth helpers cover CDK, CSV and telegram login signatures", () => {
+test("auth helpers cover CDK and telegram login signatures", () => {
     const service = createAuthService({ crypto, botUsernameForTelegram: (id) => `tg_${id}` });
     assert.equal(cdkDuration("30d").days, 30);
     assert.match(service.generateCdkCode(), /^CDK-[0-9A-F]{8}-[0-9A-F]{8}$/);
-    assert.equal(csvCell('a,b"c'), '"a,b""c"');
     assert.match(todayDateKey(), /^\d{4}-\d{2}-\d{2}$/);
 
     const botToken = "123456:abcdef";

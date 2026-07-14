@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Express、Bot Token Scope、system-jobs/bot-audit/config、管理员身份与注册用户广播收件人服务
- * [OUTPUT]: 对外提供 Bot 健康、持久任务登记/更新、管理员广播、审计、搜索需求和命令配置内部路由
- * [POS]: routes 的 Bot 系统协作边界，让 Worker 通过 HTTP 管理任务生命周期和全员通知收件人而不直连数据库
+ * [OUTPUT]: 对外提供 Bot 健康、带 worker/attempt 所有权校验的持久任务更新、管理员广播、审计和命令配置内部路由
+ * [POS]: routes 的 Bot 系统协作边界，让 Worker 通过带 fencing token 的 HTTP 协议管理任务生命周期而不直连数据库
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -27,6 +27,22 @@ function botJobPatch(body = {}) {
     if (body.next_run_at !== undefined || body.nextRunAt !== undefined) patch.nextRunAt = body.next_run_at ?? body.nextRunAt ?? null;
     if (body.started !== undefined) patch.started = !!body.started;
     if (body.finished !== undefined) patch.finished = !!body.finished;
+    const workerId = body.worker_id ?? body.workerId;
+    const attempt = Number(body.attempt);
+    const requiresOwnership = Object.keys(patch).length > 0;
+    if (workerId !== undefined || body.attempt !== undefined) {
+        if (!String(workerId || "").trim() || !Number.isFinite(attempt) || attempt < 1) {
+            const err = new Error("job update ownership requires worker_id and positive attempt");
+            err.status = 400;
+            throw err;
+        }
+        patch.workerId = String(workerId).trim().slice(0, 120);
+        patch.attempt = Math.trunc(attempt);
+    } else if (requiresOwnership) {
+        const err = new Error("job update ownership is required");
+        err.status = 409;
+        throw err;
+    }
     return patch;
 }
 
@@ -87,12 +103,14 @@ function createBotApiSystemRoutes(deps = {}) {
             if (typeof listSystemJobs !== "function") return res.status(503).json({ error: "system jobs unavailable" });
             const telegramId = String(req.query.telegram_id || req.query.telegramId || "").trim();
             if (!telegramId) return res.status(400).json({ error: "telegram_id is required" });
-            res.json(await listSystemJobs({
-                page: req.query.page,
-                limit: Math.min(20, Number(req.query.limit || 8)),
-                status: req.query.status || "",
-                createdBy: `telegram:${telegramId}`
-            }));
+            res.json(
+                await listSystemJobs({
+                    page: req.query.page,
+                    limit: Math.min(20, Number(req.query.limit || 8)),
+                    status: req.query.status || "",
+                    createdBy: `telegram:${telegramId}`
+                })
+            );
         } catch (err) {
             next(err);
         }
@@ -121,12 +139,16 @@ function createBotApiSystemRoutes(deps = {}) {
             if (typeof createSystemJob !== "function") return res.status(503).json({ error: "system jobs unavailable" });
             const type = bodyString(req.body || {}, "type", { defaultValue: "bot_task", maxLength: 120 }) || "bot_task";
             const input = compactJson(req.body?.input || {});
-            const createdBy = bodyString(req.body || {}, ["created_by", "createdBy"], { defaultValue: "telegram_bot", maxLength: 120 }) || "telegram_bot";
+            const createdBy =
+                bodyString(req.body || {}, ["created_by", "createdBy"], { defaultValue: "telegram_bot", maxLength: 120 }) || "telegram_bot";
             const createInput = { type, input, createdBy };
             if (req.body?.priority !== undefined) createInput.priority = req.body.priority;
-            if (req.body?.max_attempts !== undefined || req.body?.maxAttempts !== undefined) createInput.maxAttempts = req.body.max_attempts ?? req.body.maxAttempts;
-            if (req.body?.idempotency_key !== undefined || req.body?.idempotencyKey !== undefined) createInput.idempotencyKey = req.body.idempotency_key ?? req.body.idempotencyKey;
-            if (req.body?.next_run_at !== undefined || req.body?.nextRunAt !== undefined) createInput.nextRunAt = req.body.next_run_at ?? req.body.nextRunAt ?? null;
+            if (req.body?.max_attempts !== undefined || req.body?.maxAttempts !== undefined)
+                createInput.maxAttempts = req.body.max_attempts ?? req.body.maxAttempts;
+            if (req.body?.idempotency_key !== undefined || req.body?.idempotencyKey !== undefined)
+                createInput.idempotencyKey = req.body.idempotency_key ?? req.body.idempotencyKey;
+            if (req.body?.next_run_at !== undefined || req.body?.nextRunAt !== undefined)
+                createInput.nextRunAt = req.body.next_run_at ?? req.body.nextRunAt ?? null;
             const job = await createSystemJob(createInput);
             res.json({ success: true, job });
         } catch (err) {
@@ -170,6 +192,7 @@ function createBotApiSystemRoutes(deps = {}) {
             const id = paramPositiveInt(req.params.id, "job id");
             const job = await heartbeatSystemJob(id, {
                 workerId: req.body?.worker_id || req.body?.workerId,
+                attempt: req.body?.attempt,
                 progress: req.body?.progress,
                 leaseSeconds: req.body?.lease_seconds ?? req.body?.leaseSeconds
             });
@@ -184,7 +207,9 @@ function createBotApiSystemRoutes(deps = {}) {
         try {
             if (typeof updateSystemJob !== "function") return res.status(503).json({ error: "system jobs unavailable" });
             const id = paramPositiveInt(req.params.id, "job id");
-            const job = await updateSystemJob(id, botJobPatch(req.body || {}));
+            const patch = botJobPatch(req.body || {});
+            const job = await updateSystemJob(id, patch);
+            if (!job && patch.workerId) return res.status(409).json({ error: "job lease ownership lost" });
             if (!job) return res.status(404).json({ error: "job not found" });
             res.json({ success: true, job });
         } catch (err) {
@@ -214,8 +239,9 @@ function createBotApiSystemRoutes(deps = {}) {
             if (!telegramId) return res.status(400).json({ error: "telegram_id is required" });
             const current = await getSystemJob(id);
             if (!current) return res.status(404).json({ error: "job not found" });
-            const owner = String(current.created_by || "") === `telegram:${telegramId}`
-                || String(current.input_json?.telegram_id || "") === telegramId;
+            const owner =
+                String(current.created_by || "") === `telegram:${telegramId}` ||
+                String(current.input_json?.telegram_id || "") === telegramId;
             if (!owner) return res.status(403).json({ error: "job does not belong to this telegram user" });
             const job = await cancelSystemJob(id, { actor: `telegram:${telegramId}` });
             res.json({ success: true, job });

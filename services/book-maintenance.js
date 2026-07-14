@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖注入的 PostgreSQL query/事务与 system_jobs 创建能力，依据 PO18 来源和陈旧阈值筛选书籍
+ * [INPUT]: 依赖注入的 PostgreSQL query/事务与事件记录能力，依据 PO18 来源和陈旧阈值筛选书籍
  * [OUTPUT]: 对外提供陈旧 PO18 书籍清理预览、确认执行及任务记录的服务工厂
  * [POS]: services 的书库维护用例层，将破坏性清理限定为可预览、可确认、可审计流程
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -7,8 +7,10 @@
 const STALE_PO18_BOOK_PLATFORM = "po18";
 const STALE_PO18_BOOK_CUTOFF = "2025-01-01";
 const STALE_PO18_BOOK_MAX_CHAPTER_COUNT = 10;
-const STALE_PO18_BOOK_CHAPTER_COUNT_SQL = "GREATEST(COALESCE(total_chapters, 0), COALESCE(subscribed_chapters, 0), COALESCE(chapter_count, 0))";
-const STALE_PO18_BOOK_SOURCE_DATE_SQL = "CASE WHEN TRIM(COALESCE(latest_chapter_date, '')) ~ '^[0-9]{4}[-/][0-9]{1,2}[-/][0-9]{1,2}' THEN regexp_replace(TRIM(latest_chapter_date), '^([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2}).*$', '\\1-\\2-\\3')::date ELSE NULL END";
+const STALE_PO18_BOOK_CHAPTER_COUNT_SQL =
+    "GREATEST(COALESCE(total_chapters, 0), COALESCE(subscribed_chapters, 0), COALESCE(chapter_count, 0))";
+const STALE_PO18_BOOK_SOURCE_DATE_SQL =
+    "CASE WHEN TRIM(COALESCE(latest_chapter_date, '')) ~ '^[0-9]{4}[-/][0-9]{1,2}[-/][0-9]{1,2}' THEN regexp_replace(TRIM(latest_chapter_date), '^([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2}).*$', '\\1-\\2-\\3')::date ELSE NULL END";
 const STALE_PO18_BOOK_WHERE = `LOWER(TRIM(COALESCE(platform, ''))) = $1 AND ${STALE_PO18_BOOK_SOURCE_DATE_SQL} < $2::date AND ${STALE_PO18_BOOK_CHAPTER_COUNT_SQL} < $3`;
 
 function createBookMaintenanceService(options = {}) {
@@ -68,7 +70,8 @@ function createBookMaintenanceService(options = {}) {
                         updated_at, created_at
                  FROM book_metadata
                  WHERE ${STALE_PO18_BOOK_WHERE}
-                 ORDER BY ${STALE_PO18_BOOK_SOURCE_DATE_SQL} ASC, id ASC`,
+                 ORDER BY ${STALE_PO18_BOOK_SOURCE_DATE_SQL} ASC, id ASC
+                 FOR UPDATE`,
                 params
             );
             const metadataIds = targets.rows.map((row) => String(row.id)).filter(Boolean);

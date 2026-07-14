@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Node 主机身份、job-queue、PgBotClient 的 system_jobs 契约及任务生命周期消息和审计适配器
- * [OUTPUT]: 对外提供可租约、心跳、重试、取消和重启恢复的 Bot 持久任务运行时
- * [POS]: bot 后台任务域的可靠性核心，把进程内执行与 server-pg 持久状态连接起来
+ * [OUTPUT]: 对外提供携带 worker/attempt fencing token 的租约、心跳、重试、取消和重启恢复运行时
+ * [POS]: bot 后台任务域的可靠性核心，把进程内执行与 server-pg 持久状态连接起来并拒绝旧租约迟到回写
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const os = require("os");
@@ -37,34 +37,41 @@ function createBotTaskRuntime(deps = {}) {
         if (!job?.systemJobType) return null;
         if (job.systemJobId) return { id: job.systemJobId };
         if (job.systemJobPromise) return job.systemJobPromise;
-        job.systemJobPromise = client.createSystemJob({
-            type: job.systemJobType,
-            input: job.systemJobInput || {},
-            created_by: job.systemJobCreatedBy || "telegram_bot",
-            priority: job.priority || 0,
-            max_attempts: job.maxAttempts || 3,
-            idempotency_key: job.idempotencyKey || ""
-        }).then((created) => {
-            job.systemJobId = created?.id || null;
-            return created || null;
-        }).catch((err) => {
-            console.warn(`[bot-task] system job create failed for ${job.name}: ${err.message || String(err)}`);
-            return null;
-        }).finally(() => {
-            job.systemJobPromise = null;
-        });
+        job.systemJobPromise = client
+            .createSystemJob({
+                type: job.systemJobType,
+                input: job.systemJobInput || {},
+                created_by: job.systemJobCreatedBy || "telegram_bot",
+                priority: job.priority || 0,
+                max_attempts: job.maxAttempts || 3,
+                idempotency_key: job.idempotencyKey || ""
+            })
+            .then((created) => {
+                job.systemJobId = created?.id || null;
+                return created || null;
+            })
+            .catch((err) => {
+                console.warn(`[bot-task] system job create failed for ${job.name}: ${err.message || String(err)}`);
+                return null;
+            })
+            .finally(() => {
+                job.systemJobPromise = null;
+            });
         return job.systemJobPromise;
     }
 
     function updateTrackedSystemJob(job, fields = {}) {
         if (!job?.systemJobType) return;
-        ensureSystemJob(job).then((created) => {
-            const id = job.systemJobId || created?.id;
-            if (!id) return null;
-            return client.updateSystemJob(id, fields);
-        }).catch((err) => {
-            console.warn(`[bot-task] system job update failed for ${job.name}: ${err.message || String(err)}`);
-        });
+        ensureSystemJob(job)
+            .then((created) => {
+                const id = job.systemJobId || created?.id;
+                if (!id) return null;
+                const ownership = job.systemJobClaimed ? { worker_id: workerId, attempt: Number(job.systemJobRow?.attempt || 0) } : {};
+                return client.updateSystemJob(id, { ...fields, ...ownership });
+            })
+            .catch((err) => {
+                console.warn(`[bot-task] system job update failed for ${job.name}: ${err.message || String(err)}`);
+            });
     }
 
     async function currentSystemJob(job) {
@@ -85,10 +92,12 @@ function createBotTaskRuntime(deps = {}) {
         const id = job.systemJobId || created?.id;
         if (!id || created?.duplicate) return false;
         if (typeof client.claimSystemJob !== "function") return true;
-        const claimed = await client.claimSystemJob(id, {
-            worker_id: workerId,
-            lease_seconds: leaseSeconds
-        }).catch(() => null);
+        const claimed = await client
+            .claimSystemJob(id, {
+                worker_id: workerId,
+                lease_seconds: leaseSeconds
+            })
+            .catch(() => null);
         if (!claimed) return false;
         job.systemJobClaimed = true;
         job.systemJobRow = claimed;
@@ -98,23 +107,30 @@ function createBotTaskRuntime(deps = {}) {
     function isRetryableError(error) {
         if (error?.retryable === true) return true;
         if (error?.retryable === false) return false;
-        return /timeout|timed out|fetch failed|ECONN|EAI_AGAIN|temporar|database unavailable|aborted/i.test(String(error?.message || error || ""));
+        return /timeout|timed out|fetch failed|ECONN|EAI_AGAIN|temporar|database unavailable|aborted/i.test(
+            String(error?.message || error || "")
+        );
     }
 
     async function scheduleRetry(job, current, error) {
         const attempt = Number(current?.attempt || 0);
         const maxAttempts = Number(current?.max_attempts || job.maxAttempts || 3);
         if (!job.systemJobId || attempt >= maxAttempts || !isRetryableError(error)) return false;
-        const delayMs = Math.min(5 * 60 * 1000, 5000 * (2 ** Math.max(0, attempt - 1)));
+        const delayMs = Math.min(5 * 60 * 1000, 5000 * 2 ** Math.max(0, attempt - 1));
         const nextRunAt = new Date(Date.now() + delayMs).toISOString();
         await client.updateSystemJob(job.systemJobId, {
             status: "queued",
             progress: Math.max(0, Number(current?.progress || 0)),
             error: String(error?.message || error || "retryable error").slice(0, 2000),
-            next_run_at: nextRunAt
+            next_run_at: nextRunAt,
+            worker_id: workerId,
+            attempt
         });
         if (job.chatId) {
-            sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")} 暂时失败，将在 ${Math.ceil(delayMs / 1000)} 秒后重试（${attempt}/${maxAttempts}）。`).catch(() => {});
+            sendMessage(
+                job.chatId,
+                `${escapeHtml(job.label || "后台任务")} 暂时失败，将在 ${Math.ceil(delayMs / 1000)} 秒后重试（${attempt}/${maxAttempts}）。`
+            ).catch(() => {});
         }
         const timer = setTimeout(() => {
             job.systemJobClaimed = false;
@@ -133,11 +149,15 @@ function createBotTaskRuntime(deps = {}) {
             sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")} 已在后台执行中，请等当前任务完成。`).catch(() => {});
         },
         onQueued(job, queuedAhead) {
-            updateTrackedSystemJob(job, { status: "queued", progress: 0 });
-            ensureSystemJob(job).then((created) => {
-                const idLine = created?.id ? `\n任务 #${created.id}` : "";
-                return sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")} 已加入后台队列，前面还有 ${queuedAhead} 个任务。${idLine}`);
-            }).catch(() => {});
+            ensureSystemJob(job)
+                .then((created) => {
+                    const idLine = created?.id ? `\n任务 #${created.id}` : "";
+                    return sendMessage(
+                        job.chatId,
+                        `${escapeHtml(job.label || "后台任务")} 已加入后台队列，前面还有 ${queuedAhead} 个任务。${idLine}`
+                    );
+                })
+                .catch(() => {});
         },
         async beforeStart(job) {
             if (!(await claimJob(job))) {
@@ -152,22 +172,34 @@ function createBotTaskRuntime(deps = {}) {
             console.log(`[bot-task] start ${job.name}`);
             const created = await ensureSystemJob(job);
             updateTrackedSystemJob(job, { status: "running", progress: 10, started: true });
-            if (created?.id && job.chatId) await sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")} 开始执行。\n任务 #${created.id}`).catch(() => {});
+            if (created?.id && job.chatId)
+                await sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")} 开始执行。\n任务 #${created.id}`).catch(() => {});
             if (job.systemJobId && typeof client.heartbeatSystemJob === "function") {
-                job.heartbeatTimer = setInterval(async () => {
-                    const current = await client.heartbeatSystemJob(job.systemJobId, {
-                        worker_id: workerId,
-                        lease_seconds: leaseSeconds
-                    }).catch(() => null);
-                    if (!current || current.cancel_requested_at) job.abortController?.abort(new Error("job cancellation requested"));
-                }, Math.max(5000, heartbeatMs));
+                job.heartbeatTimer = setInterval(
+                    async () => {
+                        const current = await client
+                            .heartbeatSystemJob(job.systemJobId, {
+                                worker_id: workerId,
+                                attempt: Number(job.systemJobRow?.attempt || 0),
+                                lease_seconds: leaseSeconds
+                            })
+                            .catch(() => null);
+                        if (!current || current.cancel_requested_at) job.abortController?.abort(new Error("job cancellation requested"));
+                    },
+                    Math.max(5000, heartbeatMs)
+                );
                 job.heartbeatTimer.unref?.();
             }
         },
         async onSuccess(job, ms, result) {
             const current = await currentSystemJob(job);
             if (job.signal?.aborted || current?.cancel_requested_at || current?.status === "canceled") {
-                updateTrackedSystemJob(job, { status: "canceled", progress: Number(current?.progress || 0), error: "canceled", finished: true });
+                updateTrackedSystemJob(job, {
+                    status: "canceled",
+                    progress: Number(current?.progress || 0),
+                    error: "canceled",
+                    finished: true
+                });
                 return;
             }
             updateTrackedSystemJob(job, {
@@ -192,13 +224,20 @@ function createBotTaskRuntime(deps = {}) {
         async onError(job, err) {
             const current = await currentSystemJob(job);
             if (job.signal?.aborted || current?.cancel_requested_at || current?.status === "canceled") {
-                updateTrackedSystemJob(job, { status: "canceled", progress: Number(current?.progress || 0), error: "canceled", finished: true });
+                updateTrackedSystemJob(job, {
+                    status: "canceled",
+                    progress: Number(current?.progress || 0),
+                    error: "canceled",
+                    finished: true
+                });
                 if (job.chatId) sendMessage(job.chatId, `${escapeHtml(job.label || "后台任务")}已取消。`).catch(() => {});
                 return;
             }
             if (await scheduleRetry(job, current, err)) return;
             const exportFailure = String(job.name || "").startsWith("export:") ? formatExportFailure(err) : null;
-            const message = exportFailure ? `${exportFailure.code}: ${exportFailure.raw || exportFailure.message}` : (err?.message || String(err || "unknown error"));
+            const message = exportFailure
+                ? `${exportFailure.code}: ${exportFailure.raw || exportFailure.message}`
+                : err?.message || String(err || "unknown error");
             console.error(`[bot-task] ${job.name} failed: ${message}`);
             updateTrackedSystemJob(job, { status: "failed", progress: 100, error: message, finished: true });
             if (job.chatId && !err?.userNotified) {
@@ -240,15 +279,17 @@ function createBotTaskRuntime(deps = {}) {
 
     async function recoverPersistentJobs(types, factory, options = {}) {
         if (typeof client.claimSystemJobs !== "function" || typeof factory !== "function") return 0;
-        const rows = await client.claimSystemJobs({
-            worker_id: workerId,
-            types,
-            limit: Math.max(1, Math.min(20, Number(options.limit || concurrency * 4))),
-            lease_seconds: leaseSeconds
-        }).catch((err) => {
-            console.warn(`[bot-task] recovery claim failed: ${err.message || String(err)}`);
-            return [];
-        });
+        const rows = await client
+            .claimSystemJobs({
+                worker_id: workerId,
+                types,
+                limit: Math.max(1, Math.min(20, Number(options.limit || concurrency * 4))),
+                lease_seconds: leaseSeconds
+            })
+            .catch((err) => {
+                console.warn(`[bot-task] recovery claim failed: ${err.message || String(err)}`);
+                return [];
+            });
         let recovered = 0;
         for (const row of rows) {
             const job = factory(row);

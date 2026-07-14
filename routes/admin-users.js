@@ -37,7 +37,6 @@ function createAdminUsersRoutes(deps = {}) {
         botUserSelect,
         addMembershipPatch,
         cdkDuration,
-        csvCell,
         sendCsv,
         generateCdkCode,
         sendDirectMessage = async () => {
@@ -641,46 +640,31 @@ function createAdminUsersRoutes(deps = {}) {
                  ${whereSql}
                  ORDER BY c.id DESC`
             );
-            const header = [
-                "id",
-                "code",
-                "cdk_type",
-                "duration_type",
-                "duration_days",
-                "export_quota",
-                "status",
-                "created_by",
-                "created_at",
-                "used_by",
-                "used_username",
-                "used_nickname",
-                "used_at"
-            ];
-            const lines = [
-                header.join(","),
-                ...rows.rows.map((row) =>
-                    [
-                        row.id,
-                        row.code,
-                        row.cdk_type || "membership",
-                        row.duration_type,
-                        row.duration_days,
-                        row.export_quota || 0,
-                        row.used_by ? "used" : "unused",
-                        row.created_by,
-                        row.created_at,
-                        row.used_by,
-                        row.used_username,
-                        row.used_nickname,
-                        row.used_at
-                    ]
-                        .map(csvCell)
-                        .join(",")
-                )
-            ];
-            res.setHeader("Content-Type", "text/csv; charset=utf-8");
-            res.setHeader("Content-Disposition", `attachment; filename="reader-cdks-${todayDateKey()}.csv"`);
-            res.send(`\uFEFF${lines.join("\r\n")}\r\n`);
+            sendCsv(
+                res,
+                `reader-cdks-${todayDateKey()}.csv`,
+                rows.rows.map((row) => ({
+                    ...row,
+                    cdk_type: row.cdk_type || "membership",
+                    export_quota: row.export_quota || 0,
+                    status: row.used_by ? "used" : "unused"
+                })),
+                [
+                    "id",
+                    "code",
+                    "cdk_type",
+                    "duration_type",
+                    "duration_days",
+                    "export_quota",
+                    "status",
+                    "created_by",
+                    "created_at",
+                    "used_by",
+                    "used_username",
+                    "used_nickname",
+                    "used_at"
+                ].map((key) => ({ key, label: key }))
+            );
         } catch (err) {
             next(err);
         }

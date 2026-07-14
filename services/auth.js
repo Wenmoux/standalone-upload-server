@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node crypto 及注入的 query、会话/凭证加密能力，处理 Reader/Admin/Telegram 身份与权限数据
- * [OUTPUT]: 对外提供认证服务工厂、Admin 角色判断、CDK 时长、日期键和 CSV 辅助函数
+ * [OUTPUT]: 对外提供认证服务工厂、Admin 角色判断、CDK 时长、日期键及 Reader/Telegram 身份辅助函数
  * [POS]: services 的统一认证授权内核，被 Reader、Admin 与内部 API 路由共享以维持一致权限语义
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -20,17 +20,14 @@ function todayDateKey() {
     return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-function csvCell(value) {
-    const text = String(value ?? "");
-    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
 function valueOf(value) {
     return typeof value === "function" ? value() : value;
 }
 
 function normalizeAdminRole(value) {
-    const role = String(value || "owner").trim().toLowerCase();
+    const role = String(value || "owner")
+        .trim()
+        .toLowerCase();
     return ["owner", "operator", "moderator", "viewer"].includes(role) ? role : "viewer";
 }
 
@@ -42,7 +39,8 @@ function adminRoleAllows(roleValue, req) {
     if (["GET", "HEAD", "OPTIONS"].includes(method)) {
         if (/\/admin-api\/auth\/admins(?:\/|$)/.test(path)) return false;
         if (/\/admin-api\/review-moderation(?:\/|$)/.test(path)) return role === "moderator";
-        if (role === "viewer" && /\/admin-api\/(config|backup\/download|backup\/config|backup\/diagnostics|system\/api-tokens)/.test(path)) return false;
+        if (role === "viewer" && /\/admin-api\/(config|backup\/download|backup\/config|backup\/diagnostics|system\/api-tokens)/.test(path))
+            return false;
         return true;
     }
     if (path === "/admin-api/auth/logout") return true;
@@ -59,23 +57,32 @@ function createAuthService(options = {}) {
     const crypto = options.crypto || defaultCrypto;
     const query = options.query;
     const configGet = options.configGet || (async () => "");
-    const scholarProfile = options.scholarProfile || ((exp = 0) => ({
-        level: 1,
-        name: "",
-        exp: Math.max(0, Math.trunc(Number(exp || 0))),
-        daily_free_exports: 1
-    }));
+    const scholarProfile =
+        options.scholarProfile ||
+        ((exp = 0) => ({
+            level: 1,
+            name: "",
+            exp: Math.max(0, Math.trunc(Number(exp || 0))),
+            daily_free_exports: 1
+        }));
     const normalizeTelegramId = options.normalizeTelegramId || ((value) => String(value || "").trim());
     const normalizeChatId = options.normalizeChatId || ((value) => String(value || "").trim());
-    const botUsernameForTelegram = options.botUsernameForTelegram || ((telegramId) => `tg_${normalizeTelegramId(telegramId).replace(/[^0-9A-Za-z_-]/g, "_")}`);
+    const botUsernameForTelegram =
+        options.botUsernameForTelegram || ((telegramId) => `tg_${normalizeTelegramId(telegramId).replace(/[^0-9A-Za-z_-]/g, "_")}`);
     const uploadApiTokenProvider = options.uploadApiTokenProvider || (() => process.env.PO18_UPLOAD_API_TOKEN || "");
     const botApiTokenProvider = options.botApiTokenProvider || (() => process.env.PO18_BOT_API_TOKEN || "");
     const uploadTokenAuthenticator = options.uploadTokenAuthenticator;
     const botTokenAuthenticator = options.botTokenAuthenticator;
 
     function timingSafeEqualText(left, right) {
-        const a = crypto.createHash("sha256").update(String(left || "")).digest();
-        const b = crypto.createHash("sha256").update(String(right || "")).digest();
+        const a = crypto
+            .createHash("sha256")
+            .update(String(left || ""))
+            .digest();
+        const b = crypto
+            .createHash("sha256")
+            .update(String(right || ""))
+            .digest();
         return crypto.timingSafeEqual(a, b);
     }
 
@@ -125,7 +132,12 @@ function createAuthService(options = {}) {
 
     function publicAdminReaderUser(user) {
         const u = publicReaderUser(user);
-        return { ...u, created_at: user.created_at, last_login_at: user.last_login_at, free_exports_today: Number(user.free_exports_today || 0) };
+        return {
+            ...u,
+            created_at: user.created_at,
+            last_login_at: user.last_login_at,
+            free_exports_today: Number(user.free_exports_today || 0)
+        };
     }
 
     function botPublicUser(user) {
@@ -166,7 +178,8 @@ function createAuthService(options = {}) {
         try {
             const user = await currentReaderUser(req);
             if (!user) return res.status(401).json({ error: "\u8bf7\u5148\u767b\u5f55" });
-            if (!hasActiveLibraryAccess(user)) return res.status(403).json({ error: "\u4e66\u5e93\u6743\u9650\u4e0d\u8db3\u6216\u4f1a\u5458\u5df2\u8fc7\u671f" });
+            if (!hasActiveLibraryAccess(user))
+                return res.status(403).json({ error: "\u4e66\u5e93\u6743\u9650\u4e0d\u8db3\u6216\u4f1a\u5458\u5df2\u8fc7\u671f" });
             req.readerUser = user;
             next();
         } catch (err) {
@@ -282,12 +295,17 @@ function createAuthService(options = {}) {
             .join("\n");
         const secretKey = crypto.createHash("sha256").update(botToken).digest();
         const expectedHash = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
-        if (!timingSafeEqualText(expectedHash, payload.hash.toLowerCase())) return { ok: false, status: 401, error: "TG login signature invalid" };
+        if (!timingSafeEqualText(expectedHash, payload.hash.toLowerCase()))
+            return { ok: false, status: 401, error: "TG login signature invalid" };
         return { ok: true, payload };
     }
 
     function telegramLoginNickname(payload) {
-        return [payload.first_name, payload.last_name].filter(Boolean).join(" ").trim().slice(0, 32) || payload.username || botUsernameForTelegram(payload.id);
+        return (
+            [payload.first_name, payload.last_name].filter(Boolean).join(" ").trim().slice(0, 32) ||
+            payload.username ||
+            botUsernameForTelegram(payload.id)
+        );
     }
 
     return {
@@ -296,7 +314,6 @@ function createAuthService(options = {}) {
         botUsernameForTelegram,
         botUserSelect,
         cdkDuration,
-        csvCell,
         currentReaderUser,
         findBotUserByTelegramId,
         generateCdkCode,
@@ -325,7 +342,6 @@ module.exports = {
     adminRoleAllows,
     cdkDuration,
     createAuthService,
-    csvCell,
     normalizeAdminRole,
     todayDateKey
 };

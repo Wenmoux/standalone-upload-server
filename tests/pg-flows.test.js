@@ -349,7 +349,12 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
         assert.equal(claimed.status, "running");
         assert.equal(claimed.locked_by, "worker-a");
         assert.equal(claimed.attempt, 1);
-        const heartbeat = await heartbeatSystemJob(first.id, { workerId: "worker-a", progress: 35, leaseSeconds: 45 });
+        const heartbeat = await heartbeatSystemJob(first.id, {
+            workerId: "worker-a",
+            attempt: claimed.attempt,
+            progress: 35,
+            leaseSeconds: 45
+        });
         assert.equal(heartbeat.progress, 35);
         const cancelRequested = await cancelSystemJob(first.id, { actor: "integration-admin" });
         assert.equal(cancelRequested.status, "running");
