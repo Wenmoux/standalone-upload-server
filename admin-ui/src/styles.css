@@ -958,7 +958,9 @@ th.sortable:has(.table-sort-button:hover) {
 }
 
 @keyframes table-skeleton-pulse {
-  to { background-position: -200% 0; }
+  to {
+    background-position: -200% 0;
+  }
 }
 
 tr:nth-child(even) td {
@@ -1102,11 +1104,15 @@ tr:hover td {
 }
 
 @media (max-width: 900px) {
-  .attention-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .attention-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
-  .attention-grid { grid-template-columns: 1fr; }
+  .attention-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .jobs-table {
@@ -1988,7 +1994,9 @@ td small {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .table-skeleton { animation: none; }
+  .table-skeleton {
+    animation: none;
+  }
 }
 
 .toast-stack {
