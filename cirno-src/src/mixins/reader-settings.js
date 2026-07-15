@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Reader 组合根的章节/滚动状态、主题与正文纯工具、图片净化、浏览器存储及消息反馈
- * [OUTPUT]: 默认导出阅读设置、主题、章节头图与繁简显示重建状态机
+ * [OUTPUT]: 默认导出阅读设置、主题、章节头图、台湾词汇/用户词表与繁简显示重建状态机
  * [POS]: cirno-src/src/mixins 的阅读外观切片，被 Reader.vue 消费并与纠错/导航/TTS mixin 协作
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -49,7 +49,8 @@ export default {
       fontOptions: READER_FONT_OPTIONS,
       edgeTtsVoices: EDGE_TTS_VOICES,
       chineseConvert: null,
-      conversionRequestId: 0
+      conversionRequestId: 0,
+      conversionSettingsTimer: null
     }
   },
   mounted() {
@@ -59,7 +60,19 @@ export default {
     'readerSettings.convertMode'(newValue, oldValue) {
       if (newValue === oldValue) return
       this.rebuildChapterDisplayContent()
+    },
+    'readerSettings.convertTwPhrases'(newValue, oldValue) {
+      if (newValue === oldValue || this.readerSettings.convertMode !== 'simplified') return
+      this.rebuildChapterDisplayContent()
+    },
+    'readerSettings.convertGlossary'(newValue, oldValue) {
+      if (newValue === oldValue || this.readerSettings.convertMode !== 'simplified') return
+      this.scheduleConversionRebuild(250)
     }
+  },
+  beforeUnmount() {
+    if (this.conversionSettingsTimer) window.clearTimeout(this.conversionSettingsTimer)
+    this.conversionSettingsTimer = null
   },
   computed: {
     readerSettingsDrawerWidth() {
@@ -225,10 +238,27 @@ export default {
       return this.chineseConvert
     },
     convertRawText(text, converter, mode) {
-      return convertRawText(text, converter, mode, isConversionMode)
+      return convertRawText(text, converter, mode, isConversionMode, this.readerConversionOptions())
     },
     convertParagraphText(text, converter, mode) {
-      return convertParagraphText(text, converter, mode, isConversionMode)
+      return convertParagraphText(text, converter, mode, isConversionMode, this.readerConversionOptions())
+    },
+    readerConversionOptions() {
+      return {
+        twPhrases: this.readerSettings.convertTwPhrases,
+        glossary: this.readerSettings.convertGlossary
+      }
+    },
+    scheduleConversionRebuild(delay = 0) {
+      if (this.conversionSettingsTimer) window.clearTimeout(this.conversionSettingsTimer)
+      if (!delay) {
+        this.conversionSettingsTimer = null
+        return this.rebuildChapterDisplayContent()
+      }
+      this.conversionSettingsTimer = window.setTimeout(() => {
+        this.conversionSettingsTimer = null
+        this.rebuildChapterDisplayContent()
+      }, delay)
     },
     async rebuildChapterDisplayContent() {
       const source = this.chapterContentData || []

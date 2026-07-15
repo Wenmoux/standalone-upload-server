@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 sanitize-html 的 HTML/图片安全边界与可注入的繁简转换器
- * [OUTPUT]: 对外提供图片段落识别、话本 HTML 解析、文本规范化和段落转换函数
+ * [INPUT]: 依赖 sanitize-html 的 HTML/图片安全边界与可注入、可配置的繁简转换器
+ * [OUTPUT]: 对外提供图片段落识别、话本 HTML 解析、文本规范化和携带转换选项的段落转换函数
  * [POS]: cirno-src/src/utils 的正文摄取层，把异构缓存内容归一化为安全渲染模型
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -19,7 +19,11 @@ export function isIhuabenPlatform(value = '') {
 }
 
 export function isIhuabenChapterInfo(info = {}) {
-  return !!(info.is_ihuaben || isIhuabenPlatform(info.platform) || /hbu-chapter-style/i.test(String(info.html_content || '')))
+  return !!(
+    info.is_ihuaben ||
+    isIhuabenPlatform(info.platform) ||
+    /hbu-chapter-style/i.test(String(info.html_content || ''))
+  )
 }
 
 export function decodeHtmlText(value = '') {
@@ -99,13 +103,13 @@ export function normalizeParagraphLine(text) {
   return value.replace(/^[\s\u3000]+/, '')
 }
 
-export function convertRawText(text, converter, mode, validMode) {
+export function convertRawText(text, converter, mode, validMode, options = {}) {
   const input = String(text || '')
-  return converter && validMode(mode) ? converter(input, mode) : input
+  return converter && validMode(mode) ? converter(input, mode, options) : input
 }
 
-export function convertParagraphText(text, converter, mode, validMode) {
+export function convertParagraphText(text, converter, mode, validMode, options = {}) {
   const input = normalizeParagraphLine(text)
   if (!input || isPictureParagraph(input)) return input
-  return convertRawText(input, converter, mode, validMode)
+  return convertRawText(input, converter, mode, validMode, options)
 }

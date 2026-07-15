@@ -17,8 +17,7 @@ const DEFAULT_ROUNDS = 5
 const REGRESSION_CASES = [
   {
     name: '微信对话与费用',
-    input:
-      '微信对話框裏，備注为“惡毒后媽”的头像发來一條新消息：這个月开始生活費調整到1000塊哦。',
+    input: '微信对話框裏，備注为“惡毒后媽”的头像发來一條新消息：這个月开始生活費調整到1000塊哦。',
     expectedIncludes: ['微信对话框里', '备注为“恶毒后妈”', '发来一条新消息', '这个月开始生活费调整到1000块哦']
   },
   {
@@ -153,6 +152,19 @@ function readTestFiles() {
     })
 }
 
+function builtInRegressionFile() {
+  const raw = REGRESSION_CASES.map(item => item.input).join('\n')
+  return {
+    path: path.join(TEST_DIR, 'built-in-regression.txt'),
+    name: 'built-in-regression.txt',
+    bytes: Buffer.byteLength(raw),
+    raw,
+    chars: [...raw].length,
+    replacementChars: countReplacementChars(raw),
+    rawPreview: normalizeSnippet(raw, 360)
+  }
+}
+
 function normalizeSnippet(text, limit = 220) {
   const compact = String(text || '')
     .replace(/\r/g, '')
@@ -181,7 +193,8 @@ function getProtectedResidualPositions(text) {
 }
 
 function countMappedChars(text, map, options = {}) {
-  const protectedPositions = options.ignoreProtected || options.onlyProtected ? getProtectedResidualPositions(text) : null
+  const protectedPositions =
+    options.ignoreProtected || options.onlyProtected ? getProtectedResidualPositions(text) : null
   const counts = new Map()
   let total = 0
   for (let index = 0; index < text.length; index += 1) {
@@ -274,10 +287,7 @@ function findContexts(text, chars, limit = 8) {
       const end = Math.min(text.length, index + 47)
       results.push({
         ch,
-        snippet: text
-          .slice(start, end)
-          .replace(/\s+/g, ' ')
-          .trim()
+        snippet: text.slice(start, end).replace(/\s+/g, ' ').trim()
       })
       index = text.indexOf(ch, index + ch.length)
     }
@@ -314,9 +324,7 @@ function scanParagraphs(raw, convertText, t2sCharMap) {
   return {
     total: paragraphs.length,
     residualCount,
-    worst: worst
-      .sort((a, b) => b.after - a.after || b.before - a.before || b.chars - a.chars)
-      .slice(0, 12)
+    worst: worst.sort((a, b) => b.after - a.after || b.before - a.before || b.chars - a.chars).slice(0, 12)
   }
 }
 
@@ -352,19 +360,20 @@ function scanWindows(raw, convertText, t2sCharMap, size = 1600) {
     total,
     clean,
     residual,
-    worst: worst
-      .sort((a, b) => b.after - a.after || b.before - a.before)
-      .slice(0, 12)
+    worst: worst.sort((a, b) => b.after - a.after || b.before - a.before).slice(0, 12)
   }
 }
 
 function runRegressionCases(convertText) {
   return REGRESSION_CASES.map(item => {
     const output = convertText(item.input, 'simplified')
+    const secondPass = convertText(output, 'simplified')
     const missing = item.expectedIncludes.filter(fragment => !output.includes(fragment))
+    if (secondPass !== output) missing.push(`二次转换结果漂移：${normalizeSnippet(secondPass, 120)}`)
     return {
       ...item,
       output,
+      secondPass,
       passed: missing.length === 0,
       missing
     }
@@ -391,7 +400,11 @@ function analyzeFile(file, convertText, t2sCharMap) {
     protectedAfter,
     rate: conversionRate(before.total, after.total),
     secondPassDiff: approximateDiffCount(simplified, simplifiedAgain),
-    contexts: findContexts(simplified, after.top.map(item => item.ch), 10),
+    contexts: findContexts(
+      simplified,
+      after.top.map(item => item.ch),
+      10
+    ),
     paragraphs: scanParagraphs(file.raw, convertText, t2sCharMap),
     windows: scanWindows(file.raw, convertText, t2sCharMap),
     rawPreview: file.rawPreview,
@@ -454,7 +467,13 @@ function runRound(index, files, convertText, t2sCharMap) {
     regressionTotal: regressions.length,
     failed,
     regressions,
-    passed: failed === 0 && totals.after === 0 && totals.residualParagraphs === 0 && totals.residualWindows === 0
+    passed:
+      failed === 0 &&
+      totals.replacementChars === 0 &&
+      totals.after === 0 &&
+      totals.residualParagraphs === 0 &&
+      totals.residualWindows === 0 &&
+      totals.secondPassDiff === 0
   }
 }
 
@@ -489,9 +508,18 @@ function buildSummary(files, rounds) {
     }
   })
   const globalTop = {
-    before: mergeMappedItems(finalRound.files.map(file => file.before), 36),
-    after: mergeMappedItems(finalRound.files.map(file => file.after), 36),
-    protected: mergeMappedItems(finalRound.files.map(file => file.protectedAfter), 36)
+    before: mergeMappedItems(
+      finalRound.files.map(file => file.before),
+      36
+    ),
+    after: mergeMappedItems(
+      finalRound.files.map(file => file.after),
+      36
+    ),
+    protected: mergeMappedItems(
+      finalRound.files.map(file => file.protectedAfter),
+      36
+    )
   }
 
   return {
@@ -968,9 +996,7 @@ function main() {
   const roundsToRun = parseRounds()
   const { convertText, t2sCharMap } = loadConverter()
   const files = readTestFiles()
-  if (!files.length) {
-    throw new Error(`No text files found in ${TEST_DIR}`)
-  }
+  if (!files.length) files.push(builtInRegressionFile())
 
   const rounds = []
   for (let index = 1; index <= roundsToRun; index += 1) {
@@ -997,6 +1023,7 @@ function main() {
         before: final.before,
         after: final.after,
         protectedAfter: final.protectedAfter,
+        secondPassDiff: final.secondPassDiff,
         conversionRate: Number(final.rate.toFixed(4)),
         regressionPassed: summary.finalRound.regressionPassed,
         regressionTotal: summary.finalRound.regressionTotal,
@@ -1007,6 +1034,7 @@ function main() {
       2
     )
   )
+  if (!summary.allPassed) process.exitCode = 1
 }
 
 main()

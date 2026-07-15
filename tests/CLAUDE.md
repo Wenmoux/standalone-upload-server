@@ -43,6 +43,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-ui-formatters.test.js`: Telegram 文案、书卡/书评发布按钮和转义格式。
 - `chapter-maintenance.test.js`: 章节维护领域操作。
 - `chapter-title-cleaner.test.js`: 标题清洗规则与幂等性。
+- `chinese-convert.test.js`: Reader 繁简转换的著/着、台湾词汇、用户词表、占位碰撞、双向兼容与实现收缩回归。
 - `clean-chapter-titles-script.test.js`: 标题清洗 CLI 参数与执行边界。
 - `config-service.test.js`: 配置解析、默认值和安全校验。
 - `control-panel.test.js`: Setup 控制面配置、鉴权、脱敏和诊断契约。

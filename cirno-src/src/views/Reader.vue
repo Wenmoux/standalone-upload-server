@@ -433,6 +433,24 @@
             <a-radio-button value="simplified">简体</a-radio-button>
             <a-radio-button value="traditional">繁体</a-radio-button>
           </a-radio-group>
+          <div v-show="readerSettings.convertMode === 'simplified'" class="setting-block-inner">
+            <label class="setting-label check-line">
+              <input
+                type="checkbox"
+                :checked="readerSettings.convertTwPhrases"
+                @change="e => setReaderSetting('convertTwPhrases', e.target.checked)"
+              />
+              台湾用语转大陆用语
+            </label>
+            <label class="setting-label">自定义词表</label>
+            <textarea
+              class="setting-textarea"
+              :value="readerSettings.convertGlossary"
+              placeholder="每行：原词=>目标&#10;乾坤=>乾坤 可保护专名"
+              @input="e => setReaderSetting('convertGlossary', e.target.value)"
+            ></textarea>
+            <div class="setting-tip">原词可写繁体或简体；相同词表示保护，不让 OpenCC 二次修改。</div>
+          </div>
         </div>
 
         <div class="setting-block">

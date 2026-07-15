@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖产品定义的主题、排版、章头与 TTS 配置边界及可选主题列表
- * [OUTPUT]: 对外提供默认设置、主题/字体/语音选项、克隆/数值钳制和完整归一化函数
+ * [INPUT]: 依赖产品定义的主题、排版、繁简转换、章头与 TTS 配置边界及可选主题列表
+ * [OUTPUT]: 对外提供默认设置、主题/字体/语音选项、繁转简词表与台湾词汇开关的完整归一化函数
  * [POS]: cirno-src/src/utils 的阅读偏好 schema，约束 Settings 与 Reader 的持久化数据形状
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -13,6 +13,8 @@ export const DEFAULT_READER_SETTINGS = {
   pagePadding: 72,
   fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
   convertMode: 'none',
+  convertTwPhrases: true,
+  convertGlossary: '',
   titleStyle: 'classic',
   customHeaderEnabled: false,
   chapterHeaderPreset: 'crane',
@@ -233,6 +235,9 @@ export function normalizeReaderSettings(settings, themeOptions = READER_THEME_OP
   next.letterSpacing = Number(clampNumber(next.letterSpacing, 0, 2, DEFAULT_READER_SETTINGS.letterSpacing).toFixed(1))
   next.fontWeight = Number(next.fontWeight) === 500 ? 500 : 400
   next.textAlign = next.textAlign === 'justify' ? 'justify' : 'left'
+  next.convertMode = ['none', 'simplified', 'traditional'].includes(next.convertMode) ? next.convertMode : 'none'
+  next.convertTwPhrases = next.convertTwPhrases !== false
+  next.convertGlossary = String(next.convertGlossary || '').slice(0, 20000)
   next.customHeaderEnabled = !!next.customHeaderEnabled
   next.chapterHeaderPreset = next.chapterHeaderPreset === 'style1' ? 'style1' : 'crane'
   next.customHeaderImage = String(next.customHeaderImage || '')

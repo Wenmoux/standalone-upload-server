@@ -25,21 +25,21 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `components/virtual-list.vue`: 通用定高虚拟列表视口，把滚动位置转换为窗口项并暴露行插槽。
 `mixins/reader-correction.js`: Reader 纠错状态机，管理选区、等长约束、提交表单和错误反馈。
 `mixins/reader-navigation.js`: Reader 章节导航状态机，识别分卷、计算可读章节并统一前后章跳转。
-`mixins/reader-settings.js`: Reader 阅读外观状态机，集中设置持久化、主题投影、章节头图与繁简显示重建，并向纠错和 TTS mixin 提供共享文本能力。
+`mixins/reader-settings.js`: Reader 阅读外观状态机，集中设置持久化、主题投影、章节头图与繁简显示重建；台湾词汇和用户词表变化经防抖后传入唯一转换内核。
 `mixins/reader-tts.js`: Reader TTS 状态机，编排浏览器、Edge、云端与自定义引擎的队列、请求和播放生命周期。
 `plugins/ant-design-vue.js`: Ant Design Vue 按需异步组件安装器，降低 Reader 初始包体。
 `plugins/http.js`: Reader HTTP 兼容适配器，统一会话刷新、API 请求、离线章节回退和旧调用接口。
 `router/index.js`: Hash 路由与 Reader 会话门禁，兼容裸路径进入并延迟加载页面。
 `store/index.js`: 最小 Vuex 共享状态，保存 API 基址、作品信息和 Reader 用户信息供旧组件消费。
 `styles/search-modal-fix.css`: 搜索弹窗在移动端与 Ant Design 组合下的全局布局修正。
-`utils/chinese-convert.js`: OpenCC 加项目补充字表的繁简转换内核，输出双向映射和统一转换函数。
+`utils/chinese-convert.js`: OpenCC 主导的繁简转换内核，以小型残留字表、上下文保护和碰撞安全的用户词表补足小说语义，同时保留双向转换。
 `utils/platform.js`: 平台标签缓存与 `/reader-api/platforms` 加载边界，为检索和详情提供一致显示名。
-`utils/reader-content.js`: 正文规范化工具，净化/解析话本 HTML、图片段落和转换前后文本。
+`utils/reader-content.js`: 正文规范化工具，净化/解析话本 HTML 和图片段落，并把繁简模式、台湾词汇与用户词表透传给转换内核。
 `utils/reader-offline.js`: 账号隔离的 IndexedDB 章节缓存与进度队列，提供内存后端以支持降级和测试。
 `utils/reader-performance.js`: Reader RUM 采集器，将路由耗时、错误和批量性能样本发送到受控端点。
 `utils/reader-pwa.js`: Service Worker 注册与联网后离线进度同步协调器。
 `utils/reader-session.js`: Reader Cookie 会话缓存与失效协调器，联动离线进度刷新和账号切换清理。
-`utils/reader-settings.js`: 阅读设置默认值、主题/字体/TTS 选项以及输入归一化规则。
+`utils/reader-settings.js`: 阅读设置默认值、主题/字体/TTS 选项、繁简偏好及本地词表的输入归一化规则。
 `utils/reader-theme.js`: 阅读主题调色板和 CSS 变量投影，把持久化设置转换为页面样式。
 `utils/reader-tts.js`: TTS 纯工具层，拆分文本、渲染模板、解析响应头/JSON 并生成音频源。
 `utils/sanitize-html.js`: DOMPurify 正文白名单与图片 URL 协议校验，是不可信内容进入 DOM 前的安全边界。
