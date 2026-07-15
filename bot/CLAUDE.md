@@ -7,15 +7,15 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 ## 成员清单
 
 `assets/`: Bot/EPUB 共用的旧仙鹤章头静态资源；只提供只读候选文件，不承载业务配置。
-`account-handlers.js`: 账户交互层，提供注册保障与 start/reg/me/sign 处理，并消费私聊导出续接而不持有任务状态机。
+`account-handlers.js`: 账户交互层，提供注册保障、start/menu/help/reg/me/sign 处理，并消费私聊导出续接而不持有任务状态机。
 `automatic-push-unpin.js`: 识别置顶服务消息中的频道自动转发与根级系统标记，并用精确消息 ID 容错取消置顶，拒绝触碰人工消息。
 `commands/`: 按账户、搜索、导出、社交和外部集成拆分的命令注册器；命令名需与 `command-catalog.js` 同步。
 `epub-styles/`: EPUB 视觉插件与资源契约；生成器注册四种样式，Telegram 只暴露前三种直选按钮。
-`account-formatters.js`: 把账户、签到、流水与排行榜领域数据转换为 Telegram HTML，隔离展示规则与请求逻辑。
+`account-formatters.js`: 把账户、签到、帮助及主/PO18 宫格面板转换为 Telegram HTML/inline keyboard，隔离展示规则与请求逻辑。
 `bot-session.js`: 提供有界搜索查询缓存、按聊天与用户隔离且携带稳定发布键的短期书评草稿、管理员广播草稿及帮助文本，避免重试重复结算或群聊输入串线。
 `broadcast-handlers.js`: 管理员全员通知交互与批量投递器，执行身份复核、草稿确认、收件人分页、限速发送和失败统计。
-`command-catalog.js`: 命令名称、分组、帮助、别名和管理员标记的单一元数据源，驱动后台配置与帮助展示。
-`command-registry.js`: 注册、别名解析、启停配置和 Telegram command list 的运行时注册表，不实现具体业务。
+`command-catalog.js`: 命令名称、分组、帮助、别名、管理员与 Telegram 系统菜单显隐标记的单一元数据源，驱动后台配置、帮助和精简命令投影。
+`command-registry.js`: 注册、别名解析、启停配置和显式白名单 Telegram command list 的运行时注册表，不实现具体业务。
 `epub-builder.js`: 组装 EPUB 2 容器、原始/长屏封面、全屏 spine、XHTML、目录、资源与样式插件，是所有 EPUB 外壳逻辑的唯一实现。
 `epub-style-picker.js`: 定义 Telegram EPUB 直选样式白名单和 inline keyboard 回调协议，刻意不暴露兼容样式 `crane`。
 `economy-handlers.js`: 用户经济交互层，转换 CDK、管理员发币、排行榜、流水和红包命令，并以 Telegram chat/message 生成稳定红包创建键；余额事务仍由 server API 裁决。
@@ -25,6 +25,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `health-server.js`: 提供 Bot live/ready/status 端点，将 polling 新鲜度与 server API 连通性折叠为健康状态。
 `job-queue.js`: 提供进程内有界并发、同键互斥和取消信号；持久状态由上层 task runtime 负责。
 `message-runtime.js`: 编排命令解析、普通文本回退与审计包装，将 Telegram update 转换为注册器调用。
+`menu-handlers.js`: 功能面板 callback 分派器，把宫格入口委托给既有搜索、账户、任务和 PO18 处理器，不重复书籍卡片动作。
 `pg-bot-client.js`: Bot 到 server-pg 的唯一 HTTP 客户端，封装 Bot Token、超时、缓存、操作键和分页聚合。
 `pikpak-handler.js`: PikPak 外部存储交互层，封装目录、搜索、WebDAV 下载流与 Telegram 临时文件投递。
 `po18-account-handlers.js`: 处理 PO18 凭据绑定、验证码登录、状态和登出，只通过服务端加密凭据 API 工作。

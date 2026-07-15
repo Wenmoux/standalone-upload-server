@@ -44,7 +44,17 @@ const { createAccountHandlers } = require("./account-handlers");
 const { createEconomyHandlers } = require("./economy-handlers");
 const { createExportDelivery } = require("./export-delivery");
 const { createPikpakHandler } = require("./pikpak-handler");
-const { meText, registerText, signSuccessText, startHelpText } = require("./account-formatters");
+const {
+    mainMenuMarkup,
+    mainMenuText,
+    meText,
+    po18MenuMarkup,
+    po18MenuText,
+    registerText,
+    signSuccessText,
+    startHelpText
+} = require("./account-formatters");
+const { createMenuHandlers } = require("./menu-handlers");
 const {
     escapeHtml,
     delay,
@@ -196,13 +206,15 @@ const accountHandlers = createAccountHandlers({
     registerText,
     meText,
     signSuccessText,
+    mainMenuText,
+    mainMenuMarkup,
     refreshCommandSettings,
     helpLinesFromCommands,
     takePrivateExportStart,
     scheduleExport: (...args) => scheduleExport(...args),
     epubStyleChoices: EPUB_EXPORT_STYLE_CHOICES
 });
-const { ensureRegistered, handleMe, handleRegister, handleSign, handleStart } = accountHandlers;
+const { ensureRegistered, handleHelp, handleMe, handleMenu, handleRegister, handleSign, handleStart } = accountHandlers;
 const { handleShare, handleShareBookshelf } = createShareHandlers({
     client,
     sendMessage,
@@ -311,6 +323,8 @@ function getCommandRegistry() {
 
     registerAccountCommands(registry, {
         handleStart,
+        handleMenu,
+        handleHelp,
         handleRegister,
         handleMe,
         handleSign,
@@ -454,6 +468,26 @@ const broadcastHandlers = createBroadcastHandlers({
     delay
 });
 const { broadcastDraftContext, handleBroadcast, handleBroadcastCancel, handleBroadcastConfirm, handleBroadcastDraft } = broadcastHandlers;
+const { handleMenuAction } = createMenuHandlers({
+    sendMessage,
+    mainMenuMarkup,
+    po18MenuText,
+    po18MenuMarkup,
+    handleMenu,
+    handleHelp,
+    handleHot,
+    handleRandom,
+    handleWordCloud,
+    handleMe,
+    handleSign,
+    handleTasks,
+    handleTop,
+    handlePo18Status,
+    handleLoginPo18,
+    scheduleMyBookshelf,
+    withSearchCooldown: (message, label, handler) => withCooldown(message, "search", BOT_SEARCH_COOLDOWN_MS, label, handler),
+    withBookshelfCooldown: (message, label, handler) => withCooldown(message, "mybookshelf", BOT_BOOKSHELF_COOLDOWN_MS, label, handler)
+});
 
 async function handleMessage(message) {
     const text = message.text || message.caption || "";
@@ -529,6 +563,10 @@ async function handleCallback(query) {
     if (!["like", "dislike", "cvote", "sreq", "rvup", "rvdn", "reviewcancel", "broadcastsend", "broadcastcancel"].includes(action))
         await answerCallback(query.id);
     if (action === "noop") return;
+    if (action === "menu") {
+        const menuAction = String(a || "home");
+        return withBotAudit(callbackMessage, "/menu", `menu_${menuAction}`, {}, () => handleMenuAction(callbackMessage, menuAction));
+    }
     if (action === "broadcastsend") {
         try {
             const tip = await withBotAudit(callbackMessage, "/broadcast", "broadcast_publish", {}, () =>

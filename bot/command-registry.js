@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 command-catalog 的命令元数据、别名规范化规则和运行时启停配置
- * [OUTPUT]: 对外提供命令注册表、命令解析执行、启停状态和 Telegram 命令列表投影
+ * [OUTPUT]: 对外提供命令注册表、命令解析执行、启停状态和按目录显式收敛的 Telegram 命令列表投影
  * [POS]: bot 命令声明与业务处理器之间的运行时路由层，不承载具体命令业务
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -68,6 +68,10 @@ function createCommandRegistry() {
             .filter((item) => item.description)
             .filter((item) => isEnabled(item.command))
             .filter((item) => {
+                const catalogItem = catalog.get(item.command);
+                return catalogItem ? catalogItem.telegramMenu === true : true;
+            })
+            .filter((item) => {
                 const key = item.command.replace(/^\//, "");
                 if (seen.has(key)) return false;
                 seen.add(key);
@@ -116,6 +120,7 @@ function createCommandRegistry() {
                 defaultDescription: item.description || catalogItem.description || "",
                 help: catalogItem.help || item.command,
                 adminOnly: !!catalogItem.adminOnly,
+                telegramMenu: catalogItem.telegramMenu === true,
                 disabledMessage: setting.disabledMessage || ""
             };
         });

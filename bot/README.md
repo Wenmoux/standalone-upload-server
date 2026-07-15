@@ -24,13 +24,17 @@ npm run bot
 
 ## 命令
 
-运行时命令的单一事实源是 [`command-catalog.js`](./command-catalog.js) 和 `commands/` 注册器。管理员可以在后台临时关闭命令或修改展示说明，因此 `/start` 的实际输出可能少于下表。
+运行时命令的单一事实源是 [`command-catalog.js`](./command-catalog.js) 和 `commands/` 注册器。`/start` 与 `/menu` 打开两列宫格功能面板，`/help` 才显示完整命令说明。
+
+Telegram 输入 `/` 时显示的系统命令表只保留 `/menu`、`/search`、`/hot`、`/random`、`/me`、`/sign`、`/tasks` 和 `/po18status` 八个高频入口。Telegram 的系统命令表只能单列显示，不能改成宫格；宫格由 Bot 消息下方的 inline keyboard 实现。收藏、TXT/EPUB 导出、书评和众筹继续保留旧命令兼容，但不再重复占用系统命令表，也不放进主面板，应从对应书籍卡片操作。
 
 ### 账户与任务
 
 | 命令 | 作用 |
 | --- | --- |
-| `/start` | 显示当前启用的命令 |
+| `/start` | 注册并打开功能面板；仍承载群聊转私聊导出续接 |
+| `/menu` | 打开两列按钮功能面板 |
+| `/help` | 显示当前启用命令的完整说明 |
 | `/reg` | 注册当前 Telegram 账号 |
 | `/me` | 查看账户、余额、等级和导出额度 |
 | `/sign` | 每日签到 |

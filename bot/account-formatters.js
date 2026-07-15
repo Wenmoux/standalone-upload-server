@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖账户、签到、流水与排行接口返回的领域对象，以及调用方注入的 HTML 转义和等级格式化能力
- * [OUTPUT]: 对外提供注册、账户、钱包、签到和启动帮助的 Telegram HTML 文本格式化函数
+ * [OUTPUT]: 对外提供注册、账户、钱包、签到、启动帮助与主/PO18 功能面板的 Telegram 文本和按钮格式化函数
  * [POS]: bot 展示层的账户文案适配器，使命令处理器不直接拼接领域数据和 Telegram 标记
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -20,12 +20,62 @@ function startHelpText({ user, payload, helpLines = [], escapeHtml = defaultEsca
         ? `账号：${escapeHtml(user.nickname || user.username)} · ${escapeHtml(scholarText(user))} · 铜币 ${user.copper_coins} · 银币 ${user.silver_coins}`
         : "还未注册，发送 /reg 注册。";
     const inviteLine = payload ? `邀请码：<code>${escapeHtml(payload)}</code>` : "";
+    return ["<b>PO18 找书 Bot</b>", accountLine, inviteLine, ...helpLines].filter(Boolean).join("\n");
+}
+
+function mainMenuText({ user = {}, escapeHtml = defaultEscape, scholarText = () => "" } = {}) {
+    const name = user.nickname || user.telegram_username || user.username || "书友";
     return [
-        "<b>PO18 找书 Bot</b>",
-        accountLine,
-        inviteLine,
-        ...helpLines
-    ].filter(Boolean).join("\n");
+        "<b>PO18 书库功能面板</b>",
+        `你好，${escapeHtml(name)} · ${escapeHtml(scholarText(user))}`,
+        "",
+        "搜索时可以直接发送书名、作者或书号。",
+        "收藏、导出、书评与众筹请在对应书籍卡片中操作。"
+    ].join("\n");
+}
+
+function mainMenuMarkup() {
+    return {
+        inline_keyboard: [
+            [
+                { text: "🔎 搜书", callback_data: "menu|search" },
+                { text: "🔥 热门", callback_data: "menu|hot" }
+            ],
+            [
+                { text: "🎲 随机推荐", callback_data: "menu|random" },
+                { text: "☁️ 热搜词云", callback_data: "menu|wordcloud" }
+            ],
+            [
+                { text: "👤 我的账户", callback_data: "menu|me" },
+                { text: "✅ 每日签到", callback_data: "menu|sign" }
+            ],
+            [
+                { text: "📋 后台任务", callback_data: "menu|tasks" },
+                { text: "🏆 排行榜", callback_data: "menu|top" }
+            ],
+            [
+                { text: "🔐 PO18 账户", callback_data: "menu|po18" },
+                { text: "❓ 完整帮助", callback_data: "menu|help" }
+            ]
+        ]
+    };
+}
+
+function po18MenuText() {
+    return ["<b>PO18 账户面板</b>", "查看登录状态、发起登录或同步已购书架。", "首次绑定请发送：<code>/po18set 账号 密码</code>"].join("\n");
+}
+
+function po18MenuMarkup() {
+    return {
+        inline_keyboard: [
+            [
+                { text: "🔎 登录状态", callback_data: "menu|po18status" },
+                { text: "🔑 登录 PO18", callback_data: "menu|po18login" }
+            ],
+            [{ text: "📚 同步已购书架", callback_data: "menu|bookshelf" }],
+            [{ text: "⬅️ 返回主面板", callback_data: "menu|home" }]
+        ]
+    };
 }
 
 function registerText(result = {}, { escapeHtml = defaultEscape, scholarText = () => "" } = {}) {
@@ -54,7 +104,14 @@ function walletText(user = {}, { escapeHtml = defaultEscape, scholarText = () =>
     ].join("\n");
 }
 
-function meText({ user = {}, stats = {}, telegramId = "", escapeHtml = defaultEscape, scholarText = () => "", freeExportText = () => "" } = {}) {
+function meText({
+    user = {},
+    stats = {},
+    telegramId = "",
+    escapeHtml = defaultEscape,
+    scholarText = () => "",
+    freeExportText = () => ""
+} = {}) {
     const signedDate = user.last_sign_date ? String(user.last_sign_date).slice(0, 10) : "-";
     return [
         `<b>我的账户</b>`,
@@ -96,8 +153,12 @@ function signSuccessText(result = {}, { escapeHtml = defaultEscape, scholarText 
 }
 
 module.exports = {
+    mainMenuMarkup,
+    mainMenuText,
     meText,
     permissionText,
+    po18MenuMarkup,
+    po18MenuText,
     registerText,
     signSuccessText,
     startHelpText,

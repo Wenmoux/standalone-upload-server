@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 PgBotClient、Telegram 文本投递、账户格式器、命令帮助与私聊导出续接协议
- * [OUTPUT]: 对外提供注册保障、/start、/reg、/me 与 /sign 账户处理器
+ * [INPUT]: 依赖 PgBotClient、Telegram 文本投递、账户/面板格式器、命令帮助与私聊导出续接协议
+ * [OUTPUT]: 对外提供注册保障、/start、/menu、/help、/reg、/me 与 /sign 账户处理器
  * [POS]: bot 的账户交互层，连接 Reader 用户事实与 Telegram 文案，不承载命令注册和轮询状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -15,6 +15,8 @@ function createAccountHandlers(options = {}) {
     const registerText = options.registerText;
     const meText = options.meText;
     const signSuccessText = options.signSuccessText;
+    const mainMenuText = options.mainMenuText;
+    const mainMenuMarkup = options.mainMenuMarkup;
     const refreshCommandSettings = options.refreshCommandSettings || (async () => {});
     const helpLinesFromCommands = options.helpLinesFromCommands || (() => []);
     const takePrivateExportStart = options.takePrivateExportStart || (() => null);
@@ -50,7 +52,23 @@ function createAccountHandlers(options = {}) {
                 epubStyleId: pendingExport.epubStyleId
             });
         }
-        await deliverLongGroupResult(
+        return sendMessage(message.chat.id, mainMenuText({ user, escapeHtml, scholarText }), {
+            reply_markup: mainMenuMarkup()
+        });
+    }
+
+    async function handleMenu(message) {
+        await refreshCommandSettings();
+        const user = await ensureRegistered(message.from);
+        return sendMessage(message.chat.id, mainMenuText({ user, escapeHtml, scholarText }), {
+            reply_markup: mainMenuMarkup()
+        });
+    }
+
+    async function handleHelp(message, payload = "") {
+        await refreshCommandSettings();
+        const user = await ensureRegistered(message.from);
+        return deliverLongGroupResult(
             message,
             startHelpText({
                 user,
@@ -100,7 +118,9 @@ function createAccountHandlers(options = {}) {
 
     return {
         ensureRegistered,
+        handleHelp,
         handleMe,
+        handleMenu,
         handleRegister,
         handleSign,
         handleStart
