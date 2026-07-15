@@ -55,7 +55,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `events.test.js`: 领域事件发布和监听隔离。
 - `health-routes.test.js`: liveness、readiness、deep health HTTP 契约。
 - `health.test.js`: 健康聚合服务与依赖状态。
-- `hot-keywords.test.js`: 热搜词统计和时间窗。
+- `hot-keywords.test.js`: 热词规范化、一次批量合并、串行累积和稳定排序。
 - `http-security.test.js`: 生产绑定、Metrics Token 与安全响应头。
 - `job-retry.test.js`: 持久任务重试分类、退避和耗尽行为。
 - `local-library-upload.test.js`: 本地书库上传解析与批次状态。

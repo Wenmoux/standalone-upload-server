@@ -304,7 +304,7 @@ GET /reader-api/hot-keywords?limit=12
 ```
 
 热搜数据存放在 PostgreSQL 的 `admin_config` 配置项里，不改 `book_metadata` / `chapter_cache` 字段。
-新 Telegram Bot 通过 `/bot-api/hot-keywords` 写入和迁移旧搜索日志。
+新 Telegram Bot 通过 `/bot-api/hot-keywords` 写入和迁移旧搜索日志。批量请求使用 `{ "rows": [...] }`，最多 500 行；服务端只执行一次配置读改写，返回 `previous`、前 20 条 `rows` 和实际写入次数 `writes`（有效批次为 `1`，空批次为 `0`）。单条与批量累积在同一进程内串行执行，持久化保留排序后的前 200 条。
 
 ### 1. 搜索书籍
 

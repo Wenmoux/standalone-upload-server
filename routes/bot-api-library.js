@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Express、Bot Token 鉴权、PO18 凭据加密、书架/搜索/热词/词云查询与领域事件服务
- * [OUTPUT]: 对外提供 Bot PO18 账户、书架、缺书请求、热词、词云和分享事实路由工厂
- * [POS]: routes 的 Bot 书库协议适配层，隔离凭据与检索类 HTTP 边界，不承载用户经济或社交结算
+ * [INPUT]: 依赖 Express、Bot Token 鉴权、PO18 凭据加密、书架/搜索、批量热词、词云与领域事件服务
+ * [OUTPUT]: 对外提供 Bot PO18 账户、书架、缺书请求、单次写入的批量热词、词云和分享事实路由工厂
+ * [POS]: routes 的 Bot 书库协议适配层，隔离凭据与检索类 HTTP 边界并把热词合并下沉到 services
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -15,6 +15,7 @@ function createBotApiLibraryRoutes(deps = {}) {
         findBotUserByTelegramId,
         getHotKeywords,
         addHotKeyword,
+        addHotKeywords,
         wordCloudPayload,
         recordEvent,
         credentialCrypto
@@ -261,17 +262,11 @@ function createBotApiLibraryRoutes(deps = {}) {
         try {
             if (Array.isArray(req.body?.rows)) {
                 if (req.body.rows.length > 500) return res.status(413).json({ error: "too many hot keyword rows; maximum is 500" });
-                const previous = (await getHotKeywords(200)).length;
-                for (const row of req.body.rows) {
-                    await addHotKeyword(
-                        row.keyword || row.query,
-                        row.type || row.search_type,
-                        row.result_count ?? row.total_results ?? 0,
-                        row.count || 1,
-                        row.last_searched_at || row.created_at
-                    );
+                if (typeof addHotKeywords !== "function") {
+                    return res.status(503).json({ error: "hot keyword batch service is not configured" });
                 }
-                return res.json({ success: true, rows: await getHotKeywords(20), previous });
+                const result = await addHotKeywords(req.body.rows);
+                return res.json({ success: true, rows: result.rows.slice(0, 20), previous: result.previous, writes: result.writes });
             }
             const row = await addHotKeyword(
                 req.body?.keyword || req.body?.query,

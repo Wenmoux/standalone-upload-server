@@ -40,7 +40,7 @@ epub-style-config.js: EPUB 样式配置契约，登记样式选项并规范化�
 error-response.js: HTTP 错误规范化中间件，为既有 `error` 响应补充稳定 code 与 request_id。
 events.js: 上传事件写入服务，统一 PostgreSQL 值清洗并为更新记录和 Telegram 推送提供事实源。
 health.js: 深度健康检查服务，检查数据库、schema、磁盘、Reader、Bot、Telegram 与安全配置并区分必需/可选项。
-hot-keywords.js: 热搜配置服务，规范化关键词并通过 `admin_config` 提供读取、累积和替换能力。
+hot-keywords.js: 热搜配置服务，规范化关键词并通过 `admin_config` 提供读取、串行累积与一次读改写的批量合并能力。
 http-security.js: HTTP 生产安全策略，统一 CORS、代理信任、回环判断及启动前不安全配置拒绝。
 http-pipeline.js: 服务端安全管线，按固定顺序安装请求日志、CORS、限流、Body 解析、启动闸门、Session、CSRF 与管理审计。
 job-retry.js: system_jobs 重试策略，把可重试任务类型映射回领域执行器并保护破坏性确认语义。

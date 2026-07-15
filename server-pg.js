@@ -255,7 +255,7 @@ const eventService = createEventService({
 });
 const { recordEvent } = eventService;
 const hotKeywordService = createHotKeywordService({ configGet, configSet });
-const { addHotKeyword, getHotKeywords } = hotKeywordService;
+const { addHotKeyword, addHotKeywords, getHotKeywords } = hotKeywordService;
 const wordCloudService = createWordCloudService({ query, getHotKeywords });
 const bookSocialService = createBookSocialService({
     query,
@@ -639,6 +639,7 @@ const botApiRoutes = createBotApiRoutes({
     pushBookReviewToChannel,
     getHotKeywords,
     addHotKeyword,
+    addHotKeywords,
     wordCloudPayload: wordCloudService.wordCloudPayload,
     recordEvent,
     credentialCrypto,

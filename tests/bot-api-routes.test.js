@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供 Bot API 账户、任务、红包、书评操作键、社交和书库路由契约的自动化回归断言
- * [POS]: tests 的 Bot API 组合与协议映射守卫，防止子域拆分、错误状态、可信来源或幂等键透传静默退化
+ * [OUTPUT]: 提供 Bot API 账户、任务、红包、书评操作键、批量热词、社交和书库路由契约的自动化回归断言
+ * [POS]: tests 的 Bot API 组合与协议映射守卫，防止子域拆分、写入放大、可信来源或幂等键透传静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -672,13 +672,16 @@ test("bot social routes force trusted review provenance", async () => {
     assert.equal(votes[0].source, "telegram_bot");
 });
 
-test("bot hot-keyword batch rejects oversized payloads before writes", async () => {
+test("bot hot-keyword batch rejects oversized payloads and delegates one bounded merge", async () => {
     let writes = 0;
+    let received = [];
     const router = createBotApiRoutes({
         requireBotApi: botOnly,
         getHotKeywords: async () => [],
-        addHotKeyword: async () => {
+        addHotKeywords: async (rows) => {
             writes += 1;
+            received = rows;
+            return { rows: [{ keyword: "merged", count: rows.length }], previous: 3, writes: 1 };
         }
     });
     await withApp(router, async (base) => {
@@ -688,6 +691,20 @@ test("bot hot-keyword batch rejects oversized payloads before writes", async () 
             body: JSON.stringify({ rows: Array.from({ length: 501 }, (_, index) => ({ keyword: `word-${index}` })) })
         });
         assert.equal(response.status, 413);
+
+        const merged = await fetch(`${base}/bot-api/hot-keywords`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ rows: [{ keyword: "alpha" }, { keyword: "beta" }] })
+        });
+        assert.equal(merged.status, 200);
+        assert.deepEqual(await merged.json(), {
+            success: true,
+            rows: [{ keyword: "merged", count: 2 }],
+            previous: 3,
+            writes: 1
+        });
     });
-    assert.equal(writes, 0);
+    assert.equal(writes, 1);
+    assert.equal(received.length, 2);
 });

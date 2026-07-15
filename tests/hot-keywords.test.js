@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供热搜词统计和时间窗的自动化回归断言
- * [POS]: tests 的热搜词统计和时间窗守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供热词规范化、单次批量合并、串行累积和排序的自动化回归断言
+ * [POS]: tests 的共享热词状态守卫，防止批量请求放大写入或并发累积丢失
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -27,7 +27,10 @@ test("hot keyword service normalizes, sorts and writes merged keywords", async (
 
     assert.equal(normalizeHotKeyword("  a   b  "), "a b");
     const rows = await service.getHotKeywords(10);
-    assert.deepEqual(rows.map((row) => row.keyword), ["alpha", "beta"]);
+    assert.deepEqual(
+        rows.map((row) => row.keyword),
+        ["alpha", "beta"]
+    );
 
     const added = await service.addHotKeyword(" beta ", "search", 3, 4, "2026-01-03T00:00:00Z");
     assert.equal(added.keyword, "beta");
@@ -36,5 +39,29 @@ test("hot keyword service normalizes, sorts and writes merged keywords", async (
     assert.equal(writes.length, 1);
 
     const saved = JSON.parse(writes[0].value);
-    assert.deepEqual(saved.map((row) => row.keyword), ["beta", "alpha"]);
+    assert.deepEqual(
+        saved.map((row) => row.keyword),
+        ["beta", "alpha"]
+    );
+
+    const batch = await service.addHotKeywords([
+        { keyword: "beta", type: "search", count: 2, result_count: 4, last_searched_at: "2026-01-04T00:00:00Z" },
+        { keyword: "gamma", type: "search", count: 3, result_count: 6, last_searched_at: "2026-01-04T00:00:00Z" },
+        { keyword: "   ", count: 9 }
+    ]);
+    assert.equal(batch.previous, 2);
+    assert.equal(batch.writes, 1);
+    assert.equal(writes.length, 2);
+    assert.deepEqual(
+        batch.rows.map((row) => [row.keyword, row.count]),
+        [
+            ["beta", 8],
+            ["alpha", 5],
+            ["gamma", 3]
+        ]
+    );
+
+    await Promise.all([service.addHotKeyword("delta"), service.addHotKeyword("delta")]);
+    assert.equal((await service.getHotKeywords(200)).find((row) => row.keyword === "delta").count, 2);
+    assert.equal(writes.length, 4);
 });
