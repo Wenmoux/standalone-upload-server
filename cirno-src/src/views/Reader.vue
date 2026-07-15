@@ -1,7 +1,7 @@
 <!--
- * [INPUT]: 依赖 正文组件、纠错/导航/阅读设置/TTS mixins、离线/session/净化工具与章节 API
+ * [INPUT]: 依赖 正文组件、章节/纠错/导航/阅读设置/间贴/TTS mixins、净化工具与 Reader API
  * [OUTPUT]: 对外提供 Reader 正文阅读组合页面
- * [POS]: Reader views 的阅读组合根，负责章节数据与局部组件编排，把设置、主题、繁简转换等状态机下沉到 mixin
+ * [POS]: Reader views 的阅读组合根，只编排页面布局与局部组件，把章节事实、互动和阅读能力下沉到领域 mixin
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  -->
 <template>
@@ -72,10 +72,15 @@
         </div>
       </div>
       <div v-show="loading === 1 && showTsukkomi" class="tsukkomi-container" :style="{ right: tsukkomiRight + 'px' }">
-        <div v-show="tsukkomi_list.length === 0" class="skeleton-container">
+        <div v-if="tsukkomiLoading" class="tsukkomi-state">
           <a-skeleton active />
         </div>
-        <div v-show="tsukkomi_list.length !== 0">
+        <div v-else-if="tsukkomiError" class="tsukkomi-state tsukkomi-error-state">
+          <span>{{ tsukkomiError }}</span>
+          <button type="button" @click="refreshTsukkomi">重试</button>
+        </div>
+        <div v-else-if="tsukkomi_list.length === 0" class="tsukkomi-state">暂无间贴</div>
+        <div v-else>
           <div class="title-container">
             <div class="title-text" @click="toTsukkomiTop">共 {{ tsukkomi_num }} 条帖子</div>
             <div class="title-button" @click="closeTsu"><i class="ri-close-line"></i></div>
@@ -915,24 +920,30 @@
 <script>
 import defaultAvatarImage from '@/assets/d_avatar.jpg'
 import { mapState } from 'vuex'
-import PerfectScrollbar from 'perfect-scrollbar'
 import 'perfect-scrollbar/css/perfect-scrollbar.css'
 import Paragraph from '../components/paragraph.vue'
 import Catalog from '../components/catalog.vue'
 import Picture from '../components/picture.vue'
 import Tsukkomi from '../components/tsukkomi.vue'
 import Tickets from '../components/tickets.vue'
+import readerChapterMixin from '../mixins/reader-chapter'
 import readerCorrectionMixin from '../mixins/reader-correction'
 import readerNavigationMixin from '../mixins/reader-navigation'
 import readerSettingsMixin from '../mixins/reader-settings'
+import readerTsukkomiMixin from '../mixins/reader-tsukkomi'
 import readerTtsMixin from '../mixins/reader-tts'
 import { sanitizeHtml } from '../utils/sanitize-html'
-import { cachedReaderUser } from '../utils/reader-session'
-import { listOfflineBookChapters, pinOfflineChapter, rememberRecentChapter } from '../utils/reader-offline'
 
 export default {
   name: 'Reader',
-  mixins: [readerCorrectionMixin, readerNavigationMixin, readerSettingsMixin, readerTtsMixin],
+  mixins: [
+    readerChapterMixin,
+    readerCorrectionMixin,
+    readerNavigationMixin,
+    readerSettingsMixin,
+    readerTsukkomiMixin,
+    readerTtsMixin
+  ],
   components: {
     Paragraph,
     Catalog,
@@ -942,36 +953,10 @@ export default {
   },
   data() {
     return {
-      bid: null,
-      cid: null,
       contentDiv: null,
-      contentWidth: 0,
       controlBarLeftMargin: 0,
-      loading: 0,
-      loadError: '',
-      chapterTitle: '',
-      book_info: {},
-      book_chapters: [],
-      book_chapterids: [],
-      chapterIndex: 0,
-      chapter_info: {},
-      chapterContentData: [],
-      chapterDisplayContentData: [],
-      chapterCache: Object.create(null),
-      contentRequestId: 0,
       containerScroll: null,
-      tsukkomi_num: 0,
-      tsukkomi_list: [],
-      showTsukkomi: false,
-      tsukkomiRight: 0,
-      tsukkomiPage: 1,
-      tsukkomiScroll: null,
-      tsukkomiIndex: 0,
       tempAvatar: defaultAvatarImage,
-      cataMarginLeft: 0,
-      auth: true,
-      chapterAmount: 0,
-      buyAmount: 0,
       controlsCollapsed: true,
       ttsUtterance: null,
       ttsAudio: null,
@@ -1001,90 +986,6 @@ export default {
       }
     }
   },
-  async created() {
-    this.bid = this.$route.query.bid
-    this.cid = this.$route.query.cid
-    if (this.cid === '[object Object]') this.cid = 0
-    window.__cirnoCurrentBookId = this.bid
-    const ownerId = String(cachedReaderUser()?.id || '')
-    const offlineRows = () => (ownerId ? listOfflineBookChapters(ownerId, this.bid) : Promise.resolve([]))
-    const hasInitialCid = !!this.cid && this.cid != 0
-    const contentStarted = hasInitialCid
-    if (hasInitialCid) {
-      this.getContent(this.cid)
-    }
-    const bookInfoPromise = this.$get({
-      url: '/book/get_info_by_id',
-      urlParas: { book_id: this.bid }
-    }).catch(async error => {
-      const rows = await offlineRows()
-      if (!rows.length) throw error
-      return {
-        data: {
-          book_info: {
-            book_id: String(this.bid || ''),
-            book_name: rows[0].bookTitle || this.bid,
-            author_name: '离线缓存',
-            platform: rows[0].chapter?.platform || '',
-            cache_count: rows.length,
-            offline: true
-          }
-        }
-      }
-    })
-    const chaptersPromise = this.$get({
-      url: '/chapter/get_updated_chapter_by_division_id',
-      urlParas: {
-        division_id: this.bid,
-        last_update_time: 0
-      }
-    })
-      .then(res => res.data.chapter_list || [])
-      .catch(async error => {
-        const rows = await offlineRows()
-        if (!rows.length) throw error
-        return rows.map(row => ({
-          chapter_id: row.chapterId,
-          chapter_title: row.chapterTitle,
-          chapter_order: row.chapterOrder,
-          is_volume: false,
-          offline: true
-        }))
-      })
-    let book_info
-    let book_chapters
-    try {
-      ;[book_info, book_chapters] = await Promise.all([bookInfoPromise, chaptersPromise])
-    } catch (error) {
-      this.loading = -1
-      this.loadError = error?.error || error?.message || '书籍信息与目录加载失败'
-      return
-    }
-    this.book_info = book_info.data.book_info
-    window.__cirnoCurrentBookTitle = this.book_info.book_name || this.bid
-    this.book_chapters = book_chapters
-    this.book_chapterids = this.book_chapters.map(chapter => {
-      return chapter['chapter_id']
-    })
-    if (
-      !this.cid ||
-      this.isVolumeChapter(this.book_chapters.find(chapter => String(chapter.chapter_id) === String(this.cid)))
-    ) {
-      const firstCid = this.firstReadableChapterId()
-      if (firstCid) {
-        this.cid = firstCid
-        this.$router.replace({ query: { bid: this.bid, cid: this.cid } })
-        this.getContent(this.cid)
-      }
-    } else if (!contentStarted) {
-      this.getContent(this.cid)
-    }
-    this.chapterIndex = this.book_chapterids.indexOf(this.cid)
-    // if (this.cid == 0) {
-    //   this.cid = this.book_chapterids[0]
-    //   this.$router.replace({ query: { bid: this.bid, cid: this.cid } })
-    // }
-  },
   mounted() {
     this.contentDiv = this.$refs.contentContainer
     window.addEventListener('resize', this.windowSizeHandler)
@@ -1093,271 +994,19 @@ export default {
     window.removeEventListener('resize', this.windowSizeHandler)
     this.flushReadingTime()
     if (this.containerScroll) this.containerScroll.destroy()
-    if (this.tsukkomiScroll) this.tsukkomiScroll.destroy()
   },
   computed: {
     ...mapState(['prop_info', 'reader_info'])
   },
   methods: {
-    async getContent(cid) {
-      this.flushReadingTime()
-      typeof cid === 'string' ? null : (cid = `${cid}`)
-      const currentChapter = this.book_chapters.find(chapter => String(chapter.chapter_id) === String(cid))
-      if (this.isVolumeChapter(currentChapter)) {
-        const readableCid = this.nearestReadableChapterId(cid)
-        if (!readableCid || String(readableCid) === String(cid)) return
-        this.$router.replace({ query: { bid: this.bid, cid: readableCid } })
-        return this.getContent(readableCid)
-      }
-      this.cid = cid
-      this.loading = 0
-      this.loadError = ''
-      this.chapterIndex = this.book_chapterids.indexOf(cid)
-      const requestId = ++this.contentRequestId
-      const key = 'local-plain-text'
-      let chapter_info
-      try {
-        chapter_info = await this.$get({
-          url: '/chapter/get_cpt_ifm',
-          urlParas: {
-            book_id: this.bid,
-            chapter_id: cid,
-            chapter_command: key
-          }
-        })
-      } catch (error) {
-        if (requestId === this.contentRequestId && String(this.cid) === String(cid)) {
-          this.loading = -1
-          this.loadError = error?.error || error?.message || String(error || '章节加载失败')
-        }
-        return
-      }
-      if (requestId !== this.contentRequestId || String(this.cid) !== String(cid)) return
-      if (chapter_info.data.chapter_info.is_local_plain) {
-        chapter_info.data.chapter_info.txt_content = chapter_info.data.chapter_info.txt_content || ''
-      } else {
-        chapter_info.data.chapter_info.txt_content = await this.decrypt(chapter_info.data.chapter_info.txt_content, key)
-      }
-      if (requestId !== this.contentRequestId || String(this.cid) !== String(cid)) return
-      this.chapter_info = chapter_info.data.chapter_info
-      const ownerId = String(cachedReaderUser()?.id || '')
-      if (ownerId && !this.chapter_info.is_volume) {
-        rememberRecentChapter({
-          ownerId,
-          bookId: this.bid,
-          bookTitle: this.book_info.book_name || window.__cirnoCurrentBookTitle || this.bid,
-          chapterId: cid,
-          chapterTitle: this.chapter_info.chapter_title,
-          chapterOrder: currentChapter?.chapter_order || this.chapterIndex + 1,
-          chapter: this.chapter_info
-        }).catch(() => {})
-      }
-      if (this.chapter_info.auth_access == 1) {
-        this.auth = true
-        this.setLastRead()
-        this.markReadingStart()
-      } else {
-        this.auth = false
-      }
-      this.chapterAmount = this.chapter_info.unit_hlb
-      this.buyAmount = this.chapter_info.buy_amount
-      this.chapterTitle = this.chapter_info.chapter_title
-      let contentArray = []
-      if (this.isIhuabenChapterInfo(this.chapter_info)) {
-        contentArray = this.parseIhuabenHtml(this.chapter_info.html_content)
-      } else {
-        let txt_content = String(this.chapter_info.txt_content || '')
-        let content_arr = txt_content.split(/\r?\n/)
-        while (content_arr.length && content_arr[content_arr.length - 1].trim() === '') {
-          content_arr.pop()
-        }
-        let author_say = String(this.chapter_info.author_say || '')
-        let author_say_arr = author_say ? author_say.split(/\r?\n/) : []
-        contentArray = [...content_arr, ...author_say_arr]
-        contentArray = contentArray.map(ca => {
-          let obj = {}
-          obj.text = this.normalizeParagraphLine(ca)
-          obj.tsukkomi_num = 0
-          return obj
-        })
-      }
-      this.chapterContentData = contentArray
-      await this.rebuildChapterDisplayContent()
-      if (requestId !== this.contentRequestId || String(this.cid) !== String(cid)) return
-      this.loading = 1
-      this.$nextTick(() => {
-        this.windowSizeHandler()
-        this.applyReaderTheme()
-        if (this.containerScroll) {
-          this.containerScroll.destroy()
-          this.containerScroll = null
-        }
-        this.containerScroll = new PerfectScrollbar(this.$refs.book, {
-          wheelSpeed: 2,
-          wheelPropagation: true,
-          minScrollbarLength: 20
-        })
-        this.refreshTsukkomiNums(cid, requestId)
-      })
-    },
-    async refreshTsukkomiNums(cid, requestId) {
-      const tsukkomiNums = await this.getTsukkomiNum(cid).catch(() => [])
-      if (requestId !== this.contentRequestId || String(this.cid) !== String(cid) || !tsukkomiNums.length) return
-      const contentArray = this.chapterContentData.slice()
-      let changed = false
-      for (let tsukkomiNum of tsukkomiNums) {
-        let pIndex = tsukkomiNum['paragraph_index']
-        if (pIndex < contentArray.length) {
-          contentArray[pIndex] = Object.assign({}, contentArray[pIndex], { tsukkomi_num: tsukkomiNum.tsukkomi_num })
-          changed = true
-        }
-      }
-      if (!changed) return
-      this.chapterContentData = contentArray
-      await this.rebuildChapterDisplayContent()
-    },
-    async decrypt(data, key) {
-      const webCrypto = globalThis.crypto && globalThis.crypto.subtle
-      if (!webCrypto || !data) return String(data || '')
-      const rawKey = await webCrypto.digest(
-        'SHA-256',
-        new TextEncoder().encode(key == null ? 'zG2nSeEfSHfvTCHy5LCcqtBbQehKNLXn' : String(key))
-      )
-      const aesKey = await webCrypto.importKey('raw', rawKey, { name: 'AES-CBC' }, false, ['decrypt'])
-      const encrypted = Uint8Array.from(atob(String(data)), char => char.charCodeAt(0))
-      const decrypted = await webCrypto.decrypt({ name: 'AES-CBC', iv: new Uint8Array(16) }, aesKey, encrypted)
-      return new TextDecoder().decode(decrypted).replace(/\0+$/g, '')
-    },
-    async getTsukkomiNum(cid) {
-      typeof cid === 'string' ? null : (cid = `${cid}`)
-      let tsukkomi_num_info = await this.$get({
-        url: '/chapter/get_tsukkomi_num',
-        urlParas: {
-          chapter_id: cid
-        }
-      })
-      return tsukkomi_num_info.data.tsukkomi_num_info
-    },
-    async getTsukkomiList(paragraph_index) {
-      let tsukkomi_list = await this.$get({
-        url: '/chapter/get_paragraph_tsukkomi_list_new',
-        urlParas: {
-          chapter_id: this.cid,
-          paragraph_index: paragraph_index,
-          count: 20,
-          page: this.tsukkomiPage - 1
-        }
-      })
-      this.tsukkomi_list = tsukkomi_list.data.tsukkomi_list
-      this.$nextTick(() => {
-        this.tsukkomiScroll = new PerfectScrollbar(this.$refs.tsukkomi, {
-          wheelSpeed: 1,
-          wheelPropagation: false,
-          minScrollbarLength: 20
-        })
-      })
-    },
-    showTsu(index, num, page, noSkeleton) {
-      this.tsukkomiIndex = index
-      num ? (this.tsukkomi_num = parseInt(num)) : null
-      page ? (this.tsukkomiPage = page) : (this.tsukkomiPage = 1)
-      this.tsukkomiScroll ? this.tsukkomiScroll.destroy() : null
-      if (!noSkeleton) {
-        this.tsukkomi_list = []
-        this.showTsukkomi = true
-        this.toTsukkomiTop()
-      }
-      this.getTsukkomiList(index)
-      this.$nextTick(() => {
-        this.windowSizeHandler()
-      })
-    },
-    closeTsu() {
-      this.showTsukkomi = false
-      this.toTsukkomiTop()
-      this.$nextTick(() => {
-        this.windowSizeHandler()
-      })
-    },
-    changeTsukkomiPage(page) {
-      this.showTsu(this.tsukkomiIndex, null, page)
-    },
     showCatalog() {
       this.$refs.catalog.showCatalog()
-    },
-    async tsukkomiOperate(unlike, tsukkomi_id) {
-      let url = ''
-      if (unlike) {
-        url = '/chapter/unlike_tsukkomi'
-      } else {
-        url = '/chapter/like_tsukkomi'
-      }
-      let result = await this.$get({
-        url: url,
-        urlParas: {
-          tsukkomi_id: tsukkomi_id
-        }
-      })
-      this.refreshTsukkomi()
-    },
-    refreshTsukkomi() {
-      this.showTsu(this.tsukkomiIndex, this.tsukkomi_num, this.tsukkomiPage, true)
-    },
-    refreshPara(pid) {
-      this.chapterContentData[pid].tsukkomi_num++
-      this.tsukkomi_num++
-    },
-    newTsukkomi() {
-      let text = this.chapterContentData[this.tsukkomiIndex].text
-      this.$refs.tsukkomiWriter.show(text, this.bid, this.cid, this.tsukkomiIndex)
     },
     showPic(url) {
       this.$refs.picture.showPic(url)
     },
-    async buyChapter() {
-      let buy_result = await this.$get({
-        url: '/chapter_buy',
-        urlParas: {
-          chapter_id: this.cid
-        }
-      })
-      let prop_info = buy_result.data.prop_info
-      let reader_info = buy_result.data.reader_info
-      this.$store.commit('setPropInfo', prop_info)
-      this.$store.commit('setReaderInfo', reader_info)
-      this.getContent(this.cid)
-    },
     giveTickets() {
       this.$refs.tickets.show(this.bid)
-    },
-    retryCurrentChapter() {
-      if (this.cid) this.getContent(this.cid)
-    },
-    async pinCurrentChapterOffline() {
-      const ownerId = String(cachedReaderUser()?.id || '')
-      if (!ownerId) {
-        this.$message.warn('请先登录后再保存离线章节')
-        return
-      }
-      if (!this.cid || !this.chapter_info?.chapter_id || this.chapter_info.is_volume) {
-        this.$message.warn('当前没有可保存的正文')
-        return
-      }
-      const currentChapter = this.book_chapters.find(chapter => String(chapter.chapter_id) === String(this.cid))
-      try {
-        await pinOfflineChapter({
-          ownerId,
-          bookId: this.bid,
-          bookTitle: this.book_info.book_name || this.bid,
-          chapterId: this.cid,
-          chapterTitle: this.chapter_info.chapter_title,
-          chapterOrder: currentChapter?.chapter_order || this.chapterIndex + 1,
-          chapter: this.chapter_info
-        })
-        this.$message.success('当前章节已保存，可离线打开')
-      } catch (error) {
-        this.$message.error(error?.message || '离线保存失败')
-      }
     }
   }
 }
@@ -1653,6 +1302,24 @@ export default {
       z-index: 16;
       color: var(--reader-text-color);
       background: var(--reader-paper-bg);
+      .tsukkomi-state {
+        min-height: 240px;
+        padding: 32px;
+        display: grid;
+        place-content: center;
+        gap: 12px;
+        color: var(--reader-muted-color);
+        text-align: center;
+      }
+      .tsukkomi-error-state button {
+        justify-self: center;
+        padding: 7px 16px;
+        border: 1px solid var(--reader-border-color);
+        border-radius: 999px;
+        color: var(--reader-text-color);
+        background: var(--reader-paper-bg);
+        cursor: pointer;
+      }
       .title-container {
         color: var(--reader-muted-color);
         display: flex;

@@ -20,7 +20,7 @@ test("Reader delegates settings, themes and display conversion to one mixin", ()
     const settings = source("cirno-src/src/mixins/reader-settings.js");
 
     assert.match(reader, /import readerSettingsMixin from ['"]\.\.\/mixins\/reader-settings['"]/);
-    assert.match(reader, /mixins:\s*\[readerCorrectionMixin, readerNavigationMixin, readerSettingsMixin, readerTtsMixin\]/);
+    assert.match(reader, /mixins:\s*\[[^\]]*readerSettingsMixin[^\]]*\]/s);
     assert.doesNotMatch(reader, /from ['"]\.\.\/utils\/reader-settings['"]/);
     assert.doesNotMatch(reader, /from ['"]\.\.\/utils\/reader-content['"]/);
     assert.doesNotMatch(
