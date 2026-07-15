@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 PgBotClient、注册用户保障、Telegram 投递与币种/流水/红包格式器
- * [OUTPUT]: 对外提供 CDK、管理员发币、排行榜、流水、发红包和抢红包处理器
- * [POS]: bot 的用户经济交互层，仅转换命令输入和领域结果，不复制服务端余额事务规则
+ * [OUTPUT]: 对外提供 CDK、管理员发币、排行榜、流水、幂等发红包和抢红包处理器
+ * [POS]: bot 的用户经济交互层，以 Telegram 消息身份生成稳定请求键且不复制服务端余额事务规则
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createEconomyHandlers(options = {}) {
@@ -104,6 +104,7 @@ function createEconomyHandlers(options = {}) {
             targetUser = await client.getUserByTelegramUsername(parsed.target).catch(() => null);
             if (!targetUser) return sendMessage(message.chat.id, `没找到 ${escapeHtml(parsed.target)}，目标需要先 /reg 注册。`);
         }
+        const messageId = String(message.message_id ?? "").trim();
         const result = await client.createRedPacket({
             sender_telegram_id: message.from.id,
             target_telegram_id: targetUser?.telegram_id || "",
@@ -111,7 +112,8 @@ function createEconomyHandlers(options = {}) {
             currency: parsed.currency,
             total_amount: parsed.totalAmount,
             total_count: parsed.totalCount,
-            note: parsed.note
+            note: parsed.note,
+            idempotency_key: messageId ? `telegram:red-packet:${message.chat.id}:${messageId}` : ""
         });
         const senderName = user.nickname || user.telegram_username || user.username || message.from.username || message.from.id;
         if (targetUser) {

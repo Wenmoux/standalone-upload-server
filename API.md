@@ -1378,6 +1378,52 @@ GET  /bot-api/broadcasts/recipients?after_id=0&limit=100
 - `/broadcast [通知内容]` 通过 ForceReply 或命令参数生成预览，管理员点击确认后才创建持久任务。
 - 收件人分页接口只供 Bot Worker 使用，排除封禁用户和未绑定 Telegram 的账号。
 
+### Bot 红包与众筹
+
+```http
+POST /bot-api/red-packets
+POST /bot-api/red-packets/claim
+GET  /bot-api/books/:bookId/crowd?telegram_id=123456&limit=5
+GET  /bot-api/book-crowd?telegram_id=123456&limit=10
+POST /bot-api/books/:bookId/crowd
+POST /bot-api/books/:bookId/feedback
+X-Bot-Token: <PO18_BOT_API_TOKEN>
+Content-Type: application/json
+```
+
+红包创建请求：
+
+```json
+{
+    "sender_telegram_id": "123456",
+    "target_telegram_id": "",
+    "chat_id": "-100123",
+    "currency": "copper",
+    "total_amount": 100,
+    "total_count": 5,
+    "note": "恭喜发财",
+    "idempotency_key": "telegram:red-packet:-100123:7788"
+}
+```
+
+- 金额和份数必须是正整数，普通红包最多 100 份且金额不能小于份数；定向红包固定为 1 份并即时到账。
+- Bot 使用 `chat_id + message_id` 生成稳定 `idempotency_key`。相同键和相同参数重试返回 `repeated: true` 且不重复扣款；相同键改用其他参数返回 `409 IDEMPOTENCY_CONFLICT`。
+- 禁止给自己发定向红包，也拒绝发送者、目标或领取者为封禁用户。
+- 显式红包重复领取返回原领取快照并标记 `repeated: true`，不会再次加币。
+- 点击已过期红包返回 `410 RED_PACKET_EXPIRED`；未领取余额在同一事务内只退款一次，并记录 `hb_refund` 流水。
+
+众筹支持请求只需要服务端可识别的 `telegram_id`：
+
+```json
+{
+    "telegram_id": "123456"
+}
+```
+
+- 每本书每个用户只能支持一次，成本由服务端固定为 100 银币；客户端提交的 `vote_cost` 不参与结算。
+- 重复支持返回 `already_exists: true`，不重复扣银币；首次支持的余额、支持记录和 `crowd_vote` 流水同事务提交。
+- 反馈只接受规范化的 `like` / `dislike`，封禁用户不能写入反馈或众筹支持。
+
 ### Bot 书评发布与投票
 
 ```http
@@ -1411,7 +1457,8 @@ Content-Type: application/json
 - 发布书评需要 Lv.2 及以上，默认消耗 `100` 铜。
 - 发布成功后仅在 Telegram 总开关开启且 `pushTypes` 包含 `review` 时推送到 `telegram_chat_id`。
 - 频道按钮投票：`like` 给书评作者 `+100` 铜，`dislike` 给书评作者 `-1` 铜。
-- 同一用户对同一书评只能保留一个态度；重复点击不重复结算，改投只结算净变化。
+- 同一用户对同一书评只能保留一个态度；重复点击在频率限制前恢复既有成功结果且不重复结算，改投只结算净变化。
+- 发布和投票的持久化 `source` 固定为 `telegram_bot`，忽略客户端伪造来源。
 
 ### 健康检查
 

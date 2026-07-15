@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test/assert 与 Bot 账户、经济、导出投递和 PikPak 处理器的受控客户端/Telegram 替身
- * [OUTPUT]: 提供私聊续接、发送后结算、账户状态、管理员发币、红包和外部存储交互回归断言
+ * [OUTPUT]: 提供私聊续接、发送后结算、账户状态、管理员发币、红包幂等键和外部存储交互回归断言
  * [POS]: tests 的 Bot 组合根减重守卫，确保领域处理器拆分不改变命令权限、文案和副作用顺序
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -185,7 +185,7 @@ test("economy handlers enforce administrator give and keep red-packet payloads",
         redPacketMarkup: (id) => ({ id }),
         mentionUser: () => "user"
     });
-    const message = { chat: { id: -1 }, from: { id: 7 } };
+    const message = { chat: { id: -1 }, from: { id: 7 }, message_id: 42 };
     await handlers.handleGive(message, "8 铜币 100");
     assert.match(sent.at(-1)[1], /只有管理员/);
     admin = true;
@@ -193,7 +193,10 @@ test("economy handlers enforce administrator give and keep red-packet payloads",
     assert.deepEqual(currencyCalls[0], ["8", "copper", 100]);
     await handlers.handleRedPacket(message, "100 5");
     assert.equal(packetCalls[0].total_amount, 100);
+    assert.equal(packetCalls[0].idempotency_key, "telegram:red-packet:-1:42");
     assert.equal(sent.at(-1)[2].reply_markup.id, 99);
+    await handlers.handleRedPacket({ ...message, message_id: undefined }, "100 5");
+    assert.equal(packetCalls[1].idempotency_key, "");
 });
 
 test("PikPak handler reports missing configuration and renders bounded search results", async () => {

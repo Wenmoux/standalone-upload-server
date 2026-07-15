@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供真实 PostgreSQL 迁移、事务、领域流与查询计划集成测试的自动化回归断言
+ * [OUTPUT]: 提供真实 PostgreSQL 迁移、红包幂等/退款事务、领域流与查询计划集成测试的自动化回归断言
  * [POS]: tests 的真实 PostgreSQL 迁移、事务、领域流与查询计划集成测试守卫，防止实现或部署契约在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -140,6 +140,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     const { createBookManifestService } = require("../services/book-manifest");
     const { createBookChapterService } = require("../services/book-chapters");
     const { createReviewGovernanceService } = require("../services/review-governance");
+    const { createRedPacketService } = require("../services/red-packets");
 
     await t.test("legacy duplicate taxonomy upgrades through the immutable migration 020", async () => {
         await query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -622,6 +623,13 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
         await seedBotUser(query, { username: "sender", telegramId: "100", copper: 10 });
         await seedBotUser(query, { username: "claimer1", telegramId: "101" });
         await seedBotUser(query, { username: "claimer2", telegramId: "102" });
+        const redPacketService = createRedPacketService({
+            pool,
+            botUserSelect,
+            normalizeTelegramId: (value) => String(value || "").trim(),
+            normalizeChatId: (value) => String(value || "").trim(),
+            randomRedPacketAmount: (remainingAmount, remainingCount) => (remainingCount <= 1 ? Number(remainingAmount) : 1)
+        });
 
         const router = createBotApiRoutes({
             requireBotApi,
@@ -647,24 +655,36 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             positiveNumber: (value, fallback = 1, min = 1) => Math.max(min, Number(value || fallback)),
             signExpReward: () => 1,
             scholarProfile: () => ({ level: 1, name: "L1", exp: 0, daily_free_exports: 1 }),
-            randomRedPacketAmount: (remainingAmount, remainingCount) => (remainingCount <= 1 ? Number(remainingAmount) : 1),
-            normalizeFeedback: (value) => String(value || ""),
-            bookFeedbackCounts: async () => ({}),
-            bookCrowdSummary: async () => ({}),
-            crowdLeaderboard: async () => ({ rows: [] }),
+            createRedPacket: redPacketService.createRedPacket,
+            claimRedPacket: redPacketService.claimRedPacket,
             getHotKeywords: async () => [],
             addHotKeyword: async () => null,
             recordEvent: async () => null
         });
 
         await withApp(router, async (base) => {
-            const created = await fetch(`${base}/bot-api/red-packets`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Bot-Token": "bot-token" },
-                body: JSON.stringify({ sender_telegram_id: "100", chat_id: "chat-a", total_amount: 2, total_count: 2, currency: "copper" })
-            });
-            assert.equal(created.status, 200);
-            const packetId = (await created.json()).packet.id;
+            const createRequest = () =>
+                fetch(`${base}/bot-api/red-packets`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-Bot-Token": "bot-token" },
+                    body: JSON.stringify({
+                        sender_telegram_id: "100",
+                        chat_id: "chat-a",
+                        total_amount: 2,
+                        total_count: 2,
+                        currency: "copper",
+                        idempotency_key: "integration:red-packet:chat-a:1"
+                    })
+                });
+            const created = await Promise.all([createRequest(), createRequest()]);
+            assert.deepEqual(
+                created.map((response) => response.status),
+                [200, 200]
+            );
+            const createdPayloads = await Promise.all(created.map((response) => response.json()));
+            const packetId = createdPayloads[0].packet.id;
+            assert.equal(createdPayloads[1].packet.id, packetId);
+            assert.equal(createdPayloads.filter((payload) => payload.repeated).length, 1);
 
             const claims = await Promise.all(
                 ["101", "102"].map((telegramId) =>
@@ -676,6 +696,14 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
                 )
             );
             assert.deepEqual(claims.map((response) => response.status).sort(), [200, 200]);
+
+            const repeated = await fetch(`${base}/bot-api/red-packets/claim`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Bot-Token": "bot-token" },
+                body: JSON.stringify({ telegram_id: "101", chat_id: "chat-a", packet_id: packetId })
+            });
+            assert.equal(repeated.status, 200);
+            assert.equal((await repeated.json()).repeated, true);
         });
 
         const packet = await query(
@@ -711,6 +739,48 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             { type: "hb_receive", count: 2 },
             { type: "hb_send", count: 1 }
         ]);
+        const ledger = await query("SELECT COUNT(*)::int count FROM reader_operation_ledger WHERE idempotency_key=$1", [
+            "integration:red-packet:chat-a:1"
+        ]);
+        assert.equal(ledger.rows[0].count, 1);
+    });
+
+    await t.test("expired red packet returns its remainder to the sender", async () => {
+        await seedBotUser(query, { username: "refund-sender", telegramId: "110", copper: 10 });
+        await seedBotUser(query, { username: "refund-trigger", telegramId: "111" });
+        const redPacketService = createRedPacketService({
+            pool,
+            botUserSelect,
+            normalizeTelegramId: (value) => String(value || "").trim(),
+            normalizeChatId: (value) => String(value || "").trim(),
+            randomRedPacketAmount: () => 1
+        });
+        const router = createBotApiRoutes({
+            requireBotApi,
+            botPublicUser: publicUser,
+            createRedPacket: redPacketService.createRedPacket,
+            claimRedPacket: redPacketService.claimRedPacket
+        });
+        await withApp(router, async (base) => {
+            const created = await fetch(`${base}/bot-api/red-packets`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Bot-Token": "bot-token" },
+                body: JSON.stringify({ sender_telegram_id: "110", chat_id: "chat-expired", total_amount: 3, total_count: 2 })
+            });
+            const packetId = (await created.json()).packet.id;
+            await query("UPDATE reader_red_packets SET expired_at=CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE id=$1", [packetId]);
+            const expired = await fetch(`${base}/bot-api/red-packets/claim`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Bot-Token": "bot-token" },
+                body: JSON.stringify({ telegram_id: "111", chat_id: "chat-expired", packet_id: packetId })
+            });
+            assert.equal(expired.status, 410);
+            assert.equal((await expired.json()).refunded, 3);
+        });
+        const sender = await query("SELECT copper_coins FROM reader_users WHERE telegram_id='110'");
+        assert.equal(Number(sender.rows[0].copper_coins), 10);
+        const refund = await query("SELECT amount FROM reader_transactions WHERE telegram_id='110' AND type='hb_refund'");
+        assert.equal(Number(refund.rows[0].amount), 3);
     });
 
     await t.test("manifest checksums and review governance execute against the migrated schema", async () => {

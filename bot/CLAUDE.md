@@ -18,7 +18,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `command-registry.js`: 注册、别名解析、启停配置和 Telegram command list 的运行时注册表，不实现具体业务。
 `epub-builder.js`: 组装 EPUB 2 容器、原始/长屏封面、全屏 spine、XHTML、目录、资源与样式插件，是所有 EPUB 外壳逻辑的唯一实现。
 `epub-style-picker.js`: 定义 Telegram EPUB 直选样式白名单和 inline keyboard 回调协议，刻意不暴露兼容样式 `crane`。
-`economy-handlers.js`: 用户经济交互层，转换 CDK、管理员发币、排行榜、流水和红包命令，余额事务仍由 server API 裁决。
+`economy-handlers.js`: 用户经济交互层，转换 CDK、管理员发币、排行榜、流水和红包命令，并以 Telegram chat/message 生成稳定红包创建键；余额事务仍由 server API 裁决。
 `export-builder.js`: 从 server API 拉取缓存/已购章节并流式生成 TXT 或调用 EPUB 生成器，管理任务临时文件边界。
 `export-delivery.js`: 导出投递状态机，管理群聊转私聊续接、EPUB 样式提示、文件发送后幂等扣费和临时目录清理。
 `export-errors.js`: 归一化导出失败码、可重试语义和用户提示，避免网络/配额/内容错误在调用点分叉。

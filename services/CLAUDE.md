@@ -18,10 +18,11 @@ backup-restore-drill.js: 恢复演练调度器，从本地备份清单选择归�
 backups.js: 备份用例编排层，连接 docker 备份原语与 system_jobs，负责创建、上传、校验、恢复和演练载荷。
 body-limits.js: 请求体预算策略，为不同路由安装分级 JSON/raw 解析器，避免全局超大 body。
 book-chapters.js: 书籍与章节持久化核心，统一字段清洗、可选时间类型、幂等写入、全平台 order-only 隔离更新、章节正文派生及目录排序语义。
+book-crowd.js: 书籍轻互动与众筹聚合根，统一反馈规范化、众筹公开视图及银币扣款/支持记录/流水原子结算。
 book-maintenance.js: 陈旧书籍维护用例，提供 PO18 清理预览、事务行锁定、平台隔离删除与事件审计。
 book-manifest.js: 可移植书籍清单协议，实现规范化、SHA-256 校验、导出、验证和幂等导入。
 book-review-channel.js: 书评频道外发适配器，读取最新书籍元信息、构造带系统标记的 Telegram 文案/按钮并回写投递状态。
-book-social.js: 书籍社区领域服务，集中书评、投票、红包与众筹等并发结算和公开视图规则。
+book-social.js: 书评聚合根，集中列表、发布扣费、频道状态与投票奖励事务，以书评行和有序用户锁避免作者互投死锁，不再承载红包或众筹协议。
 bot-audit.js: Telegram Bot 审计服务，规范化命令执行结果并提供聚合与筛选查询。
 bot-settings.js: Bot 命令开关服务，以命令目录为白名单清洗、去重、稳定排序、持久化和读取后台配置。
 chapter-maintenance.js: 章节顺序修复服务，对重复顺序生成预览并在确认后通过事务重排。
@@ -60,6 +61,7 @@ reader-rum.js: Reader RUM 服务，清洗前端性能事件、批量落库并输
 reader-account.js: Reader 账户生命周期服务，以事务锁定 CDK、处理密码/Telegram 身份唯一键竞争，并原子结算 Bot 注册赠送、邀请计数与强类型批量导入。
 reader-check-in.js: Reader 签到用例服务，在用户行锁事务内统一结算签到周期、余额、学者经验和全部奖励流水。
 remote-backups.js: WebDAV/S3/R2 远端备份适配器，负责签名上传、加密文件选择、状态和保留策略。
+red-packets.js: 红包聚合根，以稳定操作键、红包/用户有序行锁和单事务维护创建、定向结算、重复领取恢复及过期退款。
 review-governance.js: 书评治理领域服务，处理举报阈值、隐藏状态、申诉和审核决议事务。
 runtime-observability.js: 运行观测适配层，统一短期状态缓存、慢搜索事件和进程级数据库/致命错误分流。
 schema-validation.js: Ajv 请求契约注册表与中间件，在路由前执行 body Schema 校验并输出紧凑错误。

@@ -1,66 +1,43 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供收藏、评论、互动聚合与权限语义的自动化回归断言
- * [POS]: tests 的收藏、评论、互动聚合与权限语义守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供书评发布、投票奖励、频率限制与权限语义的自动化回归断言
+ * [POS]: tests 的书评聚合根守卫，防止发布扣费与投票奖励状态机在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
 const test = require("node:test");
 const { createBookSocialService } = require("../services/book-social");
 
-test("book social service normalizes feedback and reads counters", async () => {
-    const calls = [];
-    const service = createBookSocialService({
-        normalizeTelegramId: (value) => String(value || "").trim(),
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            if (/reader_book_feedback/.test(sql)) return { rows: [{ like_count: 2, dislike_count: 1, feedback_users: 3 }] };
-            return { rows: [] };
-        }
-    });
-
-    assert.equal(service.normalizeFeedback("LIKE"), "like");
-    assert.equal(service.normalizeFeedback("\u4e0d\u559c\u6b22"), "dislike");
-    assert.equal(service.normalizeFeedback("other"), "");
-
-    const counts = await service.bookFeedbackCounts("b1");
-    assert.deepEqual(counts, { like_count: 2, dislike_count: 1, feedback_users: 3 });
-    assert.equal(calls[0].params[0], "b1");
-});
-
-test("book social service builds crowd summary and leaderboard", async () => {
-    const calls = [];
-    const service = createBookSocialService({
-        normalizeTelegramId: (value) => String(value || "").trim(),
-        query: async (sql, params = []) => {
-            calls.push({ sql, params });
-            if (/WHERE m\.book_id = \$1/.test(sql)) {
-                return { rows: [{ book_id: params[0], supporter_count: 4, supported_by_me: true }] };
-            }
-            if (/COUNT\(DISTINCT book_id\)::int book_count/.test(sql)) {
-                return { rows: [{ book_count: 2, vote_count: 5, total_silver: "99" }] };
-            }
-            return { rows: [{ book_id: "b2", rank: 1, supporter_count: 4 }] };
-        }
-    });
-
-    const summary = await service.bookCrowdSummary("b1", " 100 ");
-    assert.equal(summary.book_id, "b1");
-    assert.equal(calls[0].params[1], "100");
-
-    const leaderboard = await service.crowdLeaderboard(500, " 100 ");
-    assert.equal(calls[1].params[0], 50);
-    assert.equal(calls[1].params[1], "100");
-    assert.equal(leaderboard.rows[0].book_id, "b2");
-    assert.equal(leaderboard.total_books, 2);
-    assert.equal(leaderboard.total_votes, 5);
-    assert.equal(leaderboard.total_silver, 99);
-});
-
 test("book social service creates reviews and settles vote rewards", async () => {
     const users = new Map([
-        [1, { id: 1, telegram_id: "100", username: "tg_100", nickname: "Author", telegram_username: "author", copper_coins: 200, silver_coins: 0, scholar_exp: 0, is_banned: false }],
-        [2, { id: 2, telegram_id: "200", username: "tg_200", nickname: "Voter", telegram_username: "voter", copper_coins: 50, silver_coins: 0, scholar_exp: 0, is_banned: false }]
+        [
+            1,
+            {
+                id: 1,
+                telegram_id: "100",
+                username: "tg_100",
+                nickname: "Author",
+                telegram_username: "author",
+                copper_coins: 200,
+                silver_coins: 0,
+                scholar_exp: 0,
+                is_banned: false
+            }
+        ],
+        [
+            2,
+            {
+                id: 2,
+                telegram_id: "200",
+                username: "tg_200",
+                nickname: "Voter",
+                telegram_username: "voter",
+                copper_coins: 50,
+                silver_coins: 0,
+                scholar_exp: 0,
+                is_banned: false
+            }
+        ]
     ]);
     const reviews = [];
     const votes = new Map();
@@ -69,11 +46,21 @@ test("book social service creates reviews and settles vote rewards", async () =>
         async query(sql, params = []) {
             calls.push({ sql, params });
             if (/BEGIN|COMMIT|ROLLBACK/.test(sql)) return { rows: [] };
-            if (/FROM reader_users WHERE telegram_id = \$1 FOR UPDATE/.test(sql)) {
-                return { rows: [[...users.values()].find((user) => user.telegram_id === params[0]) ? [{ ...[...users.values()].find((user) => user.telegram_id === params[0]) }] : []].flat() };
+            if (/SELECT id FROM reader_users WHERE telegram_id = \$1/.test(sql)) {
+                const user = [...users.values()].find((item) => item.telegram_id === params[0]);
+                return { rows: user ? [{ id: user.id }] : [] };
             }
-            if (/FROM reader_users WHERE id = \$1 FOR UPDATE/.test(sql)) {
-                const user = users.get(Number(params[0]));
+            if (/FROM reader_users\s+WHERE id = ANY/.test(sql)) {
+                const ids = params[0].map(Number);
+                return {
+                    rows: ids
+                        .map((id) => users.get(id))
+                        .filter(Boolean)
+                        .map((user) => ({ ...user }))
+                };
+            }
+            if (/FROM reader_users WHERE telegram_id = \$1 FOR UPDATE/.test(sql)) {
+                const user = [...users.values()].find((item) => item.telegram_id === params[0]);
                 return { rows: user ? [{ ...user }] : [] };
             }
             if (/FROM book_metadata/.test(sql) && !/reader_book_reviews/.test(sql)) {
@@ -120,18 +107,20 @@ test("book social service creates reviews and settles vote rewards", async () =>
                 const reviewVotes = [...votes.values()].filter((vote) => vote.review_id === review.id);
                 const myVote = reviewVotes.find((vote) => vote.user_id === Number(params[1]))?.vote || "";
                 return {
-                    rows: [{
-                        ...review,
-                        author_username: author.username,
-                        author_nickname: author.nickname,
-                        author_telegram_username: author.telegram_username,
-                        like_count: reviewVotes.filter((vote) => vote.vote === "like").length,
-                        dislike_count: reviewVotes.filter((vote) => vote.vote === "dislike").length,
-                        my_vote: myVote,
-                        book_title: "Book One",
-                        book_author: "A",
-                        book_platform: "po18"
-                    }]
+                    rows: [
+                        {
+                            ...review,
+                            author_username: author.username,
+                            author_nickname: author.nickname,
+                            author_telegram_username: author.telegram_username,
+                            like_count: reviewVotes.filter((vote) => vote.vote === "like").length,
+                            dislike_count: reviewVotes.filter((vote) => vote.vote === "dislike").length,
+                            my_vote: myVote,
+                            book_title: "Book One",
+                            book_author: "A",
+                            book_platform: "po18"
+                        }
+                    ]
                 };
             }
             if (/COUNT\(\*\)::int count\s+FROM reader_book_reviews/.test(sql)) {
@@ -163,7 +152,14 @@ test("book social service creates reviews and settles vote rewards", async () =>
                 return { rows: votes.has(key) ? [{ ...votes.get(key) }] : [] };
             }
             if (/INSERT INTO reader_book_review_votes/.test(sql)) {
-                const vote = { id: votes.size + 1, review_id: Number(params[0]), user_id: Number(params[1]), telegram_id: params[2], vote: params[3], reward_delta: Number(params[4]) };
+                const vote = {
+                    id: votes.size + 1,
+                    review_id: Number(params[0]),
+                    user_id: Number(params[1]),
+                    telegram_id: params[2],
+                    vote: params[3],
+                    reward_delta: Number(params[4])
+                };
                 votes.set(`${params[0]}:${params[1]}`, vote);
                 return { rows: [{ ...vote }] };
             }
@@ -194,11 +190,18 @@ test("book social service creates reviews and settles vote rewards", async () =>
     assert.equal(created.review.book_id, "b1");
     assert.equal(users.get(1).copper_coins, 100);
     assert.equal(created.transaction.amount, -100);
+    const firstCommitIndex = calls.findIndex((call) => call.sql === "COMMIT");
+    const createdProjectionIndex = calls.findIndex((call) => /LEFT JOIN reader_users u/.test(call.sql));
+    assert.ok(createdProjectionIndex >= 0 && createdProjectionIndex < firstCommitIndex);
 
     const liked = await service.voteBookReview({ telegramId: "200", reviewId: created.review.id, vote: "like" });
     assert.equal(liked.reward_delta, 100);
     assert.equal(liked.review.like_count, 1);
     assert.equal(users.get(1).copper_coins, 200);
+    const reviewLockIndex = calls.findIndex((call) => /FROM reader_book_reviews r/.test(call.sql) && /FOR UPDATE/.test(call.sql));
+    const userLockIndex = calls.findIndex((call) => /WHERE id = ANY/.test(call.sql));
+    assert.ok(reviewLockIndex >= 0 && userLockIndex > reviewLockIndex);
+    assert.match(calls[userLockIndex].sql, /ORDER BY id ASC/);
 
     const repeated = await service.voteBookReview({ telegramId: "200", reviewId: created.review.id, vote: "like" });
     assert.equal(repeated.already_exists, true);

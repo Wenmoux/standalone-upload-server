@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供Bot API 账户、书籍和任务路由契约的自动化回归断言
- * [POS]: tests 的Bot API 账户、书籍和任务路由契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供 Bot API 账户、任务、红包、社交和书库路由契约的自动化回归断言
+ * [POS]: tests 的 Bot API 组合与协议映射守卫，防止子域拆分、错误状态或可信来源在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -556,4 +556,132 @@ test("bot api routes expose audit writer behind bot middleware", async () => {
     });
 
     assert.deepEqual(rows, [{ command: "/search", status: "succeeded" }]);
+});
+
+test("bot api domain routes map red-packet replay and expiry semantics", async () => {
+    const createCalls = [];
+    const claimCalls = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        botPublicUser: (user) => (user ? { id: user.id } : null),
+        createRedPacket: async (input) => {
+            createCalls.push(input);
+            if (input.totalAmount === "bad") {
+                throw Object.assign(new Error("invalid total_amount"), { status: 400, code: "INVALID_AMOUNT" });
+            }
+            return { repeated: true, packet: { id: 9 }, sender: { id: 1 }, target: null, claim: null };
+        },
+        claimRedPacket: async (input) => {
+            claimCalls.push(input);
+            return { expired: true, refunded: 88, currency: "copper", packet: { id: 9, status: "expired" } };
+        }
+    });
+    await withApp(router, async (base) => {
+        const created = await fetch(`${base}/bot-api/red-packets`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({
+                sender_telegram_id: "100",
+                chat_id: "chat-a",
+                total_amount: 10,
+                total_count: 2,
+                idempotency_key: "telegram:red-packet:chat-a:7"
+            })
+        });
+        assert.equal(created.status, 200);
+        assert.equal((await created.json()).repeated, true);
+        assert.equal(createCalls[0].idempotencyKey, "telegram:red-packet:chat-a:7");
+
+        const invalid = await fetch(`${base}/bot-api/red-packets`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ total_amount: "bad" })
+        });
+        assert.equal(invalid.status, 400);
+        assert.equal((await invalid.json()).code, "INVALID_AMOUNT");
+
+        const expired = await fetch(`${base}/bot-api/red-packets/claim`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "200", chat_id: "chat-a", packet_id: 9 })
+        });
+        assert.equal(expired.status, 410);
+        const payload = await expired.json();
+        assert.equal(payload.code, "RED_PACKET_EXPIRED");
+        assert.equal(payload.refunded, 88);
+        assert.equal(claimCalls[0].packetId, 9);
+    });
+});
+
+test("bot social routes force trusted review provenance", async () => {
+    const reviews = [];
+    const votes = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        botPublicUser: (user) => user || null,
+        createBookReview: async (input) => {
+            reviews.push(input);
+            return {
+                cost: 100,
+                review: { id: 7, content: input.content },
+                book: { book_id: input.bookId },
+                user: { id: 1 },
+                transaction: { id: 2 }
+            };
+        },
+        bookReviewById: async (id) => ({ id, content: "review" }),
+        voteBookReview: async (input) => {
+            votes.push(input);
+            return {
+                already_exists: false,
+                vote: input.vote,
+                previous_vote: "",
+                reward_delta: 100,
+                review: { id: input.reviewId },
+                author: { id: 1 },
+                voter: { id: 2 },
+                transaction: { id: 3 }
+            };
+        },
+        reviewMinLevel: 2,
+        reviewPublishCost: 100,
+        reviewMinLength: 6,
+        reviewMaxLength: 1200
+    });
+    await withApp(router, async (base) => {
+        const published = await fetch(`${base}/bot-api/books/book-1/reviews`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "100", content: "这是一条足够长的书评", source: "forged_admin" })
+        });
+        assert.equal(published.status, 200);
+        const voted = await fetch(`${base}/bot-api/book-reviews/7/vote`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ telegram_id: "200", vote: "like", source: "forged_admin" })
+        });
+        assert.equal(voted.status, 200);
+    });
+    assert.equal(reviews[0].source, "telegram_bot");
+    assert.equal(votes[0].source, "telegram_bot");
+});
+
+test("bot hot-keyword batch rejects oversized payloads before writes", async () => {
+    let writes = 0;
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        getHotKeywords: async () => [],
+        addHotKeyword: async () => {
+            writes += 1;
+        }
+    });
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/bot-api/hot-keywords`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
+            body: JSON.stringify({ rows: Array.from({ length: 501 }, (_, index) => ({ keyword: `word-${index}` })) })
+        });
+        assert.equal(response.status, 413);
+    });
+    assert.equal(writes, 0);
 });

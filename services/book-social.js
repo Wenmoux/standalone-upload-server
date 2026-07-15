@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖注入的 PostgreSQL query/事务、用户身份与平台配置，执行书评、投票、红包和众筹结算
- * [OUTPUT]: 对外提供书籍社区读写与并发结算能力的领域服务工厂
- * [POS]: services 的书籍社交聚合根，在事务边界内维护公开视图、余额变化与互动一致性
+ * [INPUT]: 依赖注入的 PostgreSQL query/事务、用户身份与平台配置，执行书评发布和投票奖励结算
+ * [OUTPUT]: 对外提供书评列表、发布、投票、频道状态与并发奖励结算能力的领域服务工厂
+ * [POS]: services 的书评聚合根，在事务边界内维护公开书评视图、发布成本与投票奖励一致性
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function boundedConfigInteger(value, fallback, min, max) {
@@ -20,20 +20,38 @@ function createBookSocialService(options = {}) {
     const reviewMaxLength = Math.max(200, Math.trunc(Number(options.reviewMaxLength ?? 1200)));
     const reviewMinLength = Math.max(1, Math.trunc(Number(options.reviewMinLength ?? 6)));
     const reviewHourlyLimit = boundedConfigInteger(options.reviewHourlyLimit ?? process.env.PO18_BOOK_REVIEW_HOURLY_LIMIT, 3, 1, 100);
-    const reviewDailyLimit = boundedConfigInteger(options.reviewDailyLimit ?? process.env.PO18_BOOK_REVIEW_DAILY_LIMIT, 10, reviewHourlyLimit, 500);
-    const reviewVoteHourlyLimit = boundedConfigInteger(options.reviewVoteHourlyLimit ?? process.env.PO18_BOOK_REVIEW_VOTE_HOURLY_LIMIT, 30, 1, 1000);
-    const reviewVoteDailyLimit = boundedConfigInteger(options.reviewVoteDailyLimit ?? process.env.PO18_BOOK_REVIEW_VOTE_DAILY_LIMIT, 100, reviewVoteHourlyLimit, 5000);
-    const reviewVoteMaxChanges = boundedConfigInteger(options.reviewVoteMaxChanges ?? process.env.PO18_BOOK_REVIEW_VOTE_MAX_CHANGES, 1, 0, 10);
-
-    function normalizeFeedback(value) {
-        const raw = String(value || "").trim().toLowerCase();
-        if (["like", "liked", "up", "good", "il", "\u559c\u6b22"].includes(raw)) return "like";
-        if (["dislike", "down", "bad", "id", "\u8ba8\u538c", "\u4e0d\u559c\u6b22"].includes(raw)) return "dislike";
-        return "";
-    }
+    const reviewDailyLimit = boundedConfigInteger(
+        options.reviewDailyLimit ?? process.env.PO18_BOOK_REVIEW_DAILY_LIMIT,
+        10,
+        reviewHourlyLimit,
+        500
+    );
+    const reviewVoteHourlyLimit = boundedConfigInteger(
+        options.reviewVoteHourlyLimit ?? process.env.PO18_BOOK_REVIEW_VOTE_HOURLY_LIMIT,
+        30,
+        1,
+        1000
+    );
+    const reviewVoteDailyLimit = boundedConfigInteger(
+        options.reviewVoteDailyLimit ?? process.env.PO18_BOOK_REVIEW_VOTE_DAILY_LIMIT,
+        100,
+        reviewVoteHourlyLimit,
+        5000
+    );
+    const reviewVoteMaxChanges = boundedConfigInteger(
+        options.reviewVoteMaxChanges ?? process.env.PO18_BOOK_REVIEW_VOTE_MAX_CHANGES,
+        1,
+        0,
+        10
+    );
 
     function normalizeReviewVote(value) {
-        return normalizeFeedback(value);
+        const raw = String(value || "")
+            .trim()
+            .toLowerCase();
+        if (["like", "liked", "up", "good", "il", "喜欢"].includes(raw)) return "like";
+        if (["dislike", "down", "bad", "id", "讨厌", "不喜欢"].includes(raw)) return "dislike";
+        return "";
     }
 
     function normalizeReviewContent(value = "") {
@@ -98,173 +116,10 @@ function createBookSocialService(options = {}) {
         };
     }
 
-    async function bookFeedbackCounts(bookId) {
-        if (typeof query !== "function") throw new Error("book social query function is not configured");
-        const result = await query(
-            `SELECT
-                COUNT(*) FILTER (WHERE feedback = 'like')::int like_count,
-                COUNT(*) FILTER (WHERE feedback = 'dislike')::int dislike_count,
-                COUNT(DISTINCT user_id)::int feedback_users
-             FROM reader_book_feedback
-             WHERE book_id = $1`,
-            [String(bookId)]
-        );
-        return result.rows[0] || { like_count: 0, dislike_count: 0, feedback_users: 0 };
-    }
-
-    async function bookCrowdSummary(bookId, telegramId = "", dbQuery = query) {
-        if (typeof dbQuery !== "function") throw new Error("book social query function is not configured");
-        const result = await dbQuery(
-            `WITH votes AS (
-                 SELECT
-                     book_id,
-                     COUNT(*)::int supporter_count,
-                     COALESCE(SUM(vote_cost), 0)::bigint total_silver,
-                     MIN(created_at) first_vote_at,
-                     MAX(created_at) latest_vote_at
-                 FROM reader_book_crowd_votes
-                 GROUP BY book_id
-             ),
-             ranked AS (
-                 SELECT
-                     v.*,
-                     ROW_NUMBER() OVER (
-                         ORDER BY supporter_count DESC, total_silver DESC, first_vote_at ASC, book_id ASC
-                     )::int AS rank
-                 FROM votes v
-             )
-             SELECT
-                 m.book_id,
-                 m.title,
-                 m.author,
-                 m.cover,
-                 m.detail_url,
-                 m.platform,
-                 m.total_chapters,
-                 m.subscribed_chapters,
-                 COALESCE(cc.cache_count, 0)::int cache_count,
-                 COALESCE(r.supporter_count, 0)::int supporter_count,
-                 COALESCE(r.total_silver, 0)::bigint total_silver,
-                 r.rank,
-                 CASE
-                     WHEN COALESCE($2, '') = '' THEN FALSE
-                     ELSE EXISTS (
-                         SELECT 1
-                         FROM reader_book_crowd_votes v
-                         JOIN reader_users u ON u.id = v.user_id
-                         WHERE v.book_id = m.book_id AND u.telegram_id = $2
-                         LIMIT 1
-                     )
-                 END AS supported_by_me
-             FROM (
-                 SELECT m.*
-                 FROM book_metadata m
-                 WHERE m.book_id = $1
-                 ORDER BY COALESCE(m.subscribed_chapters, 0) DESC, COALESCE(m.updated_at, m.created_at) DESC, m.id DESC
-                 LIMIT 1
-             ) m
-             LEFT JOIN ranked r ON r.book_id = m.book_id
-             LEFT JOIN (
-                 SELECT book_id, COUNT(*)::int cache_count
-                 FROM chapter_cache
-                 WHERE book_id = $1
-                 GROUP BY book_id
-             ) cc ON cc.book_id = m.book_id`,
-            [String(bookId), normalizeTelegramId(telegramId)]
-        );
-        return result.rows[0] || null;
-    }
-
-    async function crowdLeaderboard(limit = 10, telegramId = "", dbQuery = query) {
-        if (typeof dbQuery !== "function") throw new Error("book social query function is not configured");
-        const safeLimit = Math.max(1, Math.min(50, Number(limit || 10)));
-        const rows = await dbQuery(
-            `WITH votes AS (
-                 SELECT
-                     book_id,
-                     COUNT(*)::int supporter_count,
-                     COALESCE(SUM(vote_cost), 0)::bigint total_silver,
-                     MIN(created_at) first_vote_at,
-                     MAX(created_at) latest_vote_at
-                 FROM reader_book_crowd_votes
-                 GROUP BY book_id
-             ),
-             ranked AS (
-                 SELECT
-                     v.*,
-                     ROW_NUMBER() OVER (
-                         ORDER BY supporter_count DESC, total_silver DESC, first_vote_at ASC, book_id ASC
-                     )::int AS rank
-                 FROM votes v
-             )
-             SELECT
-                 r.rank,
-                 r.book_id,
-                 r.supporter_count,
-                 r.total_silver,
-                 r.first_vote_at,
-                 r.latest_vote_at,
-                 m.title,
-                 m.author,
-                 m.cover,
-                 m.detail_url,
-                 m.platform,
-                 m.total_chapters,
-                 m.subscribed_chapters,
-                 COALESCE(cc.cache_count, 0)::int cache_count,
-                 CASE
-                     WHEN COALESCE($2, '') = '' THEN FALSE
-                     ELSE EXISTS (
-                         SELECT 1
-                         FROM reader_book_crowd_votes v
-                         JOIN reader_users u ON u.id = v.user_id
-                         WHERE v.book_id = r.book_id AND u.telegram_id = $2
-                         LIMIT 1
-                     )
-                 END AS supported_by_me
-             FROM ranked r
-             LEFT JOIN LATERAL (
-                 SELECT
-                     m.title,
-                     m.author,
-                     m.cover,
-                     m.detail_url,
-                     m.platform,
-                     m.total_chapters,
-                     m.subscribed_chapters
-                 FROM book_metadata m
-                 WHERE m.book_id = r.book_id
-                 ORDER BY COALESCE(m.subscribed_chapters, 0) DESC, COALESCE(m.updated_at, m.created_at) DESC, m.id DESC
-                 LIMIT 1
-             ) m ON true
-             LEFT JOIN LATERAL (
-                 SELECT COUNT(*)::int cache_count
-                 FROM chapter_cache c
-                 WHERE c.book_id = r.book_id
-             ) cc ON true
-             ORDER BY r.rank ASC
-             LIMIT $1`,
-            [safeLimit, normalizeTelegramId(telegramId)]
-        );
-        const totals = await dbQuery(
-            `SELECT
-                 COUNT(DISTINCT book_id)::int book_count,
-                 COUNT(*)::int vote_count,
-                 COALESCE(SUM(vote_cost), 0)::bigint total_silver
-             FROM reader_book_crowd_votes`
-        );
-        const summary = totals.rows[0] || { book_count: 0, vote_count: 0, total_silver: 0 };
-        return {
-            rows: rows.rows,
-            total_books: Number(summary.book_count || 0),
-            total_votes: Number(summary.vote_count || 0),
-            total_silver: Number(summary.total_silver || 0)
-        };
-    }
-
     async function listBookReviews(bookId, optionsOrLimit = {}) {
-        if (typeof query !== "function" && typeof optionsOrLimit?.query !== "function") throw new Error("book social query function is not configured");
-        const opts = typeof optionsOrLimit === "number" ? { limit: optionsOrLimit } : (optionsOrLimit || {});
+        if (typeof query !== "function" && typeof optionsOrLimit?.query !== "function")
+            throw new Error("book social query function is not configured");
+        const opts = typeof optionsOrLimit === "number" ? { limit: optionsOrLimit } : optionsOrLimit || {};
         const db = opts.query || query;
         const safeBookId = String(bookId || "").trim();
         const safeLimit = Math.max(1, Math.min(50, Number(opts.limit || 10)));
@@ -394,7 +249,9 @@ function createBookSocialService(options = {}) {
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
-            const userResult = await client.query(`SELECT ${botUserSelect()} FROM reader_users WHERE telegram_id = $1 FOR UPDATE`, [safeTelegramId]);
+            const userResult = await client.query(`SELECT ${botUserSelect()} FROM reader_users WHERE telegram_id = $1 FOR UPDATE`, [
+                safeTelegramId
+            ]);
             const user = userResult.rows[0];
             if (!user) throw Object.assign(new Error("user not found"), { status: 404 });
             if (user.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
@@ -429,15 +286,16 @@ function createBookSocialService(options = {}) {
             if (Number(user.copper_coins || 0) < reviewPublishCost) {
                 throw Object.assign(new Error(`铜币不足，需要 ${reviewPublishCost}`), { status: 409 });
             }
-            const updatedUser = reviewPublishCost > 0
-                ? await client.query(
-                      `UPDATE reader_users
+            const updatedUser =
+                reviewPublishCost > 0
+                    ? await client.query(
+                          `UPDATE reader_users
                        SET copper_coins = COALESCE(copper_coins, 0) - $1
                        WHERE id = $2
                        RETURNING ${botUserSelect()}`,
-                      [reviewPublishCost, user.id]
-                  )
-                : { rows: [user] };
+                          [reviewPublishCost, user.id]
+                      )
+                    : { rows: [user] };
             const reviewResult = await client.query(
                 `INSERT INTO reader_book_reviews
                     (user_id, telegram_id, telegram_username, nickname, book_id, content, publish_cost, status, source)
@@ -472,8 +330,8 @@ function createBookSocialService(options = {}) {
                 );
                 transaction = tx.rows[0] || null;
             }
+            const review = await bookReviewById(reviewResult.rows[0].id, null, client.query.bind(client));
             await client.query("COMMIT");
-            const review = await bookReviewById(reviewResult.rows[0].id);
             return {
                 success: true,
                 cost: reviewPublishCost,
@@ -502,24 +360,9 @@ function createBookSocialService(options = {}) {
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
-            const voterResult = await client.query(`SELECT ${botUserSelect()} FROM reader_users WHERE telegram_id = $1 FOR UPDATE`, [safeTelegramId]);
-            const voter = voterResult.rows[0];
-            if (!voter) throw Object.assign(new Error("user not found"), { status: 404 });
-            if (voter.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
-            const voteActivity = await client.query(
-                `SELECT
-                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour')::int hourly,
-                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day')::int daily
-                 FROM reader_book_review_votes WHERE user_id=$1`,
-                [voter.id]
-            );
-            if (Number(voteActivity.rows[0]?.hourly || 0) >= reviewVoteHourlyLimit || Number(voteActivity.rows[0]?.daily || 0) >= reviewVoteDailyLimit) {
-                throw Object.assign(new Error("书评投票过于频繁，请稍后再试"), {
-                    status: 429,
-                    code: "REVIEW_VOTE_RATE_LIMIT",
-                    details: { hourly_limit: reviewVoteHourlyLimit, daily_limit: reviewVoteDailyLimit }
-                });
-            }
+            const identityResult = await client.query("SELECT id FROM reader_users WHERE telegram_id = $1", [safeTelegramId]);
+            const identity = identityResult.rows[0];
+            if (!identity) throw Object.assign(new Error("user not found"), { status: 404 });
             const reviewResult = await client.query(
                 `SELECT r.*
                  FROM reader_book_reviews r
@@ -530,13 +373,23 @@ function createBookSocialService(options = {}) {
             );
             const review = reviewResult.rows[0];
             if (!review) throw Object.assign(new Error("review not found"), { status: 404 });
-            if (review.user_id && Number(review.user_id) === Number(voter.id)) {
+            if (review.user_id && Number(review.user_id) === Number(identity.id)) {
                 throw Object.assign(new Error("不能给自己的书评投票"), { status: 409 });
             }
-            const authorResult = review.user_id
-                ? await client.query(`SELECT ${botUserSelect()} FROM reader_users WHERE id = $1 FOR UPDATE`, [review.user_id])
-                : { rows: [] };
-            const author = authorResult.rows[0] || null;
+            const userIds = [...new Set([String(identity.id), review.user_id ? String(review.user_id) : ""].filter(Boolean))];
+            const lockedUsers = await client.query(
+                `SELECT ${botUserSelect()}
+                 FROM reader_users
+                 WHERE id = ANY($1::bigint[])
+                 ORDER BY id ASC
+                 FOR UPDATE`,
+                [userIds]
+            );
+            const users = new Map(lockedUsers.rows.map((row) => [String(row.id), row]));
+            const voter = users.get(String(identity.id));
+            const author = review.user_id ? users.get(String(review.user_id)) || null : null;
+            if (!voter) throw Object.assign(new Error("user not found"), { status: 404 });
+            if (voter.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
             const existed = await client.query(
                 `SELECT *
                  FROM reader_book_review_votes
@@ -559,6 +412,23 @@ function createBookSocialService(options = {}) {
                     author
                 };
             }
+            const voteActivity = await client.query(
+                `SELECT
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour')::int hourly,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day')::int daily
+                 FROM reader_book_review_votes WHERE user_id=$1`,
+                [voter.id]
+            );
+            if (
+                Number(voteActivity.rows[0]?.hourly || 0) >= reviewVoteHourlyLimit ||
+                Number(voteActivity.rows[0]?.daily || 0) >= reviewVoteDailyLimit
+            ) {
+                throw Object.assign(new Error("书评投票过于频繁，请稍后再试"), {
+                    status: 429,
+                    code: "REVIEW_VOTE_RATE_LIMIT",
+                    details: { hourly_limit: reviewVoteHourlyLimit, daily_limit: reviewVoteDailyLimit }
+                });
+            }
             if (previousVote && Number(existed.rows[0]?.change_count || 0) >= reviewVoteMaxChanges) {
                 throw Object.assign(new Error("书评投票修改次数已达上限"), {
                     status: 409,
@@ -577,13 +447,26 @@ function createBookSocialService(options = {}) {
                          change_count = COALESCE(change_count, 0) + 1,
                          last_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                      WHERE id = $5`,
-                    [safeVote, nextReward, voter.telegram_id || safeTelegramId, String(source || "telegram_bot").slice(0, 64), existed.rows[0].id]
+                    [
+                        safeVote,
+                        nextReward,
+                        voter.telegram_id || safeTelegramId,
+                        String(source || "telegram_bot").slice(0, 64),
+                        existed.rows[0].id
+                    ]
                 );
             } else {
                 await client.query(
                     `INSERT INTO reader_book_review_votes(review_id, user_id, telegram_id, vote, reward_delta, source)
                      VALUES ($1,$2,$3,$4,$5,$6)`,
-                    [safeReviewId, voter.id, voter.telegram_id || safeTelegramId, safeVote, nextReward, String(source || "telegram_bot").slice(0, 64)]
+                    [
+                        safeReviewId,
+                        voter.id,
+                        voter.telegram_id || safeTelegramId,
+                        safeVote,
+                        nextReward,
+                        String(source || "telegram_bot").slice(0, 64)
+                    ]
                 );
             }
 
@@ -664,10 +547,7 @@ function createBookSocialService(options = {}) {
 
     return {
         bookReviewById,
-        bookCrowdSummary,
-        bookFeedbackCounts,
         createBookReview,
-        crowdLeaderboard,
         listBookReviews,
         normalizeReviewContent,
         normalizeReviewVote,
@@ -684,8 +564,7 @@ function createBookSocialService(options = {}) {
         reviewVoteMaxChanges,
         reviewVoteReward,
         updateBookReviewChannelMessage,
-        voteBookReview,
-        normalizeFeedback
+        voteBookReview
     };
 }
 

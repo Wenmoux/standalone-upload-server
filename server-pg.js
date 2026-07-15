@@ -53,6 +53,8 @@ const { createEventService } = require("./services/events");
 const { createHotKeywordService } = require("./services/hot-keywords");
 const { createWordCloudService } = require("./services/word-cloud");
 const { createBookSocialService } = require("./services/book-social");
+const { createBookCrowdService } = require("./services/book-crowd");
+const { createRedPacketService } = require("./services/red-packets");
 const { createReviewGovernanceService } = require("./services/review-governance");
 const { createChapterMaintenanceService } = require("./services/chapter-maintenance");
 const { createBookMaintenanceService } = require("./services/book-maintenance");
@@ -252,15 +254,9 @@ const eventService = createEventService({
     cleanPgValue
 });
 const { recordEvent } = eventService;
-const hotKeywordService = createHotKeywordService({
-    configGet,
-    configSet
-});
+const hotKeywordService = createHotKeywordService({ configGet, configSet });
 const { addHotKeyword, getHotKeywords } = hotKeywordService;
-const wordCloudService = createWordCloudService({
-    query,
-    getHotKeywords
-});
+const wordCloudService = createWordCloudService({ query, getHotKeywords });
 const bookSocialService = createBookSocialService({
     query,
     pool,
@@ -274,12 +270,8 @@ const bookSocialService = createBookSocialService({
 });
 const {
     bookReviewById,
-    bookCrowdSummary,
-    bookFeedbackCounts,
     createBookReview,
-    crowdLeaderboard,
     listBookReviews,
-    normalizeFeedback,
     reviewMaxLength,
     reviewMinLength,
     reviewMinLevel,
@@ -287,6 +279,8 @@ const {
     updateBookReviewChannelMessage,
     voteBookReview
 } = bookSocialService;
+const bookCrowdService = createBookCrowdService({ query, pool, normalizeTelegramId, botUserSelect, crowdVoteCost: 100 });
+const redPacketService = createRedPacketService({ pool, botUserSelect, normalizeTelegramId, normalizeChatId, randomRedPacketAmount });
 const reviewGovernanceService = createReviewGovernanceService({ query, pool });
 const healthService = createHealthService({
     serviceName: "server-pg",
@@ -554,7 +548,7 @@ const adminContentRoutes = createAdminContentRoutes({
     publicAdminReaderUser,
     todayDateKey,
     listTransactions: userCurrencyService.listTransactions,
-    crowdLeaderboard,
+    crowdLeaderboard: bookCrowdService.crowdLeaderboard,
     hashPassword,
     nonNegativeInt,
     recordTransaction: userCurrencyService.recordTransaction,
@@ -626,11 +620,12 @@ const botApiRoutes = createBotApiRoutes({
     registerBotUser: readerAccountService.registerBotUser,
     importBotUsers: readerAccountService.importBotUsers,
     checkInUser: readerCheckInService.checkInUser,
-    randomRedPacketAmount,
-    normalizeFeedback,
-    bookFeedbackCounts,
-    bookCrowdSummary,
-    crowdLeaderboard,
+    createRedPacket: redPacketService.createRedPacket,
+    claimRedPacket: redPacketService.claimRedPacket,
+    createBookFeedback: bookCrowdService.createBookFeedback,
+    bookCrowdSummary: bookCrowdService.bookCrowdSummary,
+    crowdLeaderboard: bookCrowdService.crowdLeaderboard,
+    createCrowdVote: bookCrowdService.createCrowdVote,
     bookReviewById,
     createBookReview,
     listBookReviews,
@@ -638,7 +633,6 @@ const botApiRoutes = createBotApiRoutes({
     reviewMinLength,
     reviewMinLevel,
     reviewPublishCost,
-    updateBookReviewChannelMessage,
     voteBookReview,
     pushBookReviewToChannel,
     getHotKeywords,

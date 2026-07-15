@@ -20,9 +20,10 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `backups.test.js`: 备份索引、保留、远端上传与恢复演练状态。
 - `body-limits.test.js`: 分路由请求体限制与拒绝语义。
 - `book-chapters.test.js`: 章节读取、写入、顺序与缓存行为。
+- `book-crowd.test.js`: 书籍反馈、众筹榜单、服务端成本、重复支持与事务回滚语义。
 - `book-manifest.test.js`: 书籍清单导入导出、校验和及确认边界。
 - `book-maintenance.test.js`: 陈旧 PO18 书籍预览、事务锁定、平台隔离清理与回滚。
-- `book-social.test.js`: 收藏、评论、互动聚合与权限语义。
+- `book-social.test.js`: 书评发布扣费、投票奖励、频率限制与权限语义。
 - `bot-adapters.test.js`: Bot 外部适配器的请求和错误规范化。
 - `bot-api-routes.test.js`: Bot API 账户、书籍、任务及 Worker fencing token 路由契约。
 - `bot-audit.test.js`: Bot 管理操作审计记录。
@@ -80,6 +81,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `reader-proxy.test.js`: Reader 3200 到 3100 代理的公网 Host、协议与 CSRF 来源传递契约。
 - `reader-rum.test.js`: Reader 性能事件采样和写入。
 - `reader-virtual-list.test.js`: 虚拟章节列表窗口计算。
+- `red-packets.test.js`: 红包参数、创建幂等、定向结算、重复领取、过期退款与事务回滚。
 - `review-governance.test.js`: 书评举报、申诉、审核与状态机。
 - `schema-drift.test.js`: schema snapshot 与迁移目录一致性。
 - `schema-validation.test.js`: 高成本请求体 JSON Schema 注册与拒绝契约。
