@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Express json/raw 解析器、路由前缀与 PO18_BODY_LIMIT 系列环境配置
- * [OUTPUT]: 对外提供分级请求体预算常量、配置解析器及按路由安装 body parser 的函数
- * [POS]: services 的入口资源保护策略，在业务路由之前按风险分配请求体上限
+ * [OUTPUT]: 对外提供分级请求体预算、旧身份入口无类型 JSON 兼容及按路由安装 body parser 的函数
+ * [POS]: services 的入口资源保护策略，在业务路由之前按风险分配请求体上限并隔离历史客户端兼容面
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const DEFAULT_BODY_LIMITS = Object.freeze({
@@ -17,6 +17,7 @@ const DEFAULT_BODY_LIMITS = Object.freeze({
 const ROUTE_BODY_LIMITS = Object.freeze([
     {
         name: "auth",
+        acceptLegacyJson: true,
         paths: [
             "/admin-api/auth/login",
             "/reader-auth/login",
@@ -34,7 +35,9 @@ const ROUTE_BODY_LIMITS = Object.freeze([
 ]);
 
 function normalizedLimit(value, fallback) {
-    const input = String(value || "").trim().toLowerCase();
+    const input = String(value || "")
+        .trim()
+        .toLowerCase();
     return /^\d+(?:\.\d+)?(?:b|kb|mb)$/.test(input) ? input : fallback;
 }
 
@@ -50,17 +53,23 @@ function bodyLimitConfig(env = process.env) {
     };
 }
 
-function parsersForLimit(express, limit) {
-    return [
-        express.json({ limit }),
-        express.urlencoded({ extended: true, limit })
-    ];
+function legacyAuthJsonType(req) {
+    const contentType = String(req.headers?.["content-type"] || "")
+        .split(";")[0]
+        .trim()
+        .toLowerCase();
+    return !contentType || contentType === "text/plain" || contentType === "application/json" || contentType.endsWith("+json");
+}
+
+function parsersForLimit(express, limit, policy = {}) {
+    const jsonOptions = policy.acceptLegacyJson ? { limit, type: legacyAuthJsonType } : { limit };
+    return [express.json(jsonOptions), express.urlencoded({ extended: true, limit })];
 }
 
 function installRouteBodyParsers(app, express, env = process.env) {
     const limits = bodyLimitConfig(env);
     for (const policy of ROUTE_BODY_LIMITS) {
-        app.use(policy.paths, ...parsersForLimit(express, limits[policy.name]));
+        app.use(policy.paths, ...parsersForLimit(express, limits[policy.name], policy));
     }
     app.use(...parsersForLimit(express, limits.default));
     return limits;
@@ -71,6 +80,7 @@ module.exports = {
     ROUTE_BODY_LIMITS,
     bodyLimitConfig,
     installRouteBodyParsers,
+    legacyAuthJsonType,
     normalizedLimit,
     parsersForLimit
 };

@@ -233,6 +233,8 @@ GET  /reader-auth/me
 }
 ```
 
+旧版 PO18 书库兼容：Admin/Reader 登录、Reader 注册和 Telegram 登录即使不声明 `Content-Type`，或浏览器把字符串 JSON 自动标记为 `text/plain`，仍会按 JSON 解析；该兼容只应用于 32 KiB 身份入口。其他 API 不解析无类型/纯文本 JSON，明确的跨站请求仍返回 `403`。
+
 返回：
 
 ```json

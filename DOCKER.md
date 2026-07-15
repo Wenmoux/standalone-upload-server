@@ -127,7 +127,7 @@ curl -H "Authorization: Bearer $PO18_METRICS_TOKEN" http://127.0.0.1:3100/metric
 - `PO18_SETUP_COOKIE_SECURE=1`：Setup 通过 HTTPS 访问时启用。
 - `PO18_READER_PUBLIC_URL`：后端生成 Reader 跳转时使用的公网地址。
 
-Reader 与 Admin/API 分别使用两个域名时，浏览器仍应通过 Reader 域名的同源 `/reader-auth`、`/reader-api` 访问 3200；3200 再代理到 3100。2.0.0 之后的 Reader server 会把原始公网 Host/协议继续传给后端，CSRF 同时接受浏览器控制的 `Sec-Fetch-Site: same-origin` 证据，因此外层代理即使把内部上游 Host 改写为容器地址，或未继续传递 `Origin`/`Referer`，也不会让真实同源登录被误判为跨站请求。若更旧的代理连 Fetch Metadata 也丢失，Admin/Reader 登录、Reader 注册和 Telegram 登录仍兼容历史页面使用的 JSON、表单或未声明内容类型请求以及历史/活动 Session Cookie，尾部斜杠也兼容；兼容仅限身份入口，其他无来源写入继续拒绝，真实 `cross-site` 请求始终优先拒绝。
+Reader 与 Admin/API 分别使用两个域名时，浏览器仍应通过 Reader 域名的同源 `/reader-auth`、`/reader-api` 访问 3200；3200 再代理到 3100。2.0.0 之后的 Reader server 会把原始公网 Host/协议继续传给后端，CSRF 同时接受浏览器控制的 `Sec-Fetch-Site: same-origin` 证据，因此外层代理即使把内部上游 Host 改写为容器地址，或未继续传递 `Origin`/`Referer`，也不会让真实同源登录被误判为跨站请求。若更旧的代理连 Fetch Metadata 也丢失，Admin/Reader 登录、Reader 注册和 Telegram 登录仍兼容历史页面使用的 JSON、表单、无 `Content-Type` 或浏览器自动生成的 `text/plain` JSON，以及历史/活动 Session Cookie 和尾部斜杠；兼容仅限 32 KiB 身份入口，其他无来源或错误类型写入继续拒绝，真实 `cross-site` 请求始终优先拒绝。
 
 不要直接把 `3100` 的 Setup/Admin 暴露给不受信网络；至少使用 HTTPS、访问控制和防火墙。不要公开 `3300`。
 

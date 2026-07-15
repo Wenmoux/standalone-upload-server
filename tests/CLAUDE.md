@@ -18,7 +18,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `api-tokens.test.js`: API Token 创建、哈希、权限与吊销语义。
 - `auth-service.test.js`: 密码、会话用户和管理员鉴权服务。
 - `backups.test.js`: 备份索引、保留、远端上传与恢复演练状态。
-- `body-limits.test.js`: 分路由请求体限制与拒绝语义。
+- `body-limits.test.js`: 分路由请求体限制、旧身份入口无类型 JSON 与兼容隔离语义。
 - `book-chapters.test.js`: 章节读取、写入、顺序与缓存行为。
 - `book-crowd.test.js`: 书籍反馈、众筹榜单、服务端成本、重复支持与事务回滚语义。
 - `book-manifest.test.js`: 书籍清单导入导出、校验和及确认边界。
