@@ -23,7 +23,8 @@ const {
     createImageManifest,
     createReleaseManifest,
     inspectRemoteDigest,
-    parseManifestDigest
+    parseManifestDigest,
+    run: runReleaseManifest
 } = require("../scripts/docker-release-manifest");
 const { REQUIRED_CONTEXT_FILES, ignored, walk } = require("../scripts/check-build-context");
 const { pgFailureSummary } = require("../scripts/run-pg-integration");
@@ -152,11 +153,12 @@ test("source hash excludes generated release metadata", () => {
     }
 });
 
-test("push selection retains every build tag when a movable tag is provided", () => {
+test("push selection exposes only the configured v2.0 tag", () => {
     assert.deepEqual(
         selectPushTags({ tags: ["example/reader:v2.0.0", "example/reader:sha-abc-source", "example/reader:v2.0"] }, "example/reader:v2.0"),
-        ["example/reader:v2.0.0", "example/reader:sha-abc-source", "example/reader:v2.0"]
+        ["example/reader:v2.0"]
     );
+    assert.deepEqual(selectPushTags({ movableTag: "example/reader:v2.0", tags: ["example/reader:sha-old"] }), ["example/reader:v2.0"]);
 });
 
 test("Docker push failures expose the registry response without terminal colors", () => {
@@ -180,12 +182,17 @@ test("release manifest binds source identity to a registry digest", () => {
             gitRevision: "abc",
             sourceHash: HASH,
             buildDate: "2026-07-11T00:00:00.000Z",
+            imageTag: "example/reader:v2.0",
+            movableTag: "example/reader:v2.0",
             immutableTag: "example/reader:sha-abc-source",
             tags: ["example/reader:v2.0.0", "example/reader:sha-abc-source"]
         },
         digest
     );
     assert.equal(manifest.digest_reference, `example/reader@${digest}`);
+    assert.equal(manifest.published_tag, "example/reader:v2.0");
+    assert.equal(manifest.build_candidate_tag, "example/reader:sha-abc-source");
+    assert.deepEqual(manifest.tags, ["example/reader:v2.0"]);
     assert.equal(parseManifestDigest(JSON.stringify({ digest })), digest);
 });
 
@@ -219,6 +226,8 @@ test("main branch publish manifest binds a clean development build without claim
             gitRevision: "def",
             sourceHash: HASH,
             buildDate: "2026-07-12T00:00:00.000Z",
+            imageTag: "example/reader:v2.0",
+            movableTag: "example/reader:v2.0",
             immutableTag: "example/reader:sha-def-source",
             tags: ["example/reader:sha-def-source", "example/reader:v2.0"]
         },
@@ -226,7 +235,37 @@ test("main branch publish manifest binds a clean development build without claim
     );
     assert.equal(manifest.formal_release, false);
     assert.equal(manifest.digest_reference, `example/reader@${digest}`);
-    assert.equal(manifest.tags.includes("example/reader:v2.0.0"), false);
+    assert.deepEqual(manifest.tags, ["example/reader:v2.0"]);
+});
+
+test("release manifest records only v2.0 even when local build metadata has candidate tags", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "po18-release-manifest-"));
+    const digest = "sha256:" + "e".repeat(64);
+    try {
+        const manifest = runReleaseManifest({
+            root,
+            digest,
+            env: {},
+            metadata: {
+                release: false,
+                dirty: false,
+                appVersion: "2.0.0+main",
+                packageVersion: "2.0.0",
+                gitRevision: "def",
+                sourceHash: HASH,
+                buildDate: "2026-07-16T00:00:00.000Z",
+                imageTag: "example/reader:v2.0",
+                movableTag: "example/reader:v2.0",
+                immutableTag: "example/reader:sha-def-source",
+                tags: ["example/reader:sha-def-source", "example/reader:v2.0"]
+            }
+        });
+        assert.equal(manifest.published_tag, "example/reader:v2.0");
+        assert.deepEqual(manifest.tags, ["example/reader:v2.0"]);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(root, "release-manifest.json"), "utf8")).digest, digest);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
 });
 
 test("GitHub workflow publishes main pushes and keeps tag releases conditional", () => {
@@ -235,7 +274,7 @@ test("GitHub workflow publishes main pushes and keeps tag releases conditional",
     assert.match(workflow, /workflow_dispatch:/);
     assert.match(workflow, /PO18_RELEASE: \$\{\{ github\.ref_type == 'tag'/);
     assert.match(workflow, /PO18_REQUIRE_CLEAN: "1"/);
-    assert.match(workflow, /Push source tag and moving channel tag/);
+    assert.match(workflow, /Push v2\.0 tag only/);
     assert.match(workflow, /if: github\.ref_type == 'tag'/);
     assert.match(workflow, /actions\/checkout@v7/);
     assert.match(workflow, /actions\/setup-node@v6/);

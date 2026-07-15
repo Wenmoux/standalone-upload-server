@@ -47,11 +47,6 @@ jobs:
                   if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
                     VERSION="$(node -p "require('./package.json').version")"
                     test "${GITHUB_REF_NAME}" = "v${VERSION}"
-                    SEMVER_TAG="wenmoux/reader:v${VERSION}"
-                    if docker buildx imagetools inspect "${SEMVER_TAG}" >/dev/null 2>&1; then
-                      echo "Immutable tag already exists: ${SEMVER_TAG}" >&2
-                      exit 1
-                    fi
                   else
                     test "${GITHUB_REF_NAME}" = "main"
                   fi
@@ -123,7 +118,7 @@ jobs:
                   username: ${{ secrets.DOCKERHUB_USERNAME || 'wenmoux' }}
                   password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-            - name: Push source tag and moving channel tag
+            - name: Push v2.0 tag only
               run: npm run docker:push
 
             - name: Resolve registry digest

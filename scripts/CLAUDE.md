@@ -13,8 +13,8 @@
 - `check-utf8.js`: 扫描受控文本文件的 UTF-8 与异常乱码模式。
 - `clean-chapter-titles.js`: 调用统一标题清洗能力批量修正章节标题。
 - `docker-build.js`: 构建含源码身份的不可变镜像标签并向工作流输出结果。
-- `docker-push.js`: 将已验证镜像标签发布到 registry，不保存本地凭证。
-- `docker-release-manifest.js`: 生成发布标签、来源与摘要元数据，约束可变和不可变标签语义。
+- `docker-push.js`: 只把已验证的 `v2.0` 移动标签发布到 registry，不扩散本地源码指纹标签。
+- `docker-release-manifest.js`: 生成唯一公开标签、来源与 digest 元数据，以摘要承担复现和审计语义。
 - `docker-smoke.js`: 启动候选镜像与临时 PostgreSQL，验证 Setup、服务和深健康路径。
 - `generate-reader-pwa-icons.js`: 从项目图标源生成 Reader PWA 尺寸集合。
 - `local-library-upload-ui.js`: 本地书库上传工具的独立 UI 资源与交互实现。

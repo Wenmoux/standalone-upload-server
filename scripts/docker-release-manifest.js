@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 registry descriptor、构建元数据、Git revision/source hash 与正式/开发发布模式
- * [OUTPUT]: 生成绑定 digest、标签和源码身份的发布 manifest，并提供 registry 传播重试/解析工具
- * [POS]: scripts 的发布证明层，为 registry 冒烟、签名和审计提供机器可读事实
+ * [INPUT]: 依赖 v2.0 registry descriptor、构建元数据、Git revision/source hash 与正式/开发发布模式
+ * [OUTPUT]: 生成绑定唯一公开标签、digest 和源码身份的发布 manifest，并提供 registry 传播重试/解析工具
+ * [POS]: scripts 的发布证明层，以 digest 保留可复现性，不向 Docker Hub 扩散源码指纹标签
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { spawnSync } = require("child_process");
@@ -62,10 +62,10 @@ function createImageManifest(metadata, digest, options = {}) {
     if (options.requireRelease === true && metadata.release !== true) {
         throw new Error("release manifest requires formal-release build metadata");
     }
-    const tag = metadata.immutableTag;
-    const repository = imageRepository(tag);
+    const publishedTag = String(options.publishedTag || metadata.movableTag || metadata.imageTag || "").trim();
+    const repository = imageRepository(publishedTag);
     if (!repository || !/^sha256:[a-f0-9]{64}$/i.test(String(digest || ""))) {
-        throw new Error("release manifest requires an immutable tag and sha256 digest");
+        throw new Error("release manifest requires a published tag and sha256 digest");
     }
     return {
         formal_release: metadata.release === true,
@@ -74,15 +74,16 @@ function createImageManifest(metadata, digest, options = {}) {
         git_revision: metadata.gitRevision,
         source_hash: metadata.sourceHash,
         build_date: metadata.buildDate,
-        immutable_tag: tag,
-        tags: metadata.tags,
+        published_tag: publishedTag,
+        build_candidate_tag: metadata.immutableTag || publishedTag,
+        tags: [publishedTag],
         digest,
         digest_reference: `${repository}@${digest}`
     };
 }
 
-function createReleaseManifest(metadata, digest) {
-    return createImageManifest(metadata, digest, { requireRelease: true });
+function createReleaseManifest(metadata, digest, options = {}) {
+    return createImageManifest(metadata, digest, { ...options, requireRelease: true });
 }
 
 function appendGithubOutputs(manifest, env = process.env) {
@@ -102,8 +103,12 @@ function run(options = {}) {
     const metadataFile = options.metadataFile || path.join(root, ".docker-build.json");
     const outputFile = options.outputFile || path.join(root, "release-manifest.json");
     const metadata = options.metadata || JSON.parse(fs.readFileSync(metadataFile, "utf8"));
-    const digest = options.digest || inspectRemoteDigest(metadata.immutableTag, options.spawnSyncImpl || spawnSync);
-    const manifest = metadata.release === true ? createReleaseManifest(metadata, digest) : createImageManifest(metadata, digest);
+    const publishedTag = String(metadata.movableTag || metadata.imageTag || "").trim();
+    const digest = options.digest || inspectRemoteDigest(publishedTag, options.spawnSyncImpl || spawnSync);
+    const manifest =
+        metadata.release === true
+            ? createReleaseManifest(metadata, digest, { publishedTag })
+            : createImageManifest(metadata, digest, { publishedTag });
     fs.writeFileSync(outputFile, JSON.stringify(manifest, null, 2) + "\n");
     appendGithubOutputs(manifest, options.env || process.env);
     console.log(`[docker-release] digest_reference=${manifest.digest_reference}`);

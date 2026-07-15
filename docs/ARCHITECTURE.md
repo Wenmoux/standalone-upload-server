@@ -115,7 +115,7 @@ Dockerfile 主要阶段：
 - `server-pg`、`reader`、`bot`：分进程镜像目标。
 - `app`：包含完整 stack，默认 `docker/entrypoint.js` + `docker/run-all.js`。
 
-`main` 推送触发 CI 和 Docker 发布。移动标签之外还生成 revision/source-hash 标签；正式版本 tag 额外生成 SBOM、Cosign 签名和 attestations。
+`main` 推送触发 CI 和 Docker 发布。Docker Hub 只更新 `wenmoux/reader:v2.0`；源码 revision/hash 保留在镜像元数据和发布证据中，发布后以 registry digest 拉取并复验。
 
 ## GEB 分形文档
 

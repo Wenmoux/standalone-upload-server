@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖已构建镜像标签集合、Docker CLI 与 registry 凭据环境
- * [OUTPUT]: 推送所有来源身份标签和选定移动标签，并暴露可诊断的 registry 失败摘要
- * [POS]: scripts 的 registry 写入边界，只发布已经由构建/测试链验证的本地标签
+ * [INPUT]: 依赖已构建镜像元数据、唯一发布标签、Docker CLI 与 registry 凭据环境
+ * [OUTPUT]: 只推送配置的 v2.0 移动标签，并暴露可诊断的 registry 失败摘要
+ * [POS]: scripts 的 registry 写入边界，把本地候选标签与 Docker Hub 唯一公开标签严格隔离
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { spawnSync } = require("child_process");
@@ -19,9 +19,8 @@ function readBuildMetadata(file = path.join(__dirname, "..", ".docker-build.json
 }
 
 function selectPushTags(metadata = {}, envImage = "") {
-    const metadataTags = Array.isArray(metadata.tags) ? metadata.tags.filter(Boolean) : [];
-    const fallback = metadata.imageTag || envImage || DEFAULT_IMAGE;
-    return Array.from(new Set([...metadataTags, envImage || fallback].filter(Boolean)));
+    const publishedTag = String(envImage || metadata.movableTag || metadata.imageTag || DEFAULT_IMAGE).trim();
+    return [publishedTag || DEFAULT_IMAGE];
 }
 
 function githubCommandEscape(value) {

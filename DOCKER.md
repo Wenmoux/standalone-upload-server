@@ -260,7 +260,7 @@ PO18_CHILD_STOP_TIMEOUT_MS=10000
 2. 单元测试、覆盖率和依赖审计。
 3. Admin/Reader 构建与 Docker context 检查。
 4. 真实 PostgreSQL、搜索计划基准和本地镜像冒烟。
-5. 推送 revision/source-hash 标签并更新 `wenmoux/reader:v2.0`。
+5. 只推送并更新 `wenmoux/reader:v2.0`，不再向 Docker Hub 创建 `sha-*` 或 semver 镜像标签。
 6. 按 registry digest 再拉取并冒烟。
 
 GitHub 仓库 Secrets：
@@ -268,7 +268,7 @@ GitHub 仓库 Secrets：
 - `DOCKERHUB_TOKEN`：必填，只授予目标仓库所需的 Docker Hub Read & Write，不授予账户管理能力。
 - `DOCKERHUB_USERNAME`：可选，默认 `wenmoux`。
 
-推送与 `package.json` 版本对应的 tag（如 `v2.0.0`）会进入正式发布模式，额外生成不可变 semver 标签、SBOM、Cosign 签名和 attestations。
+推送与 `package.json` 版本对应的 Git tag（如 `v2.0.0`）仍可进入正式验证模式，但 Docker Hub 也只更新 `wenmoux/reader:v2.0`；构建来源通过镜像元数据、发布证据和 digest 保留。
 
 `wenmoux/reader:v2.0` 是随 `main` 更新的移动标签，不是不可变版本。生产回滚或严格复现可从 `/health/version`/registry 记录中取得 digest，并使用 `wenmoux/reader@sha256:...` 固定部署。仓库应保护 `main`、要求 CI 通过，并限制 `.github/workflows/` 与发布 Secrets 的修改权限；普通源码推送者不应能绕过这些门禁。
 

@@ -6,6 +6,11 @@
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
 
+## 2026-07-16：Docker Hub 单标签发布
+
+- GitHub 发布仍先完成静态门禁、真实 PostgreSQL、候选镜像与 digest 回拉冒烟，但 registry 写入只更新 `wenmoux/reader:v2.0`，不再为每次提交创建 `sha-*` 或额外 semver 标签。
+- 源码 revision、source hash 和构建时间继续写入镜像元数据与发布证据；需要严格复现或回滚时使用 `wenmoux/reader@sha256:...`，不依赖额外 Docker Hub 标签。
+
 ## 2026-07-16：Reader 设置面板与样式边界拆分
 
 - 阅读设置抽屉从 `Reader.vue` 提取为独立设置面板；面板只接收设置、主题、音色和章头预览状态，并通过语义事件提交变更，设置持久化与 TTS 引擎编排仍由原领域 mixin 负责。
