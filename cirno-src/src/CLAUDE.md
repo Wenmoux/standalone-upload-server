@@ -2,7 +2,7 @@
 
 > L2 | 父级: [../CLAUDE.md](../CLAUDE.md)
 
-Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、HTTP 适配器、性能上报与 PWA；视图负责页面级编排，组件处理阅读局部交互，mixins 拆分正文阅读的纠错/导航/TTS 状态机，utils 承载可独立验证的纯能力与浏览器持久化边界。
+Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、HTTP 适配器、性能上报与 PWA；视图负责页面级编排，组件处理阅读局部交互，mixins 拆分正文阅读的纠错/导航/设置/TTS 状态机，utils 承载可独立验证的纯能力与浏览器持久化边界。
 
 ## 成员清单
 
@@ -25,6 +25,7 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `components/virtual-list.vue`: 通用定高虚拟列表视口，把滚动位置转换为窗口项并暴露行插槽。
 `mixins/reader-correction.js`: Reader 纠错状态机，管理选区、等长约束、提交表单和错误反馈。
 `mixins/reader-navigation.js`: Reader 章节导航状态机，识别分卷、计算可读章节并统一前后章跳转。
+`mixins/reader-settings.js`: Reader 阅读外观状态机，集中设置持久化、主题投影、章节头图与繁简显示重建，并向纠错和 TTS mixin 提供共享文本能力。
 `mixins/reader-tts.js`: Reader TTS 状态机，编排浏览器、Edge、云端与自定义引擎的队列、请求和播放生命周期。
 `plugins/ant-design-vue.js`: Ant Design Vue 按需异步组件安装器，降低 Reader 初始包体。
 `plugins/http.js`: Reader HTTP 兼容适配器，统一会话刷新、API 请求、离线章节回退和旧调用接口。
@@ -49,7 +50,7 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `views/BookLibrary.vue`: 全库浏览页，组合检索意图、平台配置、主题与分页结果。
 `views/Index.vue`: 登录后的首页/个人书架，承载搜索建议、平台筛选、最近内容和详情导航。
 `views/Login.vue`: Reader 本地/CDK 注册登录与 Telegram 登录入口，成功后建立会话缓存并跳转首页。
-`views/Reader.vue`: 正文阅读组合根，装配段落/目录/图片/间贴/票券组件以及纠错、导航、TTS mixins 和离线能力。
+`views/Reader.vue`: 正文阅读组合根，装配章节数据、段落/目录/图片/间贴/票券组件以及纠错、导航、阅读设置、TTS mixins 和离线能力。
 `views/Settings.vue`: 当前 Reader 账号与本地设置页，维护资料、退出会话并清理对应离线数据。
 
 ## 依赖方向
