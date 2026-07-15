@@ -13,7 +13,7 @@ const { registerExportCommands } = require("./commands/export");
 const { registerIntegrationCommands } = require("./commands/integrations");
 const { registerSearchCommands } = require("./commands/search");
 const { registerSocialCommands } = require("./commands/social");
-const { asExportError, classifyExportError, formatExportFailure } = require("./export-errors");
+const { asExportError, classifyExportError, formatExportFailure, isPrivateChatUnavailableError } = require("./export-errors");
 const { DEFAULT_RECOMMEND_PLATFORM, SEARCH_PLATFORM_SUFFIXES, parsePlatformSuffix, platformLabel } = require("./search-platforms");
 const { createSearchQueryParser } = require("./search-query");
 const { createEpubBuilder } = require("./epub-builder");
@@ -181,6 +181,7 @@ const exportDelivery = createExportDelivery({
     escapeHtml,
     asExportError,
     formatExportFailure,
+    isPrivateChatUnavailableError,
     normalizeEpubStyleChoice,
     epubStyleChoices: EPUB_EXPORT_STYLE_CHOICES,
     epubStyleSelectionMarkup,

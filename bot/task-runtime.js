@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node 主机身份、job-queue、PgBotClient 的 system_jobs 契约及任务生命周期消息和审计适配器
- * [OUTPUT]: 对外提供携带 worker/attempt fencing token 的租约、心跳、重试、取消和重启恢复运行时
+ * [INPUT]: 依赖 Node 主机身份、job-queue、PgBotClient 的 system_jobs 契约、导出错误格式化及任务生命周期消息/审计适配器
+ * [OUTPUT]: 对外提供携带 worker/attempt fencing token 的租约、心跳、带原因反馈的重试、取消和重启恢复运行时
  * [POS]: bot 后台任务域的可靠性核心，把进程内执行与 server-pg 持久状态连接起来并拒绝旧租约迟到回写
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -127,9 +127,11 @@ function createBotTaskRuntime(deps = {}) {
             attempt
         });
         if (job.chatId) {
+            const exportFailure = String(job.name || "").startsWith("export:") ? formatExportFailure(error) : null;
+            const reason = exportFailure?.message ? `\n原因：${escapeHtml(exportFailure.message)}` : "";
             sendMessage(
                 job.chatId,
-                `${escapeHtml(job.label || "后台任务")} 暂时失败，将在 ${Math.ceil(delayMs / 1000)} 秒后重试（${attempt}/${maxAttempts}）。`
+                `${escapeHtml(job.label || "后台任务")}遇到临时网络或后端异常，将在 ${Math.ceil(delayMs / 1000)} 秒后自动重试（${attempt}/${maxAttempts}）。${reason}`
             ).catch(() => {});
         }
         const timer = setTimeout(() => {

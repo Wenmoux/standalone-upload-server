@@ -105,9 +105,11 @@ TXT/EPUB 导出先从 `/reader-api/books/:bookId/chapters?includeContent=1` 分�
 `bot_export_txt`、`bot_export_epub`、书架同步、共享上传和 `bot_registered_user_broadcast` 都会写入服务端 `system_jobs`：
 
 - 相同用户和书籍的重复任务由幂等键与本地锁抑制。
-- 可重试网络错误按退避策略重试，并持续续租任务 lease。
+- 可重试网络错误按退避策略重试，消息会明确说明是网络/后端异常，并持续续租任务 lease。
 - Bot 重启后会认领未完成任务并恢复执行。
 - `/tasks`、`/task` 和 `/canceljob` 提供查询与取消入口。
+
+群聊导出会先探测 Bot 是否能够私聊发文件。Telegram 返回 `Forbidden`、`chat not found`、`blocked` 或 `PEER_ID_INVALID` 都表示用户尚未建立可用私聊，不是 EPUB 构建失败；Bot 会在群里提供“打开私聊继续导出”按钮，用户发送 `/start` 后恢复所选书籍和 EPUB 样式。
 
 EPUB 导出按钮只提供“江湖纸卷”“老二次元”“疏影横斜”三种选择；`crane` 仍在生成器中注册，用于旧配置兼容，但不作为 Bot 直选按钮。样式结构与扩展契约见 [EPUB 内置样式](./epub-styles/README.md)。
 

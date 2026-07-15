@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 server API、Telegram 发送和网络异常暴露的状态码、错误码与消息特征
- * [OUTPUT]: 对外提供稳定导出错误码、错误构造、分类、用户提示和失败摘要格式化能力
+ * [OUTPUT]: 对外提供稳定导出错误码、错误构造、私聊不可达识别、分类、用户提示和失败摘要格式化能力
  * [POS]: bot 导出域的错误语义防腐层，使任务运行时不依赖底层异常文案的偶然形态
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -16,9 +16,24 @@ const EXPORT_ERROR_CODES = {
     UNKNOWN: "EXPORT_UNKNOWN"
 };
 
+const NON_RETRYABLE_EXPORT_CODES = new Set([
+    EXPORT_ERROR_CODES.MISSING_BOOK_ID,
+    EXPORT_ERROR_CODES.NO_CONTENT,
+    EXPORT_ERROR_CODES.FREE_QUOTA_USED,
+    EXPORT_ERROR_CODES.INSUFFICIENT_BALANCE,
+    EXPORT_ERROR_CODES.PRIVATE_CHAT_REQUIRED
+]);
+
+function isPrivateChatUnavailableError(err) {
+    return /bot.*blocked|bot can't initiate conversation|chat not found|forbidden|peer[_ ]id[_ ]invalid|user is deactivated/i.test(
+        `${String(err?.code || "")} ${String(err?.message || err || "")}`
+    );
+}
+
 function asExportError(code, message, cause = null) {
     const err = new Error(message);
     err.code = code;
+    if (NON_RETRYABLE_EXPORT_CODES.has(code)) err.retryable = false;
     if (cause) err.cause = cause;
     return err;
 }
@@ -31,14 +46,34 @@ function classifyExportError(err) {
     if (code && Object.values(EXPORT_ERROR_CODES).includes(code)) {
         return { code, message: exportErrorText(code, message), raw: message };
     }
-    if (/用法|missing book|book id/i.test(message)) return { code: EXPORT_ERROR_CODES.MISSING_BOOK_ID, message: exportErrorText(EXPORT_ERROR_CODES.MISSING_BOOK_ID), raw: message };
-    if (/没有正文缓存|no content|no chapters|empty/i.test(message)) return { code: EXPORT_ERROR_CODES.NO_CONTENT, message: exportErrorText(EXPORT_ERROR_CODES.NO_CONTENT), raw: message };
-    if (status === 409 && /free|quota|额度|免费/i.test(message)) return { code: EXPORT_ERROR_CODES.FREE_QUOTA_USED, message: exportErrorText(EXPORT_ERROR_CODES.FREE_QUOTA_USED), raw: message };
-    if (status === 409 || /余额不足|insufficient|not enough/i.test(message)) return { code: EXPORT_ERROR_CODES.INSUFFICIENT_BALANCE, message: exportErrorText(EXPORT_ERROR_CODES.INSUFFICIENT_BALANCE), raw: message };
-    if (/bot.*blocked|chat not found|forbidden|start/i.test(message)) return { code: EXPORT_ERROR_CODES.PRIVATE_CHAT_REQUIRED, message: exportErrorText(EXPORT_ERROR_CODES.PRIVATE_CHAT_REQUIRED), raw: message };
-    if (/sendDocument|Telegram/i.test(message)) return { code: EXPORT_ERROR_CODES.TELEGRAM_SEND_FAILED, message: exportErrorText(EXPORT_ERROR_CODES.TELEGRAM_SEND_FAILED), raw: message };
-    if (/timeout|abort/i.test(message)) return { code: EXPORT_ERROR_CODES.BOT_API_TIMEOUT, message: exportErrorText(EXPORT_ERROR_CODES.BOT_API_TIMEOUT), raw: message };
-    if (/ECONN|ENOTFOUND|network|fetch failed/i.test(message)) return { code: EXPORT_ERROR_CODES.NETWORK, message: exportErrorText(EXPORT_ERROR_CODES.NETWORK), raw: message };
+    if (/用法|missing book|book id/i.test(message))
+        return { code: EXPORT_ERROR_CODES.MISSING_BOOK_ID, message: exportErrorText(EXPORT_ERROR_CODES.MISSING_BOOK_ID), raw: message };
+    if (/没有正文缓存|no content|no chapters|empty/i.test(message))
+        return { code: EXPORT_ERROR_CODES.NO_CONTENT, message: exportErrorText(EXPORT_ERROR_CODES.NO_CONTENT), raw: message };
+    if (status === 409 && /free|quota|额度|免费/i.test(message))
+        return { code: EXPORT_ERROR_CODES.FREE_QUOTA_USED, message: exportErrorText(EXPORT_ERROR_CODES.FREE_QUOTA_USED), raw: message };
+    if (status === 409 || /余额不足|insufficient|not enough/i.test(message))
+        return {
+            code: EXPORT_ERROR_CODES.INSUFFICIENT_BALANCE,
+            message: exportErrorText(EXPORT_ERROR_CODES.INSUFFICIENT_BALANCE),
+            raw: message
+        };
+    if (isPrivateChatUnavailableError(err))
+        return {
+            code: EXPORT_ERROR_CODES.PRIVATE_CHAT_REQUIRED,
+            message: exportErrorText(EXPORT_ERROR_CODES.PRIVATE_CHAT_REQUIRED),
+            raw: message
+        };
+    if (/sendDocument|Telegram/i.test(message))
+        return {
+            code: EXPORT_ERROR_CODES.TELEGRAM_SEND_FAILED,
+            message: exportErrorText(EXPORT_ERROR_CODES.TELEGRAM_SEND_FAILED),
+            raw: message
+        };
+    if (/timeout|abort/i.test(message))
+        return { code: EXPORT_ERROR_CODES.BOT_API_TIMEOUT, message: exportErrorText(EXPORT_ERROR_CODES.BOT_API_TIMEOUT), raw: message };
+    if (/ECONN|ENOTFOUND|network|fetch failed/i.test(message))
+        return { code: EXPORT_ERROR_CODES.NETWORK, message: exportErrorText(EXPORT_ERROR_CODES.NETWORK), raw: message };
     return { code: EXPORT_ERROR_CODES.UNKNOWN, message: exportErrorText(EXPORT_ERROR_CODES.UNKNOWN), raw: message };
 }
 
@@ -78,5 +113,6 @@ module.exports = {
     asExportError,
     classifyExportError,
     exportErrorText,
-    formatExportFailure
+    formatExportFailure,
+    isPrivateChatUnavailableError
 };

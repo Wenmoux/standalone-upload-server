@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test/assert 与 Bot 账户、经济、导出投递和 PikPak 处理器的受控客户端/Telegram 替身
- * [OUTPUT]: 提供私聊续接、发送后结算、账户状态、管理员发币、红包幂等键和外部存储交互回归断言
+ * [OUTPUT]: 提供私聊续接/PEER_ID_INVALID 降级、发送后结算、账户状态、管理员发币、红包幂等键和外部存储交互回归断言
  * [POS]: tests 的 Bot 组合根减重守卫，确保领域处理器拆分不改变命令权限、文案和副作用顺序
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -9,6 +9,7 @@ const test = require("node:test");
 const { createAccountHandlers } = require("../bot/account-handlers");
 const { createEconomyHandlers } = require("../bot/economy-handlers");
 const { createExportDelivery } = require("../bot/export-delivery");
+const { isPrivateChatUnavailableError } = require("../bot/export-errors");
 const { createPikpakHandler } = require("../bot/pikpak-handler");
 
 function exportError(code, message, cause) {
@@ -29,6 +30,7 @@ function exportDeliveryWith(overrides = {}) {
         escapeHtml: (value) => String(value),
         asExportError: exportError,
         formatExportFailure: (err) => ({ code: err.code, message: err.message, raw: err.message }),
+        isPrivateChatUnavailableError,
         normalizeEpubStyleChoice: (value) => String(value || ""),
         epubStyleChoices: [{ id: "style1", label: "江湖纸卷" }],
         epubStyleSelectionMarkup: (id) => ({ id }),
@@ -116,6 +118,35 @@ test("group export that cannot open a private chat produces a resumable start bu
     assert.match(messages[0][1], /打开私聊/);
     const url = messages[0][2].reply_markup.inline_keyboard[0][0].url;
     assert.match(url, /^https:\/\/t\.me\/po18book_bot\?start=ex_/);
+});
+
+test("group export treats Telegram PEER_ID_INVALID as a resumable private-chat requirement", async () => {
+    const messages = [];
+    let builds = 0;
+    const flow = exportDeliveryWith({
+        client: {
+            exportPermission: async () => ({ free_export: {}, user: {} }),
+            exportPricing: async () => ({}),
+            getBook: async () => ({ book: { book_id: "9" } })
+        },
+        telegram: async () => {
+            throw new Error("Bad Request: PEER_ID_INVALID");
+        },
+        sendMessage: async (...args) => {
+            messages.push(args);
+            return { message_id: 1 };
+        },
+        buildExport: async () => {
+            builds += 1;
+        }
+    });
+
+    await flow.sendExport({ id: -10, type: "group" }, { id: 8024576205 }, "9", "epub", null, {
+        epubStyleId: "style1"
+    });
+    assert.equal(builds, 0);
+    assert.match(messages[0][1], /EXPORT_PRIVATE_CHAT_REQUIRED/);
+    assert.match(messages[0][2].reply_markup.inline_keyboard[0][0].url, /start=ex_/);
 });
 
 test("account handlers resume pending exports and preserve already-signed response", async () => {

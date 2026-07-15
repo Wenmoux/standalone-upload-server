@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 Bot API 客户端、Telegram 投递、导出构建器、计价规则、EPUB 样式协议和临时文件系统
+ * [INPUT]: 依赖 Bot API 客户端、Telegram 投递/私聊不可达识别、导出构建器、计价规则、EPUB 样式协议和临时文件系统
  * [OUTPUT]: 对外提供私聊导出续接、EPUB 样式提示、私聊可达性检查和成功后幂等结算状态机
  * [POS]: bot 的导出投递边界，连接 export-builder 产物与 Telegram/用户经济，但不持有命令注册和轮询生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -17,6 +17,7 @@ function createExportDelivery(options = {}) {
     const escapeHtml = options.escapeHtml;
     const asExportError = options.asExportError;
     const formatExportFailure = options.formatExportFailure;
+    const isPrivateChatUnavailableError = options.isPrivateChatUnavailableError;
     const normalizeEpubStyleChoice = options.normalizeEpubStyleChoice;
     const epubStyleChoices = options.epubStyleChoices || [];
     const epubStyleSelectionMarkup = options.epubStyleSelectionMarkup;
@@ -82,7 +83,7 @@ function createExportDelivery(options = {}) {
             await telegram("sendChatAction", { chat_id: userId, action: "upload_document" });
             return true;
         } catch (err) {
-            if (/forbidden|bot can't initiate conversation|chat not found|blocked/i.test(String(err.message || ""))) return false;
+            if (isPrivateChatUnavailableError(err)) return false;
             throw err;
         }
     }
@@ -273,7 +274,7 @@ function createExportDelivery(options = {}) {
                     await recordAndSettle();
                     await editMessage(chatId, progress.message_id, `${format.toUpperCase()} 已私聊发送：${exportSummary}`).catch(() => {});
                 } catch (err) {
-                    if (/forbidden|bot can't initiate conversation|chat not found|blocked/i.test(String(err.message || ""))) {
+                    if (isPrivateChatUnavailableError(err)) {
                         const exportErr = asExportError("EXPORT_PRIVATE_CHAT_REQUIRED", err.message || "private chat required", err);
                         exportErr.userNotified = true;
                         const failure = formatExportFailure(exportErr);

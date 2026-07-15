@@ -20,8 +20,8 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `epub-style-picker.js`: 定义 Telegram EPUB 直选样式白名单和 inline keyboard 回调协议，刻意不暴露兼容样式 `crane`。
 `economy-handlers.js`: 用户经济交互层，转换 CDK、管理员发币、排行榜、流水和红包命令，并以 Telegram chat/message 生成稳定红包创建键；余额事务仍由 server API 裁决。
 `export-builder.js`: 从 server API 拉取缓存/已购章节并流式生成 TXT 或调用 EPUB 生成器，管理任务临时文件边界。
-`export-delivery.js`: 导出投递状态机，管理群聊转私聊续接、EPUB 样式提示、文件发送后幂等扣费和临时目录清理。
-`export-errors.js`: 归一化导出失败码、可重试语义和用户提示，避免网络/配额/内容错误在调用点分叉。
+`export-delivery.js`: 导出投递状态机，管理群聊私聊可达性探测、保留样式的 `/start` 续接、文件发送后幂等扣费和临时目录清理。
+`export-errors.js`: 归一化导出失败码、私聊不可达特征、可重试语义和用户提示，避免 Telegram/网络/配额/内容错误在调用点分叉。
 `health-server.js`: 提供 Bot live/ready/status 端点，将 polling 新鲜度与 server API 连通性折叠为健康状态。
 `job-queue.js`: 提供进程内有界并发、同键互斥和取消信号；持久状态由上层 task runtime 负责。
 `message-runtime.js`: 编排命令解析、普通文本回退与审计包装，将 Telegram update 转换为注册器调用。
@@ -39,7 +39,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `search-query.js`: 解析搜索词、标签、平台后缀与书号，集中处理用户输入边界。
 `share-handlers.js`: 编排单书/书架共享、上传进度与奖励结算，通过幂等任务避免重复奖励。
 `social-handlers.js`: 实现收藏、红包、众筹及书评治理交互，以 Telegram 消息/草稿事实生成稳定发布键；私聊消费普通输入，群聊只消费手动回复，取消时清理提示且不遗留 ForceReply。
-`task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、重试、恢复、取消、审计及 worker/attempt fencing token 回写。
+`task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、带分类原因的退避重试、恢复、取消、审计及 worker/attempt fencing token 回写。
 `task-schedulers.js`: 定义导出、书架同步、共享和全员通知任务的持久类型、幂等键、互斥键与恢复工厂。
 `task-status-handlers.js`: 提供 `/tasks`、`/task`、`/canceljob` 的状态查询与权限边界。
 `telegram.js`: Telegram HTTP API 客户端，统一请求超时、消息编辑、文件发送和文本截断。

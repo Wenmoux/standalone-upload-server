@@ -28,11 +28,11 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-api-routes.test.js`: Bot API 账户、书籍、书评操作键、任务及 Worker fencing token 路由契约。
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
-- `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、发送后结算、权限与文案契约。
+- `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、PEER_ID_INVALID 降级、发送后结算、权限与文案契约。
 - `bot-library.test.js`: Bot PO18 加密凭据、书架、缺书请求与分享事实持久化用例。
 - `bot-menu-handlers.test.js`: Telegram 精简系统命令、宫格面板与 callback 领域委托契约。
 - `bot-settings.test.js`: Bot 命令目录配置清洗、去重、合并与持久化语义。
-- `bot-export-errors.test.js`: 导出错误分类与面向用户消息。
+- `bot-export-errors.test.js`: 导出错误分类、私聊不可达识别、重试语义与面向用户消息。
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。
 - `bot-runtime-modules.test.js`: Bot 运行模块装配、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
 - `bot-search-platforms.test.js`: 搜索平台参数和别名解析。

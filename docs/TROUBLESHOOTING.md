@@ -96,6 +96,7 @@ Bot 启动早于 server 就绪时可能先失败，后续看到：
 - 搜索稳定需要十几秒：查看 `/metrics` 的查询 p95 与 `PO18_SEARCH_SLOW_QUERY_MS` 日志。
 - Telegram 429：降低并发/频率，检查 polling 与 cooldown。
 - 导出大书慢：导出会分页读取、排队、校验额度并生成文件，使用 `/tasks` 查看后台任务，而不是重复点击。
+- 群聊导出出现 `PEER_ID_INVALID`：这是 Telegram 尚未允许 Bot 私聊该用户，不是 EPUB 文件损坏；点击 Bot 给出的私聊续接按钮并发送 `/start`。`ETIMEDOUT`、`EAI_AGAIN`、`fetch failed` 才属于会自动退避重试的 Telegram/网络故障。
 
 ## 频道同步消息仍然被置顶
 
