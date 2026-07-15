@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供真实 PostgreSQL 迁移、红包幂等/退款事务、领域流与查询计划集成测试的自动化回归断言
- * [POS]: tests 的真实 PostgreSQL 迁移、事务、领域流与查询计划集成测试守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供真实 PostgreSQL 迁移、红包/书评幂等事务、领域流与查询计划集成测试的自动化回归断言
+ * [POS]: tests 的真实 PostgreSQL 迁移、幂等副作用、领域流与查询计划集成守卫，防止实现或部署契约静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -139,6 +139,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     const { createReaderAccountService } = require("../services/reader-account");
     const { createBookManifestService } = require("../services/book-manifest");
     const { createBookChapterService } = require("../services/book-chapters");
+    const { createBookSocialService } = require("../services/book-social");
     const { createReviewGovernanceService } = require("../services/review-governance");
     const { createRedPacketService } = require("../services/red-packets");
 
@@ -821,6 +822,44 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
             (error) => error.code === "BOOK_ID_COLLISION_REQUIRES_BOOK_KEY" && error.status === 409
         );
         await query("DELETE FROM book_metadata WHERE id=$1", [collision.rows[0].id]);
+
+        const idempotentAuthor = await seedBotUser(query, {
+            username: "review-idempotent-author",
+            telegramId: "review-idempotent-tg",
+            copper: 300
+        });
+        const social = createBookSocialService({
+            query,
+            pool,
+            normalizeTelegramId: (value) => String(value || "").trim(),
+            botUserSelect,
+            scholarProfile: () => ({ level: 2, name: "L2" }),
+            reviewPublishCost: 100
+        });
+        const publishInput = {
+            telegramId: idempotentAuthor.telegram_id,
+            bookId: "manifest-pg",
+            content: "真实数据库中的幂等书评发布。",
+            source: "telegram_bot",
+            idempotencyKey: "integration:book-review:one"
+        };
+        const firstReview = await social.createBookReview(publishInput);
+        const repeatedReview = await social.createBookReview(publishInput);
+        assert.equal(firstReview.repeated, false);
+        assert.equal(repeatedReview.repeated, true);
+        assert.equal(repeatedReview.review.id, firstReview.review.id);
+        const reviewSettlement = await query(
+            `SELECT
+                (SELECT copper_coins FROM reader_users WHERE id=$1)::int balance,
+                (SELECT COUNT(*) FROM reader_book_reviews WHERE user_id=$1 AND book_id='manifest-pg')::int reviews,
+                (SELECT COUNT(*) FROM reader_transactions WHERE operation_key='integration:book-review:one')::int transactions`,
+            [idempotentAuthor.id]
+        );
+        assert.deepEqual(reviewSettlement.rows[0], { balance: 200, reviews: 1, transactions: 1 });
+        await assert.rejects(
+            social.createBookReview({ ...publishInput, content: "复用操作键但替换内容必须冲突。" }),
+            (error) => error.status === 409 && error.code === "IDEMPOTENCY_CONFLICT"
+        );
 
         const author = await seedBotUser(query, { username: "review-author", telegramId: "review-author-tg" });
         const reporter = await seedBotUser(query, { username: "review-reporter", telegramId: "review-reporter-tg" });

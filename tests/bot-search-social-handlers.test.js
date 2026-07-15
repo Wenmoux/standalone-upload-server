@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供搜索、私聊/群聊书评输入与取消清理交互契约的自动化回归断言
- * [POS]: tests 的搜索与社交命令处理器交互契约守卫，禁止 ForceReply 并防止草稿状态在取消后残留
+ * [OUTPUT]: 提供搜索、私聊/群聊书评输入、稳定发布键与取消清理交互契约的自动化回归断言
+ * [POS]: tests 的搜索与社交交互守卫，禁止 ForceReply、重复结算及草稿状态在取消后残留
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const test = require("node:test");
@@ -105,8 +105,8 @@ function reviewFixture(overrides = {}) {
             book: { title: "远南" },
             rules: { min_length: 6, max_length: 20, cost_copper: 100 }
         }),
-        publishBookReview: async (bookId, userId, content) => {
-            published.push({ bookId, userId, content });
+        publishBookReview: async (bookId, userId, content, idempotencyKey) => {
+            published.push({ bookId, userId, content, idempotencyKey });
             return { cost: 100, user: { copper_coins: 900 }, channel: { sent: true } };
         },
         ...overrides.client
@@ -153,8 +153,10 @@ test("guided review flow never forces a reply and only accepts the author's manu
     assert.match(fixture.sent.at(-1).text, /至少需要 6 字/);
     assert.equal(fixture.reviewDrafts.get({ chatId: chat.id, userId: author.id }).promptMessageId, String(retryPrompt.message_id));
 
-    await fixture.handlers.handleReviewDraft({ chat, from: author }, "这本真的非常好看");
-    assert.deepEqual(fixture.published, [{ bookId: "667518", userId: 88, content: "这本真的非常好看" }]);
+    await fixture.handlers.handleReviewDraft({ chat, from: author, message_id: 77 }, "这本真的非常好看");
+    assert.deepEqual(fixture.published, [
+        { bookId: "667518", userId: 88, content: "这本真的非常好看", idempotencyKey: "telegram:book-review-draft:-100:1" }
+    ]);
     assert.equal(fixture.reviewDrafts.get({ chatId: chat.id, userId: author.id }), null);
     assert.match(fixture.sent.at(-1).text, /书评已发布/);
 });

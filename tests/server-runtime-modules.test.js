@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 node:test/assert、拆分后的成长/值清洗/纠错/观测/频道发布/应用生命周期与 HTTP 管线模块
- * [OUTPUT]: 提供组合根下沉模块的纯规则、状态机、重试和安全中间件顺序回归断言
- * [POS]: tests 的 server-pg 模块化守卫，确保入口减重不改变 Reader、Bot、上传和启动行为
+ * [INPUT]: 依赖 node:test/assert、拆分后的成长/值清洗/纠错/观测/频道防重/应用生命周期与 HTTP 管线模块
+ * [OUTPUT]: 提供组合根下沉模块的纯规则、频道投递认领、重试和安全中间件顺序回归断言
+ * [POS]: tests 的 server-pg 模块化守卫，确保入口减重不改变 Reader、Bot、上传、频道副作用和启动行为
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -151,6 +151,7 @@ test("process error handlers tolerate database outages but exit on unknown fatal
 test("book review channel publisher writes marked message and delivery state", async () => {
     const posts = [];
     const updates = [];
+    const claims = [];
     const query = async (sql, params) => ({ rows: [{ book_id: params[0], title: "A&B", author: "作者" }] });
     const lookup = createLatestBookMetadataLookup(query);
     assert.equal((await lookup("9")).title, "A&B");
@@ -159,6 +160,10 @@ test("book review channel publisher writes marked message and delivery state", a
         telegramPushConfig: async () => ({ enabled: true, pushTypes: ["review"] }),
         telegramLoginBotToken: async () => "token",
         configGet: async () => "chat",
+        claimBookReviewChannelDelivery: async (id) => {
+            claims.push(id);
+            return { id, channel_status: "sending" };
+        },
         updateBookReviewChannelMessage: async (id, patch) => updates.push({ id, patch }),
         postJson: async (url, body) => {
             posts.push({ url, body });
@@ -174,7 +179,37 @@ test("book review channel publisher writes marked message and delivery state", a
     assert.equal(posts[0].url, "https://api.telegram.invalid/token/sendMessage");
     assert.equal(hasTelegramSystemPushMarker(posts[0].body.text), true);
     assert.equal(posts[0].body.reply_markup.inline_keyboard.length, 2);
+    assert.deepEqual(claims, [7]);
     assert.equal(updates[0].patch.status, "sent");
+
+    const repeated = await service.pushBookReviewToChannel({
+        review: { id: 7, channel_status: "sent", channel_chat_id: "chat", channel_message_id: "88" },
+        book
+    });
+    assert.deepEqual(repeated, { sent: true, repeated: true, chat_id: "chat", message_id: "88" });
+    assert.equal(posts.length, 1);
+});
+
+test("book review channel publisher skips a concurrently claimed delivery", async () => {
+    let posts = 0;
+    const service = createBookReviewChannelService({
+        latestBookMetadata: async () => null,
+        telegramPushConfig: async () => ({ enabled: true, pushTypes: ["review"] }),
+        telegramLoginBotToken: async () => "token",
+        configGet: async () => "chat",
+        claimBookReviewChannelDelivery: async () => null,
+        updateBookReviewChannelMessage: async () => null,
+        postJson: async () => {
+            posts += 1;
+            return "{}";
+        },
+        telegramApiUrl: () => "https://api.telegram.invalid",
+        telegramHtml: String
+    });
+    assert.deepEqual(await service.pushBookReviewToChannel({ review: { id: 9 }, book: {} }), {
+        skipped: "delivery_in_progress_or_sent"
+    });
+    assert.equal(posts, 0);
 });
 
 test("application runtime initializes once and schedules bounded database retry", async () => {

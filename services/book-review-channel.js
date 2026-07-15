@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖书籍查询、Telegram 推送配置/API、书评状态写入与系统推送不可见标记
- * [OUTPUT]: 对外提供最新书籍元信息读取、书评频道文案/按钮构造和发布状态机
- * [POS]: services 的书评外发适配层，连接 book-social 事实与 Telegram 频道但不持有 HTTP 路由状态
+ * [INPUT]: 依赖书籍查询、Telegram 推送配置/API、书评投递认领/状态写入与系统推送不可见标记
+ * [OUTPUT]: 对外提供最新书籍元信息读取、书评频道文案/按钮构造和防重复发布状态机
+ * [POS]: services 的书评外发适配层，以数据库认领连接 book-social 事实与 Telegram 频道并隔离外部副作用
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function truncateTelegramText(value = "", max = 900) {
@@ -29,6 +29,7 @@ function createBookReviewChannelService(options = {}) {
     const telegramPushConfig = options.telegramPushConfig;
     const telegramLoginBotToken = options.telegramLoginBotToken;
     const configGet = options.configGet;
+    const claimBookReviewChannelDelivery = options.claimBookReviewChannelDelivery;
     const updateBookReviewChannelMessage = options.updateBookReviewChannelMessage;
     const postJson = options.postJson;
     const telegramApiUrl = options.telegramApiUrl;
@@ -73,8 +74,17 @@ function createBookReviewChannelService(options = {}) {
         await updateBookReviewChannelMessage(reviewId, patch).catch(() => {});
     }
 
-    async function pushBookReviewToChannel({ review, book } = {}) {
+    async function pushBookReviewToChannel({ review: inputReview, book } = {}) {
+        let review = inputReview;
         if (!review?.id) return { skipped: "missing_review" };
+        if (review.channel_status === "sent") {
+            return {
+                sent: true,
+                repeated: true,
+                chat_id: String(review.channel_chat_id || ""),
+                message_id: String(review.channel_message_id || "")
+            };
+        }
         const [pushConfig, token, chatId] = await Promise.all([
             telegramPushConfig(),
             telegramLoginBotToken(),
@@ -87,6 +97,11 @@ function createBookReviewChannelService(options = {}) {
         if (!token || !chatId) {
             await writeChannelStatus(review.id, { status: "skipped", error: "missing telegram_bot_token or telegram_chat_id" });
             return { skipped: "missing_channel_config" };
+        }
+        if (typeof claimBookReviewChannelDelivery === "function") {
+            const claimed = await claimBookReviewChannelDelivery(review.id);
+            if (!claimed) return { skipped: "delivery_in_progress_or_sent" };
+            review = { ...review, ...claimed };
         }
         try {
             const raw = await postJson(telegramApiUrl(token, "sendMessage"), {

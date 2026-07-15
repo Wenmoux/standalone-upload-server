@@ -12,7 +12,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `commands/`: 按账户、搜索、导出、社交和外部集成拆分的命令注册器；命令名需与 `command-catalog.js` 同步。
 `epub-styles/`: EPUB 视觉插件与资源契约；生成器注册四种样式，Telegram 只暴露前三种直选按钮。
 `account-formatters.js`: 把账户、签到、流水与排行榜领域数据转换为 Telegram HTML，隔离展示规则与请求逻辑。
-`bot-session.js`: 提供有界搜索查询缓存、按聊天与用户隔离的短期书评/管理员广播草稿，以及按配置生成的帮助文本，避免分页回调携带过长原始查询或群聊输入串线。
+`bot-session.js`: 提供有界搜索查询缓存、按聊天与用户隔离且携带稳定发布键的短期书评草稿、管理员广播草稿及帮助文本，避免重试重复结算或群聊输入串线。
 `broadcast-handlers.js`: 管理员全员通知交互与批量投递器，执行身份复核、草稿确认、收件人分页、限速发送和失败统计。
 `command-catalog.js`: 命令名称、分组、帮助、别名和管理员标记的单一元数据源，驱动后台配置与帮助展示。
 `command-registry.js`: 注册、别名解析、启停配置和 Telegram command list 的运行时注册表，不实现具体业务。
@@ -25,7 +25,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `health-server.js`: 提供 Bot live/ready/status 端点，将 polling 新鲜度与 server API 连通性折叠为健康状态。
 `job-queue.js`: 提供进程内有界并发、同键互斥和取消信号；持久状态由上层 task runtime 负责。
 `message-runtime.js`: 编排命令解析、普通文本回退与审计包装，将 Telegram update 转换为注册器调用。
-`pg-bot-client.js`: Bot 到 server-pg 的唯一 HTTP 客户端，封装 Bot Token、超时、缓存和分页聚合。
+`pg-bot-client.js`: Bot 到 server-pg 的唯一 HTTP 客户端，封装 Bot Token、超时、缓存、操作键和分页聚合。
 `pikpak-handler.js`: PikPak 外部存储交互层，封装目录、搜索、WebDAV 下载流与 Telegram 临时文件投递。
 `po18-account-handlers.js`: 处理 PO18 凭据绑定、验证码登录、状态和登出，只通过服务端加密凭据 API 工作。
 `po18-client.js`: 封装 PO18 上游会话与已购内容访问，供账号和导出流程复用。
@@ -37,7 +37,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `search-platforms.js`: 定义支持的平台后缀、默认平台和展示名称，保持命令与回调参数一致。
 `search-query.js`: 解析搜索词、标签、平台后缀与书号，集中处理用户输入边界。
 `share-handlers.js`: 编排单书/书架共享、上传进度与奖励结算，通过幂等任务避免重复奖励。
-`social-handlers.js`: 实现收藏列表、红包、众筹、私聊普通输入/群聊手动回复收集且取消时清理提示的书评发布、举报和申诉交互层；禁止 ForceReply 遗留客户端回复状态。
+`social-handlers.js`: 实现收藏、红包、众筹及书评治理交互，以 Telegram 消息/草稿事实生成稳定发布键；私聊消费普通输入，群聊只消费手动回复，取消时清理提示且不遗留 ForceReply。
 `task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、重试、恢复、取消、审计及 worker/attempt fencing token 回写。
 `task-schedulers.js`: 定义导出、书架同步、共享和全员通知任务的持久类型、幂等键、互斥键与恢复工厂。
 `task-status-handlers.js`: 提供 `/tasks`、`/task`、`/canceljob` 的状态查询与权限边界。

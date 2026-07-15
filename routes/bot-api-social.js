@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Express、Bot Token 鉴权、书籍反馈/众筹/书评领域服务与 Bot 用户公开投影
- * [OUTPUT]: 对外提供 Bot 书籍反馈、众筹榜单/支持、书评列表/发布/投票路由工厂
- * [POS]: routes 的 Bot 社交协议适配层，只处理兼容字段和响应映射，余额与互动状态机由 services 承担
+ * [INPUT]: 依赖 Express、Bot Token 鉴权、幂等书评/反馈/众筹领域服务与 Bot 用户公开投影
+ * [OUTPUT]: 对外提供 Bot 书籍反馈、众筹榜单/支持、幂等书评发布/列表/投票路由工厂
+ * [POS]: routes 的 Bot 社交协议适配层，只传递可信来源与操作键，余额、互动和外发状态机由 services 承担
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -131,7 +131,8 @@ function createBotApiSocialRoutes(deps = {}) {
                 telegramId: req.body?.telegram_id || req.body?.telegramId,
                 bookId: req.params.bookId,
                 content: req.body?.content || req.body?.text || "",
-                source: "telegram_bot"
+                source: "telegram_bot",
+                idempotencyKey: req.body?.idempotency_key || req.body?.idempotencyKey || ""
             });
             let channel = { skipped: "not_configured" };
             if (typeof pushBookReviewToChannel === "function") {
@@ -145,6 +146,7 @@ function createBotApiSocialRoutes(deps = {}) {
                 typeof bookReviewById === "function" ? await bookReviewById(result.review.id).catch(() => result.review) : result.review;
             res.json({
                 success: true,
+                repeated: Boolean(result.repeated),
                 cost: result.cost,
                 review,
                 book: result.book,
@@ -159,7 +161,11 @@ function createBotApiSocialRoutes(deps = {}) {
                 }
             });
         } catch (error) {
-            if (error.status) return res.status(error.status).json({ error: error.message, scholar: error.scholar || null });
+            if (error.status) {
+                return res
+                    .status(error.status)
+                    .json({ error: error.message, code: error.code || undefined, scholar: error.scholar || null });
+            }
             next(error);
         }
     });

@@ -23,9 +23,9 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `book-crowd.test.js`: 书籍反馈、众筹榜单、服务端成本、重复支持与事务回滚语义。
 - `book-manifest.test.js`: 书籍清单导入导出、校验和及确认边界。
 - `book-maintenance.test.js`: 陈旧 PO18 书籍预览、事务锁定、平台隔离清理与回滚。
-- `book-social.test.js`: 书评发布扣费、投票奖励、频率限制与权限语义。
+- `book-social.test.js`: 书评幂等发布扣费、操作键冲突、投票奖励、频率限制与权限语义。
 - `bot-adapters.test.js`: Bot 外部适配器的请求和错误规范化。
-- `bot-api-routes.test.js`: Bot API 账户、书籍、任务及 Worker fencing token 路由契约。
+- `bot-api-routes.test.js`: Bot API 账户、书籍、书评操作键、任务及 Worker fencing token 路由契约。
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
 - `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、发送后结算、权限与文案契约。
@@ -34,7 +34,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。
 - `bot-runtime-modules.test.js`: Bot 运行模块装配、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
 - `bot-search-platforms.test.js`: 搜索平台参数和别名解析。
-- `bot-search-social-handlers.test.js`: 搜索与社交处理器交互契约，覆盖私聊普通输入、群聊手动回复、书评草稿隔离、失败保留及取消时清理提示。
+- `bot-search-social-handlers.test.js`: 搜索与社交交互契约，覆盖私聊输入、群聊手动回复、书评草稿隔离、稳定发布键、失败保留及取消清理。
 - `bot-task-runtime.test.js`: 持久任务领取、执行、续租、fencing token 回写和完成语义。
 - `bot-task-status-handlers.test.js`: 任务查询、详情与取消命令。
 - `bot-text-share-utils.test.js`: 文本分享切分、长度与文件名规则。
@@ -62,8 +62,8 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `migrations.test.js`: 迁移顺序、回滚配对和不可变约束。
 - `network-security.test.js`: 出站 URL、私网与代理安全规则。
 - `openapi-error-response.test.js`: OpenAPI 索引与统一错误响应契约。
-- `pg-bot-client.test.js`: Bot HTTP 客户端重试、鉴权和错误映射。
-- `pg-flows.test.js`: 真实 PostgreSQL 迁移、事务、领域流与查询计划集成测试。
+- `pg-bot-client.test.js`: Bot HTTP 客户端分页、鉴权、书评操作键和错误映射。
+- `pg-flows.test.js`: 真实 PostgreSQL 迁移、书评/红包幂等事务、领域流与查询计划集成测试。
 - `po18-account-handlers.test.js`: PO18 账号绑定、验证码与书架命令。
 - `po18-crawler-http.test.js`: 爬虫 HTTP 封装、Cookie 与错误策略。
 - `po18-crawler.test.js`: PO18 配置/策略/运行状态/数据库来源边界、解析、抓取与落库流程。
@@ -86,7 +86,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `schema-drift.test.js`: schema snapshot 与迁移目录一致性。
 - `schema-validation.test.js`: 高成本请求体 JSON Schema 注册与拒绝契约。
 - `search-benchmark.test.js`: 搜索基准预算和结果解析。
-- `server-runtime-modules.test.js`: server-pg 下沉模块的成长/值清洗/纠错/观测/书评发布/启动重试与 HTTP 管线顺序契约。
+- `server-runtime-modules.test.js`: server-pg 下沉模块的成长/值清洗/纠错/观测/书评频道防重/启动重试与 HTTP 管线顺序契约。
 - `share-handlers.test.js`: TXT/EPUB 分享、样式选择与投递流程。
 - `source-health.test.js`: 内容来源熔断与健康评分。
 - `startup-gate.test.js`: 数据库迁移及应用初始化期间的业务流量拒绝、健康放行与就绪切换契约。

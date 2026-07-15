@@ -1441,7 +1441,8 @@ Content-Type: application/json
 ```json
 {
     "telegram_id": "123456",
-    "content": "这本书节奏很好，角色也站得住。"
+    "content": "这本书节奏很好，角色也站得住。",
+    "idempotency_key": "telegram:book-review:-100123:456"
 }
 ```
 
@@ -1457,7 +1458,9 @@ Content-Type: application/json
 规则：
 
 - 发布书评需要 Lv.2 及以上，默认消耗 `100` 铜。
+- Bot 以 Telegram 消息或书评草稿生成最长 240 字符的稳定 `idempotency_key`；同键同参数重试返回 `repeated: true`，不重复建书评或扣铜，异参复用返回 `409 IDEMPOTENCY_CONFLICT`。
 - 发布成功后仅在 Telegram 总开关开启且 `pushTypes` 包含 `review` 时推送到 `telegram_chat_id`。
+- 频道投递先原子认领书评状态；并发重试不会重复发频道消息，失败可重试，卡在 `sending` 超过 2 分钟后可重新认领。
 - 频道按钮投票：`like` 给书评作者 `+100` 铜，`dislike` 给书评作者 `-1` 铜。
 - 同一用户对同一书评只能保留一个态度；重复点击在频率限制前恢复既有成功结果且不重复结算，改投只结算净变化。
 - 发布和投票的持久化 `source` 固定为 `telegram_bot`，忽略客户端伪造来源。

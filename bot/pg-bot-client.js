@@ -20,8 +20,12 @@ function cloneData(data) {
 
 function idempotencyPayload(options = {}) {
     if (!options || typeof options !== "object") return {};
-    const key = String(options.idempotencyKey || options.idempotency_key || "").trim().slice(0, 240);
-    const scope = String(options.idempotencyScope || options.idempotency_scope || "").trim().slice(0, 120);
+    const key = String(options.idempotencyKey || options.idempotency_key || "")
+        .trim()
+        .slice(0, 240);
+    const scope = String(options.idempotencyScope || options.idempotency_scope || "")
+        .trim()
+        .slice(0, 120);
     return {
         ...(key ? { idempotency_key: key } : {}),
         ...(scope ? { idempotency_scope: scope } : {})
@@ -35,7 +39,10 @@ class PgBotClient {
         this.botToken = options.botToken || process.env.PO18_BOT_API_TOKEN || "";
         this.fetchImpl = options.fetchImpl || globalThis.fetch;
         this.requestTimeoutMs = positiveInt(options.requestTimeoutMs ?? process.env.PO18_BOT_API_TIMEOUT_MS, 30000);
-        this.exportPageSize = Math.max(20, Math.min(500, positiveInt(options.exportPageSize ?? process.env.PO18_BOT_EXPORT_PAGE_SIZE, 100)));
+        this.exportPageSize = Math.max(
+            20,
+            Math.min(500, positiveInt(options.exportPageSize ?? process.env.PO18_BOT_EXPORT_PAGE_SIZE, 100))
+        );
         this.cacheTtlMs = positiveInt(options.cacheTtlMs ?? process.env.PO18_BOT_CACHE_TTL_MS, 10000);
         this.cacheMax = Math.max(20, positiveInt(options.cacheMax ?? process.env.PO18_BOT_CACHE_MAX, 300));
         this.cache = new Map();
@@ -298,7 +305,15 @@ class PgBotClient {
     async spendCurrency(telegramId, currency, amount, type = "spend", detail = "", source = "telegram_bot", options = {}) {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/spend`, {
             method: "POST",
-            body: JSON.stringify({ currency, amount, type, detail, source, ...idempotencyPayload(options), ...(options.bookId ? { book_id: options.bookId } : {}) })
+            body: JSON.stringify({
+                currency,
+                amount,
+                type,
+                detail,
+                source,
+                ...idempotencyPayload(options),
+                ...(options.bookId ? { book_id: options.bookId } : {})
+            })
         });
     }
 
@@ -390,10 +405,10 @@ class PgBotClient {
         return this.request(`/bot-api/books/${encodeURIComponent(bookId)}/reviews${suffix}`);
     }
 
-    async publishBookReview(bookId, telegramId, content) {
+    async publishBookReview(bookId, telegramId, content, idempotencyKey = "") {
         return this.request(`/bot-api/books/${encodeURIComponent(bookId)}/reviews`, {
             method: "POST",
-            body: JSON.stringify({ telegram_id: telegramId, content, source: "telegram_bot" })
+            body: JSON.stringify({ telegram_id: telegramId, content, source: "telegram_bot", idempotency_key: idempotencyKey })
         });
     }
 
@@ -463,7 +478,9 @@ class PgBotClient {
     }
 
     async getUserByTelegramUsername(username) {
-        const data = await this.request(`/bot-api/users/by-telegram-username/${encodeURIComponent(String(username || "").replace(/^@/, ""))}`);
+        const data = await this.request(
+            `/bot-api/users/by-telegram-username/${encodeURIComponent(String(username || "").replace(/^@/, ""))}`
+        );
         return data.user || null;
     }
 

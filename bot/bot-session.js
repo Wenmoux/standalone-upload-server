@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖命令注册表的已配置命令快照、进程内时间源及 Telegram 会话身份
- * [OUTPUT]: 对外提供有界搜索查询缓存、短期书评/管理员广播草稿状态与按命令分组生成的帮助文本
- * [POS]: bot 会话辅助层，在 Telegram 回调长度约束下保存隔离的短期交互上下文并投影命令元数据
+ * [OUTPUT]: 对外提供有界搜索缓存、携带稳定发布键的短期书评草稿、管理员广播草稿与命令帮助文本
+ * [POS]: bot 会话辅助层，在 Telegram 回调长度约束下保存可安全重试的隔离交互上下文并投影命令元数据
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createSearchCache(options = {}) {
@@ -53,7 +53,7 @@ function createReviewDraftStore(options = {}) {
         return drafts.get(keyOf(chatId, userId)) || null;
     }
 
-    function begin({ chatId, userId, bookId, promptMessageId = "", rules = {} } = {}) {
+    function begin({ chatId, userId, bookId, promptMessageId = "", operationKey = "", rules = {} } = {}) {
         prune();
         const key = keyOf(chatId, userId);
         const minLength = Math.max(1, Math.trunc(Number(rules.min_length || defaultMinLength)));
@@ -63,6 +63,7 @@ function createReviewDraftStore(options = {}) {
             userId: String(userId || ""),
             bookId: String(bookId || ""),
             promptMessageId: String(promptMessageId || ""),
+            operationKey: String(operationKey || "").slice(0, 240),
             minLength,
             maxLength,
             createdAt: now()

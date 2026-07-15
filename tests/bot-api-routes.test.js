@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供 Bot API 账户、任务、红包、社交和书库路由契约的自动化回归断言
- * [POS]: tests 的 Bot API 组合与协议映射守卫，防止子域拆分、错误状态或可信来源在后续变更中静默退化
+ * [OUTPUT]: 提供 Bot API 账户、任务、红包、书评操作键、社交和书库路由契约的自动化回归断言
+ * [POS]: tests 的 Bot API 组合与协议映射守卫，防止子域拆分、错误状态、可信来源或幂等键透传静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -652,7 +652,12 @@ test("bot social routes force trusted review provenance", async () => {
         const published = await fetch(`${base}/bot-api/books/book-1/reviews`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
-            body: JSON.stringify({ telegram_id: "100", content: "这是一条足够长的书评", source: "forged_admin" })
+            body: JSON.stringify({
+                telegram_id: "100",
+                content: "这是一条足够长的书评",
+                source: "forged_admin",
+                idempotency_key: "telegram:book-review:chat:7"
+            })
         });
         assert.equal(published.status, 200);
         const voted = await fetch(`${base}/bot-api/book-reviews/7/vote`, {
@@ -663,6 +668,7 @@ test("bot social routes force trusted review provenance", async () => {
         assert.equal(voted.status, 200);
     });
     assert.equal(reviews[0].source, "telegram_bot");
+    assert.equal(reviews[0].idempotencyKey, "telegram:book-review:chat:7");
     assert.equal(votes[0].source, "telegram_bot");
 });
 

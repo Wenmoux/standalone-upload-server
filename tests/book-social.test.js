@@ -41,11 +41,32 @@ test("book social service creates reviews and settles vote rewards", async () =>
     ]);
     const reviews = [];
     const votes = new Map();
+    const operations = new Map();
+    const transactions = [];
     const calls = [];
     const db = {
         async query(sql, params = []) {
             calls.push({ sql, params });
             if (/BEGIN|COMMIT|ROLLBACK/.test(sql)) return { rows: [] };
+            if (/pg_advisory_xact_lock/.test(sql)) return { rows: [] };
+            if (/FROM reader_operation_ledger/.test(sql)) {
+                const operation = operations.get(params[0]);
+                return { rows: operation ? [{ ...operation }] : [] };
+            }
+            if (/INSERT INTO reader_operation_ledger/.test(sql)) {
+                const operation = {
+                    operation_scope: "book-review-publish",
+                    operation_type: "book_review_publish",
+                    user_id: params[1],
+                    telegram_id: params[2],
+                    result_json: JSON.parse(params[3])
+                };
+                operations.set(params[0], operation);
+                return { rows: [{ ...operation }] };
+            }
+            if (/FROM reader_transactions WHERE operation_key/.test(sql)) {
+                return { rows: transactions.filter((item) => item.operation_key === params[0]).map((item) => ({ ...item })) };
+            }
             if (/SELECT id FROM reader_users WHERE telegram_id = \$1/.test(sql)) {
                 const user = [...users.values()].find((item) => item.telegram_id === params[0]);
                 return { rows: user ? [{ id: user.id }] : [] };
@@ -71,6 +92,13 @@ test("book social service creates reviews and settles vote rewards", async () =>
                 const user = users.get(Number(params[1]));
                 user.copper_coins -= cost;
                 return { rows: [{ ...user }] };
+            }
+            if (/SET channel_status = 'sending'/.test(sql)) {
+                const review = reviews.find((item) => item.id === Number(params[0]));
+                if (!review || review.channel_status === "sent" || review.channel_status === "sending") return { rows: [] };
+                review.channel_status = "sending";
+                review.channel_error = "";
+                return { rows: [{ ...review }] };
             }
             if (/UPDATE reader_users\s+SET copper_coins = GREATEST/.test(sql)) {
                 const delta = Number(params[0]);
@@ -171,7 +199,15 @@ test("book social service creates reviews and settles vote rewards", async () =>
                 return { rows: [{ ...vote }] };
             }
             if (/INSERT INTO reader_transactions/.test(sql)) {
-                return { rows: [{ id: calls.length, type: params[2], amount: params[3], balance: params[4] }] };
+                const transaction = {
+                    id: transactions.length + 1,
+                    type: params[2],
+                    amount: params[3],
+                    balance: params[4],
+                    operation_key: params[7] || ""
+                };
+                transactions.push(transaction);
+                return { rows: [{ ...transaction }] };
             }
             return { rows: [] };
         },
@@ -186,13 +222,34 @@ test("book social service creates reviews and settles vote rewards", async () =>
         reviewPublishCost: 100
     });
 
-    const created = await service.createBookReview({ telegramId: "100", bookId: "b1", content: "这本书节奏很好，角色也站得住。" });
+    const publishInput = {
+        telegramId: "100",
+        bookId: "b1",
+        content: "这本书节奏很好，角色也站得住。",
+        idempotencyKey: "telegram:book-review:chat:1"
+    };
+    const created = await service.createBookReview(publishInput);
     assert.equal(created.review.book_id, "b1");
+    assert.equal(created.repeated, false);
     assert.equal(users.get(1).copper_coins, 100);
     assert.equal(created.transaction.amount, -100);
     const firstCommitIndex = calls.findIndex((call) => call.sql === "COMMIT");
     const createdProjectionIndex = calls.findIndex((call) => /LEFT JOIN reader_users u/.test(call.sql));
     assert.ok(createdProjectionIndex >= 0 && createdProjectionIndex < firstCommitIndex);
+
+    const replayed = await service.createBookReview(publishInput);
+    assert.equal(replayed.repeated, true);
+    assert.equal(replayed.review.id, created.review.id);
+    assert.equal(users.get(1).copper_coins, 100);
+    assert.equal(reviews.length, 1);
+    assert.equal(transactions.filter((item) => item.type === "book_review_publish").length, 1);
+    await assert.rejects(
+        service.createBookReview({ ...publishInput, content: "同一个键不能换成另一段内容。" }),
+        (error) => error.status === 409 && error.code === "IDEMPOTENCY_CONFLICT"
+    );
+    const claimedDelivery = await service.claimBookReviewChannelDelivery(created.review.id);
+    assert.equal(claimedDelivery.channel_status, "sending");
+    assert.match(calls.find((call) => /SET channel_status = 'sending'/.test(call.sql)).sql, /INTERVAL '2 minutes'/);
 
     const liked = await service.voteBookReview({ telegramId: "200", reviewId: created.review.id, vote: "like" });
     assert.equal(liked.reward_delta, 100);

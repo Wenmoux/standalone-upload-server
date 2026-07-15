@@ -1,12 +1,25 @@
 /**
- * [INPUT]: 依赖注入的 PostgreSQL query/事务、用户身份与平台配置，执行书评发布和投票奖励结算
- * [OUTPUT]: 对外提供书评列表、发布、投票、频道状态与并发奖励结算能力的领域服务工厂
- * [POS]: services 的书评聚合根，在事务边界内维护公开书评视图、发布成本与投票奖励一致性
+ * [INPUT]: 依赖注入的 PostgreSQL query/事务、操作账本、用户身份与平台配置，执行书评发布和投票奖励结算
+ * [OUTPUT]: 对外提供幂等书评发布、列表、投票、频道投递认领与并发奖励结算能力的领域服务工厂
+ * [POS]: services 的书评聚合根，在事务边界内维护公开书评、发布成本、外发认领与投票奖励一致性
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function boundedConfigInteger(value, fallback, min, max) {
     const number = Number(value);
     return Number.isSafeInteger(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function bookSocialError(status, message, code = "") {
+    return Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
+}
+
+function ledgerResult(row = {}) {
+    if (row.result_json && typeof row.result_json === "object") return row.result_json;
+    try {
+        return JSON.parse(row.result_json || "{}");
+    } catch {
+        return {};
+    }
 }
 
 function createBookSocialService(options = {}) {
@@ -69,6 +82,12 @@ function createBookSocialService(options = {}) {
         if (vote === "like") return 100;
         if (vote === "dislike") return -1;
         return 0;
+    }
+
+    function normalizeReviewOperationKey(value) {
+        const key = String(value || "").trim();
+        if (key.length > 240) throw bookSocialError(400, "invalid idempotency_key");
+        return key;
     }
 
     function dbQuery(db, sql, params = []) {
@@ -235,11 +254,13 @@ function createBookSocialService(options = {}) {
         return publicReview(result.rows[0]);
     }
 
-    async function createBookReview({ telegramId, bookId, content, source = "telegram_bot" } = {}) {
+    async function createBookReview({ telegramId, bookId, content, source = "telegram_bot", idempotencyKey = "" } = {}) {
         if (!pool) throw new Error("book social pool is not configured");
         const safeTelegramId = normalizeTelegramId(telegramId);
         const safeBookId = String(bookId || "").trim();
         const safeContent = normalizeReviewContent(content);
+        const safeSource = String(source || "telegram_bot").slice(0, 64);
+        const operationKey = normalizeReviewOperationKey(idempotencyKey);
         const length = reviewCharLength(safeContent);
         if (!safeTelegramId) throw Object.assign(new Error("missing telegram_id"), { status: 400 });
         if (!safeBookId) throw Object.assign(new Error("missing book_id"), { status: 400 });
@@ -249,12 +270,68 @@ function createBookSocialService(options = {}) {
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
+            if (operationKey) await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [operationKey]);
             const userResult = await client.query(`SELECT ${botUserSelect()} FROM reader_users WHERE telegram_id = $1 FOR UPDATE`, [
                 safeTelegramId
             ]);
             const user = userResult.rows[0];
             if (!user) throw Object.assign(new Error("user not found"), { status: 404 });
             if (user.is_banned) throw Object.assign(new Error("user banned"), { status: 403 });
+            let replay = null;
+            if (operationKey) {
+                const found = await client.query(
+                    `SELECT operation_scope, operation_type, user_id, telegram_id, result_json
+                     FROM reader_operation_ledger
+                     WHERE idempotency_key = $1
+                     LIMIT 1`,
+                    [operationKey]
+                );
+                const row = found.rows[0];
+                if (row) {
+                    const result = ledgerResult(row);
+                    const signature = result.signature || {};
+                    if (
+                        row.operation_scope !== "book-review-publish" ||
+                        row.operation_type !== "book_review_publish" ||
+                        String(row.user_id || "") !== String(user.id || "") ||
+                        normalizeTelegramId(row.telegram_id) !== safeTelegramId ||
+                        String(signature.book_id || "") !== safeBookId ||
+                        String(signature.content || "") !== safeContent ||
+                        String(signature.source || "") !== safeSource
+                    ) {
+                        throw bookSocialError(409, "idempotency key already used for another operation", "IDEMPOTENCY_CONFLICT");
+                    }
+                    replay = result;
+                }
+            }
+            const bookResult = await client.query(
+                `SELECT *
+                 FROM book_metadata
+                 WHERE book_id = $1
+                 ORDER BY COALESCE(subscribed_chapters, 0) DESC, COALESCE(updated_at, created_at) DESC, id DESC
+                 LIMIT 1`,
+                [safeBookId]
+            );
+            const book = bookResult.rows[0];
+            if (!book) throw Object.assign(new Error("book not found"), { status: 404 });
+            if (replay) {
+                const review = await bookReviewById(replay.review_id, null, client.query.bind(client));
+                if (!review) throw bookSocialError(409, "idempotent review no longer exists", "IDEMPOTENCY_CONFLICT");
+                const transactionResult = await client.query(
+                    "SELECT * FROM reader_transactions WHERE operation_key=$1 ORDER BY id DESC LIMIT 1",
+                    [operationKey]
+                );
+                await client.query("COMMIT");
+                return {
+                    success: true,
+                    repeated: true,
+                    cost: Number(review.publish_cost || 0),
+                    review,
+                    book,
+                    user,
+                    transaction: transactionResult.rows[0] || null
+                };
+            }
             const activity = await client.query(
                 `SELECT
                     COUNT(*) FILTER (WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour')::int hourly,
@@ -273,16 +350,6 @@ function createBookSocialService(options = {}) {
             if (Number(scholar.level || 1) < reviewMinLevel) {
                 throw Object.assign(new Error(`Lv.${reviewMinLevel} 才能发布书评`), { status: 403, scholar });
             }
-            const bookResult = await client.query(
-                `SELECT *
-                 FROM book_metadata
-                 WHERE book_id = $1
-                 ORDER BY COALESCE(subscribed_chapters, 0) DESC, COALESCE(updated_at, created_at) DESC, id DESC
-                 LIMIT 1`,
-                [safeBookId]
-            );
-            const book = bookResult.rows[0];
-            if (!book) throw Object.assign(new Error("book not found"), { status: 404 });
             if (Number(user.copper_coins || 0) < reviewPublishCost) {
                 throw Object.assign(new Error(`铜币不足，需要 ${reviewPublishCost}`), { status: 409 });
             }
@@ -309,14 +376,14 @@ function createBookSocialService(options = {}) {
                     safeBookId,
                     safeContent,
                     reviewPublishCost,
-                    String(source || "telegram_bot").slice(0, 64)
+                    safeSource
                 ]
             );
             let transaction = null;
             if (reviewPublishCost > 0) {
                 const tx = await client.query(
-                    `INSERT INTO reader_transactions(user_id, telegram_id, type, currency, amount, balance, detail, source)
-                     VALUES ($1,$2,$3,'copper',$4,$5,$6,$7)
+                    `INSERT INTO reader_transactions(user_id, telegram_id, type, currency, amount, balance, detail, source, operation_key)
+                     VALUES ($1,$2,$3,'copper',$4,$5,$6,$7,$8)
                      RETURNING *`,
                     [
                         user.id,
@@ -325,15 +392,34 @@ function createBookSocialService(options = {}) {
                         -reviewPublishCost,
                         Number(updatedUser.rows[0].copper_coins || 0),
                         `book=${safeBookId} review=${reviewResult.rows[0].id}`,
-                        String(source || "telegram_bot").slice(0, 64)
+                        safeSource,
+                        operationKey
                     ]
                 );
                 transaction = tx.rows[0] || null;
             }
             const review = await bookReviewById(reviewResult.rows[0].id, null, client.query.bind(client));
+            if (operationKey) {
+                await client.query(
+                    `INSERT INTO reader_operation_ledger
+                        (idempotency_key, operation_scope, operation_type, user_id, telegram_id, result_json)
+                     VALUES ($1,'book-review-publish','book_review_publish',$2,$3,$4::jsonb)`,
+                    [
+                        operationKey,
+                        user.id,
+                        user.telegram_id || safeTelegramId,
+                        JSON.stringify({
+                            signature: { book_id: safeBookId, content: safeContent, source: safeSource },
+                            review_id: reviewResult.rows[0].id,
+                            transaction_id: transaction?.id || null
+                        })
+                    ]
+                );
+            }
             await client.query("COMMIT");
             return {
                 success: true,
+                repeated: false,
                 cost: reviewPublishCost,
                 review,
                 book,
@@ -545,8 +631,29 @@ function createBookSocialService(options = {}) {
         return result.rows[0] || null;
     }
 
+    async function claimBookReviewChannelDelivery(reviewId) {
+        if (typeof query !== "function") throw new Error("book social query function is not configured");
+        const safeId = Number(reviewId);
+        if (!Number.isSafeInteger(safeId) || safeId <= 0) return null;
+        const result = await query(
+            `UPDATE reader_book_reviews
+             SET channel_status = 'sending',
+                 channel_error = '',
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1
+               AND (
+                   COALESCE(channel_status, '') IN ('', 'pending', 'failed', 'skipped')
+                   OR (channel_status = 'sending' AND updated_at < CURRENT_TIMESTAMP - INTERVAL '2 minutes')
+               )
+             RETURNING *`,
+            [safeId]
+        );
+        return result.rows[0] || null;
+    }
+
     return {
         bookReviewById,
+        claimBookReviewChannelDelivery,
         createBookReview,
         listBookReviews,
         normalizeReviewContent,

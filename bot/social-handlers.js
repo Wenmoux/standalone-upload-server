@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 PgBotClient、注册守卫、短期书评草稿、书籍/众筹/书评 UI 构造器和 Telegram 消息编辑/删除接口
- * [OUTPUT]: 对外提供收藏、反馈、红包、众筹、不触发 ForceReply 的引导式书评发布、投票、举报与申诉交互处理器
- * [POS]: bot 社交治理域的交互编排层，把群聊手动定向回复和私聊普通输入映射为服务端受审计的领域 API 调用
+ * [INPUT]: 依赖 PgBotClient、Telegram 消息身份、注册守卫、短期书评草稿、社交 UI 与消息编辑/删除接口
+ * [OUTPUT]: 对外提供携带稳定操作键的书评发布，以及收藏、反馈、红包、众筹、投票、举报与申诉处理器
+ * [POS]: bot 社交治理域的交互编排层，把 Telegram 消息事实映射为可重放且受审计的服务端领域调用
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createSocialHandlers(options = {}) {
@@ -116,9 +116,12 @@ function createSocialHandlers(options = {}) {
         return deliverLongGroupResult(message, text, { reply_markup: markup }, { title: "书评", ...(editTarget ? { editTarget } : {}) });
     }
 
-    async function publishReview(message, bookId, content) {
+    async function publishReview(message, bookId, content, operationKey = "") {
         await ensureRegistered(message.from);
-        const result = await client.publishBookReview(bookId, message.from.id, content);
+        const chatId = String(message.chat?.id || "").trim();
+        const messageId = String(message.message_id || "").trim();
+        const idempotencyKey = operationKey || (chatId && messageId ? `telegram:book-review:${chatId}:${messageId}` : "");
+        const result = await client.publishBookReview(bookId, message.from.id, content, idempotencyKey);
         const channelText = result.channel?.sent
             ? "频道：已推送"
             : result.channel?.skipped
@@ -173,6 +176,10 @@ function createSocialHandlers(options = {}) {
                 userId: message.from.id,
                 bookId,
                 promptMessageId: prompt?.message_id,
+                operationKey:
+                    prompt?.message_id !== undefined
+                        ? `telegram:book-review-draft:${String(message.chat.id)}:${String(prompt.message_id)}`
+                        : "",
                 rules
             });
             await sendMessage(message.chat.id, "不想发布时，可点下方取消。", {
@@ -224,12 +231,13 @@ function createSocialHandlers(options = {}) {
                 ...identity,
                 bookId: checked.draft.bookId,
                 promptMessageId: prompt?.message_id,
+                operationKey: checked.draft.operationKey,
                 rules: { min_length: checked.draft.minLength, max_length: checked.draft.maxLength }
             });
             return true;
         }
         try {
-            await publishReview(message, checked.draft.bookId, checked.content);
+            await publishReview(message, checked.draft.bookId, checked.content, checked.draft.operationKey);
         } catch (err) {
             err.message = `书评发布失败，草稿已保留；请回复原提示重试，或点“取消发布”。原因：${err.message || String(err)}`;
             throw err;

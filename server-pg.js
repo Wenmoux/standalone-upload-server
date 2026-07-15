@@ -270,6 +270,7 @@ const bookSocialService = createBookSocialService({
 });
 const {
     bookReviewById,
+    claimBookReviewChannelDelivery,
     createBookReview,
     listBookReviews,
     reviewMaxLength,
@@ -379,6 +380,7 @@ const { pushBookReviewToChannel } = createBookReviewChannelService({
     telegramPushConfig,
     telegramLoginBotToken,
     configGet,
+    claimBookReviewChannelDelivery,
     updateBookReviewChannelMessage,
     postJson,
     telegramApiUrl,
