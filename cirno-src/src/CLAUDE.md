@@ -19,6 +19,8 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `components/catalog.vue`: 阅读目录抽屉，过滤分卷节点并借助虚拟列表定位、选择可读章节。
 `components/paragraph.vue`: 正文段落渲染器，按段落类型输出净化后的文本、链接或图片节点。
 `components/picture.vue`: 独立图片段落组件，对外部图片 URL 进行净化后渲染。
+`components/reader-settings-panel.js`: 阅读设置面板控制器，声明只读输入并把表单、章头与 TTS 操作收敛为语义事件。
+`components/reader-settings-panel.vue`: 阅读设置抽屉模板，只编排设置控件和预览，不持久化设置或控制朗读引擎。
 `components/tickets.vue`: 阅读页票券/打赏交互弹窗，使用 Vuex 读者与作品上下文提交动作。
 `components/tsukkomi.vue`: 章节间贴展示与发布弹窗，封装滚动区域和服务端交互状态。
 `components/user-card.vue`: 保留的用户卡片扩展位；当前只提供稳定组件边界，不承载业务数据。
@@ -34,6 +36,8 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `router/index.js`: Hash 路由与 Reader 会话门禁，兼容裸路径进入并延迟加载页面。
 `store/index.js`: 最小 Vuex 共享状态，保存 API 基址、作品信息和 Reader 用户信息供旧组件消费。
 `styles/search-modal-fix.css`: 搜索弹窗在移动端与 Ant Design 组合下的全局布局修正。
+`styles/reader-settings-panel.less`: 阅读设置抽屉的局部视觉边界，覆盖桌面、平板和移动端表单布局。
+`styles/reader.less`: 正文组合页的局部视觉边界，承载章头、控制栏、间贴、纠错和响应式阅读布局。
 `utils/chinese-convert.js`: OpenCC 主导的繁简转换内核，以小型残留字表、上下文保护和碰撞安全的用户词表补足小说语义，同时保留双向转换。
 `utils/platform.js`: 平台标签缓存与 `/reader-api/platforms` 加载边界，为检索和详情提供一致显示名。
 `utils/reader-content.js`: 正文规范化工具，净化/解析话本 HTML 和图片段落，并把繁简模式、台湾词汇与用户词表透传给转换内核。
@@ -52,7 +56,7 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `views/BookLibrary.vue`: 全库浏览页，组合检索意图、平台配置、主题与分页结果。
 `views/Index.vue`: 登录后的首页/个人书架，承载搜索建议、平台筛选、最近内容和详情导航。
 `views/Login.vue`: Reader 本地/CDK 注册登录与 Telegram 登录入口，成功后建立会话缓存并跳转首页。
-`views/Reader.vue`: 正文阅读组合根，只装配布局、段落/目录/图片/间贴/票券组件及六个领域 mixin，不再直接持有章节加载、离线或间贴协议。
+`views/Reader.vue`: 正文阅读组合根，只装配布局、段落/设置/目录/图片/间贴/票券组件及六个领域 mixin，不再直接持有章节加载、离线、间贴协议或大段局部样式。
 `views/Settings.vue`: 当前 Reader 账号与本地设置页，维护资料、退出会话并清理对应离线数据。
 
 ## 依赖方向
@@ -66,6 +70,6 @@ main -> router + store + plugins + PWA/RUM
 
 - `plugins/http.js` 是网络兼容层，业务页面不得新增裸露的第二套鉴权策略；少量原生 fetch 也必须保持同源凭证和会话语义。
 - 不可信正文必须先经过 `sanitize-html.js`；离线数据必须以 Reader 用户 ID 隔离。
-- `Reader.vue` 已超过重构阈值，新阅读能力优先进入既有 mixin、component 或 util，而非继续扩大组合根。
+- `Reader.vue` 已回落到 800 行以内；新阅读能力仍须优先进入既有 mixin、component、style 或 util，保持组合根只做装配。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

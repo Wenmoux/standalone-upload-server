@@ -43,7 +43,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-ui-formatters.test.js`: Telegram 文案、书卡/书评发布按钮和转义格式。
 - `chapter-maintenance.test.js`: 章节维护领域操作。
 - `chapter-title-cleaner.test.js`: 标题清洗规则与幂等性。
-- `chinese-convert.test.js`: Reader 繁简转换的著/着、台湾词汇、用户词表、占位碰撞、双向兼容与实现收缩回归。
+- `chinese-convert.test.js`: Reader 繁简转换的著/着、台湾词汇、用户词表、占位碰撞、设置面板接线、双向兼容与实现收缩回归。
 - `clean-chapter-titles-script.test.js`: 标题清洗 CLI 参数与执行边界。
 - `config-service.test.js`: 配置解析、默认值和安全校验。
 - `control-panel.test.js`: Setup 控制面配置、鉴权、脱敏和诊断契约。
@@ -83,7 +83,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `reader-pwa.test.js`: PWA manifest、Service Worker 与安装资源。
 - `reader-proxy.test.js`: Reader 3200 到 3100 代理的公网 Host、协议与 CSRF 来源传递契约。
 - `reader-rum.test.js`: Reader 性能事件采样和写入。
-- `reader-settings-mixin.test.js`: Reader 阅读设置状态机下沉、组合根接线与职责隔离契约。
+- `reader-settings-mixin.test.js`: Reader 阅读设置状态机下沉、设置面板事件、样式边界、组合根规模与职责隔离契约。
 - `reader-state-mixins.test.js`: Reader 章节与间贴状态机下沉、加载失败反馈、死状态清理及跨章节迟到响应隔离契约。
 - `reader-virtual-list.test.js`: 虚拟章节列表窗口计算。
 - `red-packets.test.js`: 红包参数、创建幂等、定向结算、重复领取、过期退款与事务回滚。

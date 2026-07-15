@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 node:test、assert、fs/path/module 与 Reader 使用的 opencc-js 运行时和繁简转换源码
- * [OUTPUT]: 提供著/着、幺/么、台湾词汇、用户词表、占位碰撞、幂等、Reader 接线、双向兼容和实现收缩回归
+ * [INPUT]: 依赖 node:test、assert、fs/path/module 与 Reader 使用的 opencc-js 运行时、设置面板和繁简转换源码
+ * [OUTPUT]: 提供著/着、幺/么、台湾词汇、用户词表、占位碰撞、幂等、Reader/设置面板接线、双向兼容和实现收缩回归
  * [POS]: tests 的 Reader 中文转换正确性守卫，直接执行生产事实源而不复制转换规则
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -76,12 +76,17 @@ test("Reader persists and forwards simplified conversion options", () => {
     const settings = fs.readFileSync(path.join(ROOT, "cirno-src", "src", "utils", "reader-settings.js"), "utf8");
     const mixin = fs.readFileSync(path.join(ROOT, "cirno-src", "src", "mixins", "reader-settings.js"), "utf8");
     const reader = fs.readFileSync(path.join(ROOT, "cirno-src", "src", "views", "Reader.vue"), "utf8");
+    const settingsPanel = fs.readFileSync(
+        path.join(ROOT, "cirno-src", "src", "components", "reader-settings-panel.vue"),
+        "utf8"
+    );
 
     assert.match(settings, /convertTwPhrases:\s*true/);
     assert.match(settings, /convertGlossary:\s*['"]{2}/);
     assert.match(mixin, /twPhrases:\s*this\.readerSettings\.convertTwPhrases/);
     assert.match(mixin, /glossary:\s*this\.readerSettings\.convertGlossary/);
     assert.match(mixin, /scheduleConversionRebuild\(250\)/);
-    assert.match(reader, /台湾用语转大陆用语/);
-    assert.match(reader, /原词=&gt;目标|原词=>目标/);
+    assert.match(reader, /<reader-settings-panel/);
+    assert.match(settingsPanel, /台湾用语转大陆用语/);
+    assert.match(settingsPanel, /原词=&gt;目标|原词=>目标/);
 });
