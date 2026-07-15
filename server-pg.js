@@ -51,6 +51,7 @@ const { remoteBackupStatus, uploadBackupToRemote } = require("./services/remote-
 const { createAuthService } = require("./services/auth");
 const { createEventService } = require("./services/events");
 const { createHotKeywordService } = require("./services/hot-keywords");
+const { createBotLibraryService } = require("./services/bot-library");
 const { createWordCloudService } = require("./services/word-cloud");
 const { createBookSocialService } = require("./services/book-social");
 const { createBookCrowdService } = require("./services/book-crowd");
@@ -254,6 +255,7 @@ const eventService = createEventService({
     cleanPgValue
 });
 const { recordEvent } = eventService;
+const botLibraryService = createBotLibraryService({ query, findBotUserByTelegramId, normalizeTelegramId, credentialCrypto, recordEvent });
 const hotKeywordService = createHotKeywordService({ configGet, configSet });
 const { addHotKeyword, addHotKeywords, getHotKeywords } = hotKeywordService;
 const wordCloudService = createWordCloudService({ query, getHotKeywords });
@@ -637,6 +639,7 @@ const botApiRoutes = createBotApiRoutes({
     reviewPublishCost,
     voteBookReview,
     pushBookReviewToChannel,
+    ...botLibraryService,
     getHotKeywords,
     addHotKeyword,
     addHotKeywords,

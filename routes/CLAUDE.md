@@ -18,7 +18,7 @@ admin-manifests.js: Admin Book Manifest 路由，提供单书导出、包验证�
 admin-system.js: Admin 系统路由，聚合状态、诊断、日志、概览、任务与安全审计入口。
 admin-users.js: Admin 用户与经济管理路由，覆盖 owner 专属 Reader/Bot 管理员切换、用户、CDK、流水、搜索需求及 CSV 导出。
 bot-api.js: Bot API 纯组合边界，在统一 Bot Token 下按固定顺序挂载系统、用户、红包、社交与书库子域。
-bot-api-library.js: Bot 书库协议路由，承接 PO18 凭据、书架、缺书请求、批量热词、词云与分享事实，把合并写入下沉到领域服务且不持有经济结算。
+bot-api-library.js: Bot 书库协议路由，承接 PO18 凭据、书架、缺书请求、批量热词、词云与分享事实，只映射 HTTP 并把全部持久化委托给领域服务。
 bot-api-red-packets.js: Bot 红包协议路由，把兼容请求字段和过期/幂等状态映射到红包聚合根。
 bot-api-social.js: Bot 社交协议路由，映射反馈、众筹、书评与投票，固定可信书评来源并透传发布操作键。
 bot-api-system.js: Bot 内部系统路由，处理持久任务登记、worker/attempt fencing token 状态回写、管理员广播入队、收件人分页、审计与命令配置读取。

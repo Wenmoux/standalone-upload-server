@@ -10,7 +10,6 @@ const test = require("node:test");
 const { botJobPatch } = require("../routes/bot-api-system");
 const express = require("express");
 const { createBotApiRoutes } = require("../routes/bot-api");
-const { createCredentialCrypto } = require("../services/credential-crypto");
 
 async function withApp(router, fn) {
     const app = express();
@@ -154,21 +153,21 @@ test("bot job routes list and cancel only the telegram user's own jobs", async (
     });
 });
 
-test("bot PO18 credential endpoint decrypts secrets without changing the status endpoint", async () => {
-    const credentialCrypto = createCredentialCrypto({ fallbackSecret: "bot-credential-test" });
-    const stored = {
+test("bot PO18 credential routes delegate public and privileged projections", async () => {
+    const calls = [];
+    const publicAccount = {
         account: "reader-account",
-        password: credentialCrypto.encryptString("reader-password"),
-        cookies_json: credentialCrypto.encryptJson([{ name: "authtoken1", value: "cookie-value" }]),
+        cookies: [{ name: "authtoken1", value: "cookie-value" }],
         updated_at: "2026-07-11T00:00:00.000Z",
         last_login_at: null,
         last_status: "ok"
     };
     const router = createBotApiRoutes({
         requireBotApi: botOnly,
-        credentialCrypto,
-        findBotUserByTelegramId: async () => ({ id: 7, telegram_id: "42" }),
-        query: async () => ({ rows: [stored] })
+        getPo18Account: async (telegramId, options = {}) => {
+            calls.push({ telegramId, includePassword: Boolean(options.includePassword) });
+            return { ...publicAccount, ...(options.includePassword ? { password: "reader-password" } : {}) };
+        }
     });
     await withApp(router, async (base) => {
         const status = await fetch(`${base}/bot-api/users/42/po18`, { headers: { "X-Test-Bot": "1" } });
@@ -182,6 +181,10 @@ test("bot PO18 credential endpoint decrypts secrets without changing the status 
         assert.equal(credentialPayload.password, "reader-password");
         assert.equal(credentialPayload.cookies[0].value, "cookie-value");
     });
+    assert.deepEqual(calls, [
+        { telegramId: "42", includePassword: false },
+        { telegramId: "42", includePassword: true }
+    ]);
 });
 
 test("bot api routes delegate user and hot keyword handlers", async () => {
@@ -247,14 +250,12 @@ test("bot api routes record no-result search requests", async () => {
     const calls = [];
     const router = createBotApiRoutes({
         requireBotApi: botOnly,
-        normalizeTelegramId: (value) => String(value || ""),
-        findBotUserByTelegramId: async (telegramId) => ({ id: 7, telegram_id: telegramId, username: `tg_${telegramId}` }),
-        query: async (sql, params) => {
-            calls.push({ sql, params });
-            if (/INSERT INTO reader_search_requests/.test(sql)) {
-                return { rows: [{ id: 3, user_id: params[0], telegram_id: params[1], query: params[4], platform: params[7] }] };
-            }
-            return { rows: [] };
+        upsertSearchRequest: async (payload) => {
+            calls.push(payload);
+            return {
+                already_exists: false,
+                request: { id: 3, telegram_id: String(payload.telegram_id), query: payload.query, platform: payload.platform }
+            };
         }
     });
 
@@ -272,8 +273,8 @@ test("bot api routes record no-result search requests", async () => {
     });
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].params[0], 7);
-    assert.equal(calls[0].params[7], "po18");
+    assert.equal(calls[0].telegram_id, 42);
+    assert.equal(calls[0].platform, "po18");
 });
 
 test("bot api user routes validate currency mutation input", async () => {

@@ -29,6 +29,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
 - `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、发送后结算、权限与文案契约。
+- `bot-library.test.js`: Bot PO18 加密凭据、书架、缺书请求与分享事实持久化用例。
 - `bot-settings.test.js`: Bot 命令目录配置清洗、去重、合并与持久化语义。
 - `bot-export-errors.test.js`: 导出错误分类与面向用户消息。
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。

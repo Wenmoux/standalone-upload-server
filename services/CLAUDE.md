@@ -24,6 +24,7 @@ book-manifest.js: 可移植书籍清单协议，实现规范化、SHA-256 校验
 book-review-channel.js: 书评频道外发适配器，读取最新书籍元信息，以数据库认领防止重试重复发送，再构造带系统标记的 Telegram 文案/按钮并回写状态。
 book-social.js: 书评聚合根，以操作账本幂等结算发布扣费，以原子频道认领隔离外部副作用，并通过书评行和有序用户锁避免作者互投死锁。
 bot-audit.js: Telegram Bot 审计服务，规范化命令执行结果并提供聚合与筛选查询。
+bot-library.js: Bot 书库持久化用例，集中 PO18 加密账号、书架、缺书请求与分享事实的数据清洗和 SQL，使 Bot 路由保持协议边界。
 bot-settings.js: Bot 命令开关服务，以命令目录为白名单清洗、去重、稳定排序、持久化和读取后台配置。
 chapter-maintenance.js: 章节顺序修复服务，对重复顺序生成预览并在确认后通过事务重排。
 chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则去除重复编号和包裹噪声。
