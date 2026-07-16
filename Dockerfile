@@ -79,7 +79,7 @@ COPY db ./db
 COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
 COPY public/legado-po18-reader-source.json public/rank.html ./public/
 COPY --from=admin-build /build/admin-ui/dist ./public/
-COPY docker/control-panel.js docker/entrypoint.js docker/setup-wizard.js docker/status-check.js docker/backup-pg.js docker/structured-log.js docker/run-all.js docker/process-supervisor.js ./docker/
+COPY docker/control-panel.js docker/control-panel-pages.js docker/control-panel-runtime.js docker/entrypoint.js docker/setup-wizard.js docker/status-check.js docker/backup-pg.js docker/structured-log.js docker/run-all.js docker/process-supervisor.js ./docker/
 EXPOSE 3100
 CMD ["node", "server-pg.js"]
 

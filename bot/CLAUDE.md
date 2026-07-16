@@ -31,6 +31,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `po18-account-handlers.js`: 处理 PO18 凭据绑定、验证码登录、状态和登出，只通过服务端加密凭据 API 工作。
 `po18-client.js`: 封装 PO18 上游会话与已购内容访问，供账号和导出流程复用。
 `polling-runtime.js`: 管理 Telegram getUpdates 长轮询、offset、退避和启动状态，不承载业务命令。
+`process-runtime.js`: 编排命令同步、持久任务恢复、管理员广播轮询、健康服务与 polling 启动，把进程生命周期从业务组合根隔离。
 `rate-limit.js`: 为搜索、详情、导出和集成命令提供按用户/动作的冷却时间计算。
 `README.md`: 当前 Bot 启动、命令、任务和维护边界的运行文档。
 `remote-storage.js`: 抽象共享文件的远端上传请求和错误处理，由共享任务调用。
@@ -43,7 +44,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `task-schedulers.js`: 定义导出、书架同步、共享和全员通知任务的持久类型、幂等键、互斥键与恢复工厂。
 `task-status-handlers.js`: 提供 `/tasks`、`/task`、`/canceljob` 的状态查询与权限边界。
 `telegram.js`: Telegram HTTP API 客户端，统一请求超时、消息编辑、文件发送和文本截断。
-`telegram-bot.js`: Bot 组合根，只注入客户端、注册器、领域处理器、任务运行时、polling 与健康服务，并分派 update；不持有账户、经济、导出或外部存储规则。
+`telegram-bot.js`: Bot 业务组合根，只注入客户端、注册器、领域处理器、任务运行时并分派 update；进程恢复、polling 与健康启动委托 process-runtime。
 `text-share-utils.js`: 规范长文本分享、书籍元数据和文件命名，隔离 Telegram 长度限制与 HTML 清洗。
 `ui-formatters.js`: 生成书卡、分页、收藏、导出、书评发布/取消与投票等 Telegram HTML 和 keyboard。
 `word-cloud.js`: 将热搜词统计渲染为受限尺寸图片，并提供字体/布局回退。

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供Bot 运行模块装配、管理员广播草稿/投递与依赖边界的自动化回归断言
- * [POS]: tests 的Bot 运行模块装配与依赖边界守卫，防止实现或部署契约在后续变更中静默退化
+ * [INPUT]: 依赖 node:test、assert、Bot 业务组合根/进程运行时、相关生产模块及受控替身/夹具
+ * [OUTPUT]: 提供 Bot 业务/生命周期装配、管理员广播草稿/投递与依赖边界的自动化回归断言
+ * [POS]: tests 的 Bot 运行模块装配与依赖边界守卫，防止实现或部署契约在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -20,10 +20,16 @@ const { markTelegramSystemPush } = require("../telegram-push-contract");
 
 test("bot entrypoint initializes PO18 account handlers before task schedulers", async () => {
     const source = await fs.readFile(path.join(__dirname, "..", "bot", "telegram-bot.js"), "utf8");
+    const processRuntime = await fs.readFile(path.join(__dirname, "..", "bot", "process-runtime.js"), "utf8");
     const accountHandlers = source.indexOf("createPo18AccountHandlers(");
     const taskSchedulers = source.indexOf("createTaskSchedulers(", accountHandlers + 1);
     assert.ok(accountHandlers >= 0, "PO18 account handler initialization is missing");
     assert.ok(taskSchedulers > accountHandlers, "task schedulers must not read handleMyBookshelf before initialization");
+    assert.match(source, /startBotProcessRuntime\(\{/);
+    assert.doesNotMatch(source, /createTelegramPollingRuntime\(/);
+    assert.match(processRuntime, /createTelegramPollingRuntime\(/);
+    assert.match(processRuntime, /startBotHealthServer\(/);
+    assert.match(processRuntime, /botRuntime\.runForever\(\)/);
 });
 
 test("bot health payload reports readiness from injected state", () => {

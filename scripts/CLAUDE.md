@@ -17,8 +17,10 @@
 - `docker-release-manifest.js`: 生成唯一公开标签、来源与 digest 元数据，以摘要承担复现和审计语义。
 - `docker-smoke.js`: 启动候选镜像与临时 PostgreSQL，验证 Setup、服务和深健康路径。
 - `generate-reader-pwa-icons.js`: 从项目图标源生成 Reader PWA 尺寸集合。
+- `local-library-core.js`: 本地书库纯解析核心，统一文本解码、元信息推断、稳定 ID、章节切分和扫描汇总，不接触 HTTP 或交互状态。
 - `local-library-upload-client.js`: 本地书库上传工作台的浏览器控制器，编排步骤、编辑、确认、请求与反馈。
 - `local-library-upload-shell.css`: 本地书库上传工作台的设计令牌、导航、表单和概览基础视觉层。
+- `local-library-upload-service.js`: 本地书库传输边界，把扫描 manifest 映射为文件、Upload API 或服务内写入，并集中处理缓存跳过与结果统计。
 - `local-library-upload-ui.js`: 本地书库上传工具的 HTTP/API 与页面壳入口，复用核心扫描上传能力并独立提供前端资源。
 - `local-library-upload-workspace.css`: 本地书库上传工作台的书籍/章节编辑、弹窗和响应式视觉层。
 - `migrate-rollback.js`: 加载 `/config` 配置后调用 pg-store 执行显式迁移回滚。
@@ -33,6 +35,6 @@
 - `run-pg-integration.js`: 在真实 PostgreSQL 上执行迁移、路由和查询计划集成验证。
 - `search-benchmark.js`: 对搜索 SQL 计划与延迟预算执行可重复基准。
 - `start-site-order-audit.ps1`: Windows 章节站点审计启动辅助脚本。
-- `upload-local-library.js`: 本地书库解析、校验、分批上传与断点状态 CLI。
+- `upload-local-library.js`: 本地书库 CLI 组合根与兼容导出门面，编排扫描核心、上传服务和人工确认，不重复实现领域逻辑。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

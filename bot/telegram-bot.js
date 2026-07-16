@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 bot 内客户端、账户/经济/导出/PikPak 领域处理器、命令注册、任务运行时、Telegram polling/health 与环境配置
- * [OUTPUT]: 装配 Telegram Bot 进程并启动命令同步、系统推送取消置顶、任务恢复、长轮询和健康服务
- * [POS]: bot 的唯一组合根，只负责依赖注入、update 分派和进程生命周期，领域交互下沉到独立处理器
+ * [INPUT]: 依赖 bot 内客户端、领域处理器、命令注册、任务运行时、进程生命周期边界与环境配置
+ * [OUTPUT]: 装配 Telegram Bot 领域依赖与 update 分派，并把命令同步、任务恢复、polling/health 启动交给进程运行时
+ * [POS]: bot 的唯一业务组合根，只负责依赖注入和 update 分派，领域交互与进程生命周期分别下沉到独立边界
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { PgBotClient } = require("./pg-bot-client");
@@ -21,7 +21,6 @@ const { createPo18Client } = require("./po18-client");
 const { createRemoteStorage } = require("./remote-storage");
 const { createBotUi } = require("./ui-formatters");
 const { createBotTaskRuntime } = require("./task-runtime");
-const { startBotHealthServer } = require("./health-server");
 const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const { EPUB_EXPORT_STYLE_CHOICES, epubStyleSelectionMarkup, normalizeEpubStyleChoice } = require("./epub-style-picker");
@@ -32,7 +31,7 @@ const {
     createSearchCache,
     helpLinesFromCommands: buildHelpLinesFromCommands
 } = require("./bot-session");
-const { createTelegramPollingRuntime } = require("./polling-runtime");
+const { startBotProcessRuntime } = require("./process-runtime");
 const { createAutomaticPushUnpinHandler } = require("./automatic-push-unpin");
 const { createPo18AccountHandlers } = require("./po18-account-handlers");
 const { createShareHandlers } = require("./share-handlers");
@@ -271,9 +270,6 @@ const searchCache = createSearchCache({ maxSize: Number(process.env.TELEGRAM_SEA
 const reviewDrafts = createReviewDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 1000 });
 const broadcastDrafts = createBroadcastDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 200, maxLength: 3000 });
 let commandRegistry = null;
-let persistentJobsRecovered = false;
-let broadcastRecoveryTimer = null;
-let broadcastRecoveryRunning = false;
 const commandSettingsState = { at: 0, payload: null };
 
 const { handleLoginPo18, handleMyBookshelf, handlePo18Code, handlePo18Logout, handlePo18Set, handlePo18Status } = createPo18AccountHandlers(
@@ -720,82 +716,28 @@ async function handleUpdate(update) {
     if (update.callback_query) return handleCallback(update.callback_query);
 }
 
-async function syncBotCommands() {
-    await refreshCommandSettings(true);
-    const commands = getCommandRegistry().telegramCommands();
-    const scopes = [{ type: "default" }, { type: "all_private_chats" }, { type: "all_group_chats" }, { type: "all_chat_administrators" }];
-    for (const scope of scopes) {
-        await telegram("deleteMyCommands", { scope }).catch((err) =>
-            console.warn(`[telegram-bot] deleteMyCommands ${scope.type} failed: ${err.message}`)
-        );
-        await telegram("setMyCommands", { commands, scope }).catch((err) =>
-            console.warn(`[telegram-bot] setMyCommands ${scope.type} failed: ${err.message}`)
-        );
-    }
-}
-
-async function recoverBroadcastJobs() {
-    if (broadcastRecoveryRunning) return 0;
-    const queue = botTaskQueue.stats();
-    if (Number(queue.running || 0) > 0 || Number(queue.queued || 0) > 0) return 0;
-    broadcastRecoveryRunning = true;
-    try {
-        return await recoverPersistentJobs(["bot_registered_user_broadcast"], recoverSystemJob, { limit: 1 });
-    } finally {
-        broadcastRecoveryRunning = false;
-    }
-}
-
-const botRuntime = createTelegramPollingRuntime({
-    telegram,
-    handleUpdate,
-    sendMessage,
-    escapeHtml,
-    delay,
-    pollTimeout: POLL_TIMEOUT,
-    pollRetryDelayMs: 3000,
-    startupRetryDelayMs: 10000,
-    client,
-    syncBotCommands,
-    telegramApiBase: TELEGRAM_API_BASE,
-    onConnected(user) {
-        botUser = user;
-        console.log(`[telegram-bot] @${user.username} connected to ${client.baseUrl}`);
-        if (!persistentJobsRecovered) {
-            persistentJobsRecovered = true;
-            recoverPersistentJobs(persistentJobTypes, recoverSystemJob)
-                .then((count) => console.log(`[bot-task] recovered ${count} persistent jobs`))
-                .catch((err) => {
-                    persistentJobsRecovered = false;
-                    console.warn(`[bot-task] recovery failed: ${err.message || String(err)}`);
-                });
-        }
-        if (!broadcastRecoveryTimer) {
-            recoverBroadcastJobs().catch((err) => console.warn(`[bot-task] broadcast recovery failed: ${err.message || String(err)}`));
-            broadcastRecoveryTimer = setInterval(
-                () => {
-                    recoverBroadcastJobs().catch((err) =>
-                        console.warn(`[bot-task] broadcast recovery failed: ${err.message || String(err)}`)
-                    );
-                },
-                Math.max(2000, Number(process.env.TELEGRAM_BROADCAST_POLL_MS || 5000))
-            );
-            broadcastRecoveryTimer.unref?.();
-        }
-    }
-});
-
-startBotHealthServer({
-    port: BOT_HEALTH_PORT,
-    host: BOT_HEALTH_HOST,
-    staleMs: BOT_HEALTH_STALE_MS,
-    startedAt: STARTED_AT,
-    telegramApiBase: TELEGRAM_API_BASE,
-    client,
-    telegramClient,
+startBotProcessRuntime({
     botTaskQueue,
+    client,
+    delay,
+    escapeHtml,
+    getCommandRegistry,
+    handleUpdate,
+    healthHost: BOT_HEALTH_HOST,
+    healthPort: BOT_HEALTH_PORT,
+    healthStaleMs: BOT_HEALTH_STALE_MS,
+    onConnectedUser(user) {
+        botUser = user;
+    },
+    persistentJobTypes,
+    pollTimeout: POLL_TIMEOUT,
     rateLimiter,
-    stateProvider: botRuntime.state
+    recoverPersistentJobs,
+    recoverSystemJob,
+    refreshCommandSettings,
+    sendMessage,
+    startedAt: STARTED_AT,
+    telegram,
+    telegramApiBase: TELEGRAM_API_BASE,
+    telegramClient
 });
-
-botRuntime.runForever();

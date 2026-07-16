@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 node:test、assert、fs/path/module 与 Reader 使用的 opencc-js 运行时、设置面板和繁简转换源码
- * [OUTPUT]: 提供著/着、幺/么、台湾词汇、用户词表、占位碰撞、幂等、Reader/设置面板接线、双向兼容和实现收缩回归
- * [POS]: tests 的 Reader 中文转换正确性守卫，直接执行生产事实源而不复制转换规则
+ * [INPUT]: 依赖 node:test、assert、fs/path/module、拆分后的转换报告模块与 Reader 使用的 opencc-js 运行时和繁简转换源码
+ * [OUTPUT]: 提供报告边界、著/着、幺/么、台湾词汇、用户词表、占位碰撞、幂等、Reader 接线、双向兼容和实现收缩回归
+ * [POS]: tests 的 Reader 中文转换与离线报告边界守卫，直接执行生产事实源而不复制转换规则
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -12,6 +12,10 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const SOURCE_PATH = path.join(ROOT, "cirno-src", "src", "utils", "chinese-convert.js");
+const reportAnalyzer = require("../cirno-src/scripts/conversion-report-analyzer");
+const reportRenderer = require("../cirno-src/scripts/conversion-report-renderer");
+const readerApiReport = require("../cirno-src/scripts/reader-api-conversion-report");
+const { parseRounds } = require("../cirno-src/scripts/conversion-report");
 
 function loadConverter() {
     const readerRequire = createRequire(path.join(ROOT, "cirno-src", "package.json"));
@@ -26,6 +30,24 @@ function loadConverter() {
     source += "\nreturn { convertText, t2sCharMap, s2tCharMap }";
     return Function("OpenCCT2CN", "OpenCCCN2T", source)(OpenCCT2CN, OpenCCCN2T);
 }
+
+test("conversion report composes analyzer, renderer and CLI without hidden side effects", () => {
+    assert.equal(parseRounds(["--rounds", "2"]), 2);
+    assert.equal(parseRounds(["--rounds=999"]), 20);
+    const { convertText, t2sCharMap } = reportAnalyzer.loadConverter();
+    const file = reportAnalyzer.builtInRegressionFile();
+    const round = reportAnalyzer.runRound(1, [file], convertText, t2sCharMap);
+    const summary = reportAnalyzer.buildSummary([file], [round]);
+    const json = reportRenderer.buildJsonSummary(summary);
+    const html = reportRenderer.renderReport(summary);
+
+    assert.equal(summary.allPassed, true);
+    assert.equal(json.allPassed, true);
+    assert.equal(json.files.length, 1);
+    assert.match(html, /Cirno Conversion Summary/);
+    assert.equal(typeof readerApiReport.writeMarkdown, "function");
+    assert.equal(typeof readerApiReport.writeHtml, "function");
+});
 
 test("traditional to simplified keeps novel context instead of repainting OpenCC output", () => {
     const { convertText, t2sCharMap } = loadConverter();
@@ -76,10 +98,7 @@ test("Reader persists and forwards simplified conversion options", () => {
     const settings = fs.readFileSync(path.join(ROOT, "cirno-src", "src", "utils", "reader-settings.js"), "utf8");
     const mixin = fs.readFileSync(path.join(ROOT, "cirno-src", "src", "mixins", "reader-settings.js"), "utf8");
     const reader = fs.readFileSync(path.join(ROOT, "cirno-src", "src", "views", "Reader.vue"), "utf8");
-    const settingsPanel = fs.readFileSync(
-        path.join(ROOT, "cirno-src", "src", "components", "reader-settings-panel.vue"),
-        "utf8"
-    );
+    const settingsPanel = fs.readFileSync(path.join(ROOT, "cirno-src", "src", "components", "reader-settings-panel.vue"), "utf8");
 
     assert.match(settings, /convertTwPhrases:\s*true/);
     assert.match(settings, /convertGlossary:\s*['"]{2}/);

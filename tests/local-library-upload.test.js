@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 node:test、assert、fs/os/path、相关生产模块、独立 UI HTTP 资源及受控替身/夹具
- * [OUTPUT]: 提供本地书库上传解析、批次状态、页面资产拆分与安全默认值注入的自动化回归断言
- * [POS]: tests 的本地书库上传领域与 UI 边界守卫，防止扫描协议或独立工作台资源在后续变更中静默退化
+ * [INPUT]: 依赖 node:test、assert、fs/os/path、拆分后的扫描/传输模块、兼容门面、独立 UI HTTP 资源及受控替身/夹具
+ * [OUTPUT]: 提供本地书库模块边界、上传解析、批次状态、页面资产拆分与安全默认值注入的自动化回归断言
+ * [POS]: tests 的本地书库扫描/传输/CLI 组合与 UI 边界守卫，防止拆分后协议或独立工作台资源静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -9,6 +9,8 @@ const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const test = require("node:test");
+const libraryCore = require("../scripts/local-library-core");
+const uploadService = require("../scripts/local-library-upload-service");
 const { buildChapterPayload, scanLibrary, splitTitleAuthor, uploadManifestDirect } = require("../scripts/upload-local-library");
 const { createApp, scanOptions: uiScanOptions } = require("../scripts/local-library-upload-ui");
 
@@ -48,6 +50,13 @@ async function withLibrary(fn) {
         await fs.rm(root, { recursive: true, force: true });
     }
 }
+
+test("local library facade composes independent scan and upload modules", () => {
+    assert.equal(scanLibrary, libraryCore.scanLibrary);
+    assert.equal(splitTitleAuthor, libraryCore.splitTitleAuthor);
+    assert.equal(buildChapterPayload, uploadService.buildChapterPayload);
+    assert.equal(uploadManifestDirect, uploadService.uploadManifestDirect);
+});
 
 test("local library scanner builds stable metadata and chapters", async () => {
     await withLibrary(async (root) => {

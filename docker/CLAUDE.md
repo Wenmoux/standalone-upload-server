@@ -7,7 +7,9 @@
 ## 成员清单
 
 - `backup-pg.js`: PostgreSQL 备份、保留、远端上传和恢复演练调度器；只管理备份生命周期，不替代数据库迁移。
-- `control-panel.js`: Setup/Admin 控制面组合入口；校验并持久化运行配置，提供脱敏导出、诊断和版本载荷。
+- `control-panel.js`: Setup/Admin 控制面组合入口；负责配置编解码、鉴权与 HTTP 路由，把运行事实和 HTML 分别委托给独立边界。
+- `control-panel-pages.js`: Setup/Admin 控制面纯页面渲染层；消费受信配置和诊断结果，生成表单、状态、日志、成功页与 Admin 壳。
+- `control-panel-runtime.js`: Setup/Admin 控制面只读运行事实层；探测 PostgreSQL/服务端点、筛选日志并生成脱敏诊断，不处理路由或 HTML。
 - `entrypoint.js`: 单镜像容器入口；按配置状态选择 Setup 或完整服务栈，并维持退出语义。
 - `healthcheck.js`: 容器健康探针客户端；聚合本地服务端点并为 Docker HEALTHCHECK 返回稳定退出码。
 - `process-supervisor.js`: 子进程监督原语；处理重启退避、信号转发和不可恢复退出。

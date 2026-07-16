@@ -34,7 +34,9 @@ Reader.vue
 - `src/utils/reader-settings.js`：设置默认值、归一化和持久化数据形状。
 - `src/mixins/reader-settings.js`：动态加载转换器、监听设置并重建当前章。
 - `src/views/Reader.vue`：只呈现设置控件，不复制转换规则。
-- `scripts/conversion-report.js`：复用生产转换器运行固定回归和文本扫描。
+- `scripts/conversion-report-analyzer.js`：复用生产转换器运行固定回归、正文扫描和多轮统计。
+- `scripts/conversion-report-renderer.js`：把结构化统计纯渲染为 HTML 与 JSON。
+- `scripts/conversion-report.js`：稳定 CLI 组合根，写入报告并根据汇总结果设置退出码。
 - `test/conversion-summary-report.html`、`test/conversion-summary-report.json`：人工与机器可读报告。
 - `tests/chinese-convert.test.js`：转换语义、碰撞安全和实现收缩的根级回归。
 

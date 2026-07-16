@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 node:test、临时文件系统、docker/control-panel 公开契约与统一限流器
- * [OUTPUT]: 提供 Setup 配置安全、导入导出、鉴权、状态与版本载荷的回归测试
- * [POS]: tests 的控制面契约测试，防止配置默认值或脱敏规则在部署链路中退化
+ * [INPUT]: 依赖 node:test、临时文件系统、拆分后的控制面运行/页面工厂、组合根公开契约与统一限流器
+ * [OUTPUT]: 提供 Setup 模块边界、配置安全、导入导出、鉴权、状态与版本载荷的回归测试
+ * [POS]: tests 的控制面配置/诊断/渲染/路由边界守卫，防止模块拆分或部署协议静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -9,6 +9,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const test = require("node:test");
+const { createControlPanelPages } = require("../docker/control-panel-pages");
+const { createControlPanelRuntime } = require("../docker/control-panel-runtime");
 const {
     designTokensCss,
     handlePanelRequest,
@@ -19,6 +21,11 @@ const {
     versionPayload
 } = require("../docker/control-panel");
 const { createRateWindow } = require("../services/rate-limit");
+
+test("control panel exposes independent runtime and page factories", () => {
+    assert.equal(typeof createControlPanelRuntime, "function");
+    assert.equal(typeof createControlPanelPages, "function");
+});
 
 function withTempEnv(contents, fn) {
     const file = path.join(os.tmpdir(), `po18-control-panel-${Date.now()}-${Math.random().toString(16).slice(2)}.env`);
