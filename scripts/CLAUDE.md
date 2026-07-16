@@ -17,7 +17,10 @@
 - `docker-release-manifest.js`: 生成唯一公开标签、来源与 digest 元数据，以摘要承担复现和审计语义。
 - `docker-smoke.js`: 启动候选镜像与临时 PostgreSQL，验证 Setup、服务和深健康路径。
 - `generate-reader-pwa-icons.js`: 从项目图标源生成 Reader PWA 尺寸集合。
-- `local-library-upload-ui.js`: 本地书库上传工具的独立 UI 资源与交互实现。
+- `local-library-upload-client.js`: 本地书库上传工作台的浏览器控制器，编排步骤、编辑、确认、请求与反馈。
+- `local-library-upload-shell.css`: 本地书库上传工作台的设计令牌、导航、表单和概览基础视觉层。
+- `local-library-upload-ui.js`: 本地书库上传工具的 HTTP/API 与页面壳入口，复用核心扫描上传能力并独立提供前端资源。
+- `local-library-upload-workspace.css`: 本地书库上传工作台的书籍/章节编辑、弹窗和响应式视觉层。
 - `migrate-rollback.js`: 加载 `/config` 配置后调用 pg-store 执行显式迁移回滚。
 - `publish-admin-ui.mjs`: 清理旧 Admin assets 并复制当前 dist 到根 `public/`，保留 Reader/书源等非 Admin 兼容文件。
 - `release-docker.ps1`: Windows 本地发布辅助入口；实际默认发布由 GitHub Actions 承担。

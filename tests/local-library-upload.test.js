@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供本地书库上传解析与批次状态的自动化回归断言
- * [POS]: tests 的本地书库上传解析与批次状态守卫，防止实现或部署契约在后续变更中静默退化
+ * [INPUT]: 依赖 node:test、assert、fs/os/path、相关生产模块、独立 UI HTTP 资源及受控替身/夹具
+ * [OUTPUT]: 提供本地书库上传解析、批次状态、页面资产拆分与安全默认值注入的自动化回归断言
+ * [POS]: tests 的本地书库上传领域与 UI 边界守卫，防止扫描协议或独立工作台资源在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -9,13 +9,8 @@ const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const test = require("node:test");
-const {
-    buildChapterPayload,
-    scanLibrary,
-    splitTitleAuthor,
-    uploadManifestDirect
-} = require("../scripts/upload-local-library");
-const { scanOptions: uiScanOptions } = require("../scripts/local-library-upload-ui");
+const { buildChapterPayload, scanLibrary, splitTitleAuthor, uploadManifestDirect } = require("../scripts/upload-local-library");
+const { createApp, scanOptions: uiScanOptions } = require("../scripts/local-library-upload-ui");
 
 function options(root) {
     return {
@@ -37,9 +32,17 @@ async function withLibrary(fn) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "local-library-"));
     try {
         await fs.mkdir(path.join(root, "测试书-作者甲"));
-        await fs.writeFile(path.join(root, "测试书-作者甲", "0000-第一章 起.txt"), "标签：短篇,测试\n第一章 起\n\n这里是第一章正文。", "utf8");
+        await fs.writeFile(
+            path.join(root, "测试书-作者甲", "0000-第一章 起.txt"),
+            "标签：短篇,测试\n第一章 起\n\n这里是第一章正文。",
+            "utf8"
+        );
         await fs.writeFile(path.join(root, "测试书-作者甲", "0001-第二章 承.txt"), "第二章 承\n\n这里是第二章正文。", "utf8");
-        await fs.writeFile(path.join(root, "单本-作者乙.txt"), "第一章 开始\n\n单文件第一章正文。\n\n第二章 后续\n\n单文件第二章正文。", "utf8");
+        await fs.writeFile(
+            path.join(root, "单本-作者乙.txt"),
+            "第一章 开始\n\n单文件第一章正文。\n\n第二章 后续\n\n单文件第二章正文。",
+            "utf8"
+        );
         await fn(root);
     } finally {
         await fs.rm(root, { recursive: true, force: true });
@@ -104,4 +107,48 @@ test("standalone upload UI scan options keep adult default tag", () => {
     assert.equal(parsed.root, "D:\\books");
     assert.equal(parsed.platform, "local");
     assert.deepEqual(parsed.defaultTags, ["同人", "成人"]);
+});
+
+test("standalone upload UI serves split assets and safely injects defaults", async () => {
+    const server = createApp({
+        root: "D:\\books",
+        baseUrl: "http://127.0.0.1:3100",
+        token: "</script><script>alert(1)</script>"
+    }).listen(0, "127.0.0.1");
+    try {
+        await new Promise((resolve, reject) => {
+            server.once("listening", resolve);
+            server.once("error", reject);
+        });
+        const { port } = server.address();
+        const baseUrl = `http://127.0.0.1:${port}`;
+        const [page, shell, workspace, client] = await Promise.all([
+            fetch(`${baseUrl}/`),
+            fetch(`${baseUrl}/assets/local-library-upload-shell.css`),
+            fetch(`${baseUrl}/assets/local-library-upload-workspace.css`),
+            fetch(`${baseUrl}/assets/local-library-upload-client.js`)
+        ]);
+        const [pageText, shellText, workspaceText, clientText] = await Promise.all([
+            page.text(),
+            shell.text(),
+            workspace.text(),
+            client.text()
+        ]);
+
+        assert.equal(page.status, 200);
+        assert.equal(shell.status, 200);
+        assert.equal(workspace.status, 200);
+        assert.equal(client.status, 200);
+        assert.match(pageText, /local-library-upload-shell\.css/);
+        assert.match(pageText, /local-library-upload-workspace\.css/);
+        assert.match(pageText, /local-library-upload-client\.js/);
+        assert.doesNotMatch(pageText, /<style>/);
+        assert.doesNotMatch(pageText, /<script>alert\(1\)<\/script>/);
+        assert.match(pageText, /\\u003c\/script>/);
+        assert.match(shellText, /--primary:/);
+        assert.match(workspaceText, /\.workspace\s*\{/);
+        assert.match(clientText, /window\.__LOCAL_LIBRARY_DEFAULTS__/);
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
 });

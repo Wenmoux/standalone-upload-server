@@ -61,7 +61,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `hot-keywords.test.js`: 热词规范化、一次批量合并、串行累积和稳定排序。
 - `http-security.test.js`: 生产绑定、Metrics Token 与安全响应头。
 - `job-retry.test.js`: 持久任务重试分类、退避和耗尽行为。
-- `local-library-upload.test.js`: 本地书库上传解析与批次状态。
+- `local-library-upload.test.js`: 本地书库上传解析、批次状态、独立工作台资源与默认值安全注入契约。
 - `migrations.test.js`: 迁移顺序、回滚配对和不可变约束。
 - `network-security.test.js`: 出站 URL、私网与代理安全规则。
 - `openapi-error-response.test.js`: OpenAPI 索引与统一错误响应契约。
