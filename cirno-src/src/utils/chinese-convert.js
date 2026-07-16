@@ -204,7 +204,8 @@ const t2sCharMap = Object.freeze({
   裏: '里',
   裡: '里',
   祕: '秘',
-  祇: '只'
+  祇: '只',
+  擡: '抬'
 })
 
 const s2tCharMap = Object.freeze({
