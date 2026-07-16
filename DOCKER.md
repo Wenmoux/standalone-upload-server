@@ -214,6 +214,25 @@ docker compose -f docker-compose.hub.yml logs -f server-pg reader bot
 
 Prometheus 告警样例位于 `monitoring/prometheus-alerts.yml`。
 
+## 一次性清洗历史章节目录名
+
+镜像内提供 `clean-chapter-titles.js`，只处理已有 `chapter_cache.title`，不会在启动、上传或后续任务中自动执行。默认只预览，确认输出后再显式提交；`--apply` 会把本次更新放在一个 PostgreSQL 事务中。
+
+```bash
+# 先预览全部章节标题（默认最多 200 条）
+docker exec po18-app node scripts/clean-chapter-titles.js --all
+
+# 确认后一次性提交；只清洗 is_volume=true 的分卷行时加 --volumes-only
+docker exec po18-app node scripts/clean-chapter-titles.js --apply --all
+docker exec po18-app node scripts/clean-chapter-titles.js --apply --all --volumes-only --quiet
+
+# 可重复传入自定义删除正则；内置规则先执行，自定义正则随后执行
+docker exec po18-app node scripts/clean-chapter-titles.js --apply --all \
+  --regex '/\[作者注：[^\]]+\]/gu'
+```
+
+脚本只更新标题和 `updated_at`，清洗后为空会保留原标题；不要把它接入定时任务。
+
 ## 备份、恢复与演练
 
 - 本地备份目录：`/config/backups`。

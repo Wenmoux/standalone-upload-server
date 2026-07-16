@@ -27,7 +27,7 @@ bot-audit.js: Telegram Bot 审计服务，规范化命令执行结果并提供�
 bot-library.js: Bot 书库持久化用例，集中 PO18 加密账号、书架、缺书请求与分享事实的数据清洗和 SQL，使 Bot 路由保持协议边界。
 bot-settings.js: Bot 命令开关服务，以命令目录为白名单清洗、去重、稳定排序、持久化和读取后台配置。
 chapter-maintenance.js: 章节顺序修复服务，对重复顺序生成预览并在确认后通过事务重排。
-chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则去除重复编号和包裹噪声。
+chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则清理空白、已确认括号/未闭合尾注、用户正则与首尾连接符，并保留未确认正文语义。
 config.js: `admin_config` 访问与配置语义层，统一平台标签、导出计价、EPUB 配置及数值归一化。
 correction-text.js: 纠错文本规则层，统一 Unicode 字符偏移、换行规范化与精确/首处替换语义。
 credential-crypto.js: 外部站点凭证加密层，以版本化密文和轮换密钥保护数据库中的 PO18 Cookie/账号字段。

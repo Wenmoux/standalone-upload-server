@@ -27,31 +27,25 @@ const CONFIRMED_TITLE_CLEAN_RULES = [
     {
         id: "vote-progress",
         name: "进度拉票",
-        patterns: [
-            new RegExp(`^[${NUM_TOKEN}]+\\/[${NUM_TOKEN}]+(?:[,，]?(?:加更|补更)\\d*)?(?:求(?:月票|首订|订阅|追读|推荐票|票))?$`)
-        ]
+        patterns: [new RegExp(`^[${NUM_TOKEN}]+\\/[${NUM_TOKEN}]+(?:[,，]?(?:加更|补更)\\d*)?(?:求(?:月票|首订|订阅|追读|推荐票|票))?$`)]
     },
     {
         id: "ticket-milestone-note",
         name: "票数/保底标记",
         patterns: [
-            new RegExp(`^[${NUM_TOKEN}]+(?:更)?[,，]?(?:保底|月票\\d{2,6}|均订\\d{2,6}|订阅\\d{2,6})$`)
+            new RegExp(`^[${NUM_TOKEN}]+(?:更)?[,，]?(?:保底|月票\\d{2,6}|均订\\d{2,6}|订阅\\d{2,6})$`),
+            /^(?:月票|均订|订阅|推荐票|首订)\s*\d{1,6}$/
         ]
     },
     {
         id: "bonus-update",
         name: "加更说明",
-        patterns: [
-            /(?:为.+加更|盟主|白银盟|黄金盟|万赏|打赏).*(?:加更|求月票)?/,
-            /(?:加更|补更|爆更)/
-        ]
+        patterns: [/(?:为.+加更|盟主|白银盟|黄金盟|万赏|打赏).*(?:加更|求月票)?/, /(?:加更|补更|爆更)/]
     },
     {
         id: "word-count-ticket",
         name: "字数拉票",
-        patterns: [
-            /(?:\d+(?:\.\d+)?\s*[kK千]|[一二三四五六七八九十]+千|万字|\d+字).*(?:求月票|求票|求订阅|求首订)/
-        ]
+        patterns: [/(?:\d+(?:\.\d+)?\s*[kK千]|[一二三四五六七八九十]+千|万字|\d+字).*(?:求月票|求票|求订阅|求首订)/]
     },
     {
         id: "word-count-note",
@@ -80,7 +74,9 @@ const CONFIRMED_TITLE_CLEAN_RULES = [
             new RegExp(`^(?:爆发之)?第?[${NUM_TOKEN}]+更(?:[,，]?(?:感谢|谢谢|送到|还债).*)?$`),
             new RegExp(`^[${NUM_TOKEN}]+更(?:送到|还债)?$`),
             /^(补欠|还欠|补欠更|补昨天的|请假一更)$/,
-            new RegExp(`^(?:第?[${NUM_TOKEN}]+更|[${NUM_TOKEN}]+更|补更[,，]?第?[${NUM_TOKEN}]+更|[${NUM_TOKEN}]+\\/[${NUM_TOKEN}]+[,，]?(?:加更|补更)\\d*)$`),
+            new RegExp(
+                `^(?:第?[${NUM_TOKEN}]+更|[${NUM_TOKEN}]+更|补更[,，]?第?[${NUM_TOKEN}]+更|[${NUM_TOKEN}]+\\/[${NUM_TOKEN}]+[,，]?(?:加更|补更)\\d*)$`
+            ),
             new RegExp(`^(?:今日|今天)?[${NUM_TOKEN}]+更(?:完成|完毕|结束)?$`),
             new RegExp(`^第?[${NUM_TOKEN}]+更[,，].*(?:爆发完毕|完毕|完成|结束|快乐).*$`),
             new RegExp(`^[${NUM_TOKEN}]+更补$`),
@@ -109,34 +105,36 @@ const CONFIRMED_TITLE_CLEAN_RULES = [
         id: "author-status-note",
         name: "作者说明",
         patterns: [
-            /^(?:重要设定|设定章|设定说明|说明章|作者说明|作者的话|明天(?:恢复[一二两三四五六七八九十\d]+更|请假(?:一天)?)|今天请假(?:一天)?|请假(?:一天)?|预计本月完结|本月完结|前面[一二三四五六七八九十\d]+章被审核了.*|可以跳过.*)$/
+            /^(?:作者(?:[:：].*|说明|的话|注|有话说)|重要设定|设定章|设定说明|说明章|明天(?:恢复[一二两三四五六七八九十\d]+更|请假(?:一天)?)|今天请假(?:一天)?|请假(?:一天)?|预计本月完结|本月完结|前面[一二三四五六七八九十\d]+章被审核了.*|前一章被审核.*|可以跳过.*)$/
         ]
     },
     {
         id: "free-chapter-note",
         name: "免费章节说明",
-        patterns: [
-            /^(?:免费章|免费章节|免费|本章免费|本章不收费|不收费)$/
-        ]
+        patterns: [/^(?:免费章|免费章节|免费|本章免费|本章不收费|不收费)$/]
     },
     {
         id: "dangling-support-note",
         name: "末尾未闭合感谢/加更说明",
         danglingOnly: true,
-        patterns: [
-            /^感谢.+/,
-            /(?:盟主|白银盟|黄金盟|打赏|万赏)/,
-            /^(?:为|给).+(?:加更|补更|爆更)/
-        ]
+        patterns: [/^感谢.+/, /(?:盟主|白银盟|黄金盟|打赏|万赏)/, /^(?:为|给).+(?:加更|补更|爆更)/]
     }
 ];
 
 function normalizeTitleSpaces(value = "") {
     return String(value || "")
-        .replace(/[ \t\r\n\f\v]+/g, " ")
-        .replace(/\s+([，。！？；：、,.!?;:])/g, "$1")
-        .replace(/([（(【[])\s+/g, "$1")
-        .replace(/\s+([）)】\]])/g, "$1")
+        .replace(/[ \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\t\r\n\f\v]+/gu, " ")
+        .replace(/\s+([，。！？；：、,.!?;:])/gu, "$1")
+        .replace(/([:：])\s+/gu, "$1")
+        .replace(/([（(【\[])\s+/gu, "$1")
+        .replace(/\s+([）)】\]])/gu, "$1")
+        .trim();
+}
+
+function trimTitleConnectors(value = "") {
+    return String(value || "")
+        .replace(/^[\s\-＿_—–·・:：|]+/gu, "")
+        .replace(/[\s\-＿_—–·・:：|]+$/gu, "")
         .trim();
 }
 
@@ -179,12 +177,39 @@ function matchCleanRule(content = "", options = {}) {
     return null;
 }
 
-function cleanChapterTitle(title = "") {
+function applyCustomRegexes(title, customRegexes = []) {
+    let value = String(title || "");
+    const removed = [];
+    for (const entry of customRegexes) {
+        const regex = entry instanceof RegExp ? entry : entry?.regex;
+        if (!(regex instanceof RegExp)) continue;
+        regex.lastIndex = 0;
+        value = value.replace(regex, (match) => {
+            removed.push({
+                text: match,
+                content: match,
+                ruleId: entry.ruleId || "custom-regex",
+                ruleName: entry.ruleName || "用户自定义正则",
+                dangling: false
+            });
+            return "";
+        });
+    }
+    return { value, removed };
+}
+
+function cleanChapterTitle(title = "", options = {}) {
     const original = String(title || "");
     const segments = bracketSegments(original)
         .map((segment) => ({ ...segment, rule: matchCleanRule(segment.content, { dangling: segment.dangling }) }))
         .filter((segment) => segment.rule);
-    if (!segments.length) return { title: normalizeTitleSpaces(original), changed: false, removed: [] };
+    const normalizedOriginal = normalizeTitleSpaces(original);
+    if (!segments.length) {
+        const custom = applyCustomRegexes(normalizedOriginal, options.customRegexes);
+        const cleaned = trimTitleConnectors(normalizeTitleSpaces(custom.value));
+        if (!cleaned) return { title: original, changed: false, removed: [] };
+        return { title: cleaned, changed: cleaned !== original, removed: custom.removed };
+    }
 
     let output = "";
     let cursor = 0;
@@ -193,25 +218,30 @@ function cleanChapterTitle(title = "") {
         cursor = segment.end;
     }
     output += original.slice(cursor);
-    const cleaned = normalizeTitleSpaces(output);
-    if (!cleaned) return { title: normalizeTitleSpaces(original), changed: false, removed: [] };
+    const custom = applyCustomRegexes(normalizeTitleSpaces(output), options.customRegexes);
+    const cleaned = trimTitleConnectors(normalizeTitleSpaces(custom.value));
+    if (!cleaned) return { title: original, changed: false, removed: [] };
     return {
         title: cleaned,
-        changed: cleaned !== normalizeTitleSpaces(original),
-        removed: segments.map((segment) => ({
-            text: original.slice(segment.start, segment.end),
-            content: normalizeTitleSpaces(segment.content),
-            ruleId: segment.rule.id,
-            ruleName: segment.rule.name,
-            dangling: segment.dangling
-        }))
+        changed: cleaned !== original,
+        removed: segments
+            .map((segment) => ({
+                text: original.slice(segment.start, segment.end),
+                content: normalizeTitleSpaces(segment.content),
+                ruleId: segment.rule.id,
+                ruleName: segment.rule.name,
+                dangling: segment.dangling
+            }))
+            .concat(custom.removed)
     };
 }
 
 module.exports = {
     CONFIRMED_TITLE_CLEAN_RULES,
+    applyCustomRegexes,
     bracketSegments,
     cleanChapterTitle,
     matchCleanRule,
-    normalizeTitleSpaces
+    normalizeTitleSpaces,
+    trimTitleConnectors
 };

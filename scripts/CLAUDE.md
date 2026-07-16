@@ -11,7 +11,7 @@
 - `check-docs.js`: 校验 Markdown 相对链接、必需 L1/L2 地图和多语言源码 L3 契约，作为 GEB 回环 CI 门禁。
 - `check-schema-drift.js`: 对比迁移演进与 schema snapshot，阻止数据库语义漂移。
 - `check-utf8.js`: 扫描受控文本文件的 UTF-8 与异常乱码模式。
-- `clean-chapter-titles.js`: 调用统一标题清洗能力批量修正章节标题。
+- `clean-chapter-titles.js`: 一次性调用统一标题清洗能力修正 `chapter_cache.title`，默认 dry-run，支持分卷筛选、自定义正则和显式事务提交。
 - `docker-build.js`: 构建含源码身份的不可变镜像标签并向工作流输出结果。
 - `docker-push.js`: 只把已验证的 `v2.0` 移动标签发布到 registry，不扩散本地源码指纹标签。
 - `docker-release-manifest.js`: 生成唯一公开标签、来源与 digest 元数据，以摘要承担复现和审计语义。
