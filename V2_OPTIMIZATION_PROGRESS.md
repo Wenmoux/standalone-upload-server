@@ -4,6 +4,11 @@
 
 更新时间：2026-07-12
 
+## 后续修正（2026-07-16）
+
+- `main` 发布链已收口为只向 Docker Hub 更新 `wenmoux/reader:v2.0`；源码指纹只保留在本地候选构建、镜像元数据、发布证据和 registry digest 中，不再创建新的 `sha-*` 或 semver 镜像标签。历史快照中关于“更新源码指纹标签”的表述以此修正为准。
+- Reader 繁简转换补充 `OpenCC 1.3` 的真实残留字 `擡 -> 抬`，锁定 Node 20 CI 与本机行为一致；维护说明见 [繁简转换说明](cirno-src/docs/chinese-conversion.md)。
+
 ## 本轮边界
 
 - [x] Docker 默认标签调整为 `wenmoux/reader:v2.0`。
