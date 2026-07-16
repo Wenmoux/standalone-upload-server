@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供Admin 登录、会话、角色和 CSRF 路由契约的自动化回归断言
- * [POS]: tests 的Admin 登录、会话、角色和 CSRF 路由契约守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供 Admin 登录持久化时序、会话、角色和 CSRF 路由契约的自动化回归断言
+ * [POS]: tests 的 Admin 登录、会话、角色和 CSRF 路由契约守卫，防止响应领先于 session 落库或权限语义静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -20,6 +20,10 @@ async function withApp(router, fn, options = {}) {
             destroy(callback) {
                 this.destroyed = true;
                 this.adminUser = null;
+                callback();
+            },
+            save(callback) {
+                options.onSave?.(this);
                 callback();
             }
         };
@@ -43,6 +47,7 @@ function adminOnly(req, res, next) {
 
 test("admin auth route logs in and updates last login", async () => {
     const calls = [];
+    let savedAdmin = null;
     const router = createAdminAuthRoutes({
         requireAdmin: adminOnly,
         verifyPassword: (password, user) => password === "secret" && user.username === "admin",
@@ -55,20 +60,25 @@ test("admin auth route logs in and updates last login", async () => {
         }
     });
 
-    await withApp(router, async (base) => {
-        const response = await fetch(`${base}/admin-api/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: "admin", password: "secret" })
-        });
-        assert.equal(response.status, 200);
-        assert.deepEqual((await response.json()).user, { id: 7, username: "admin" });
-    });
+    await withApp(
+        router,
+        async (base) => {
+            const response = await fetch(`${base}/admin-api/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: "admin", password: "secret" })
+            });
+            assert.equal(response.status, 200);
+            assert.deepEqual((await response.json()).user, { id: 7, username: "admin" });
+        },
+        { onSave: (session) => (savedAdmin = { ...session.adminUser }) }
+    );
 
     assert.equal(calls.length, 2);
     assert.match(calls[0].sql, /SELECT \* FROM admin_users/);
     assert.match(calls[1].sql, /UPDATE admin_users SET last_login_at/);
     assert.deepEqual(calls[1].params, [7]);
+    assert.deepEqual(savedAdmin, { id: 7, username: "admin", role: "owner" });
 });
 
 test("admin auth route rejects invalid password", async () => {
@@ -101,14 +111,18 @@ test("admin auth route exposes current user and protects logout", async () => {
         query: async () => ({ rows: [] })
     });
 
-    await withApp(router, async (base) => {
-        const me = await fetch(`${base}/admin-api/auth/me`);
-        assert.deepEqual(await me.json(), { user: { id: 3, username: "root" } });
+    await withApp(
+        router,
+        async (base) => {
+            const me = await fetch(`${base}/admin-api/auth/me`);
+            assert.deepEqual(await me.json(), { user: { id: 3, username: "root" } });
 
-        const logout = await fetch(`${base}/admin-api/auth/logout`, { method: "POST" });
-        assert.equal(logout.status, 200);
-        assert.deepEqual(await logout.json(), { success: true });
-    }, { adminUser: { id: 3, username: "root" } });
+            const logout = await fetch(`${base}/admin-api/auth/logout`, { method: "POST" });
+            assert.equal(logout.status, 200);
+            assert.deepEqual(await logout.json(), { success: true });
+        },
+        { adminUser: { id: 3, username: "root" } }
+    );
 
     await withApp(router, async (base) => {
         const response = await fetch(`${base}/admin-api/auth/logout`, { method: "POST" });
@@ -123,14 +137,18 @@ test("admin auth access exposes role without changing the legacy me payload", as
         query: async () => ({ rows: [] })
     });
 
-    await withApp(router, async (base) => {
-        const me = await fetch(`${base}/admin-api/auth/me`);
-        assert.deepEqual(await me.json(), { user: { id: 4, username: "operator" } });
+    await withApp(
+        router,
+        async (base) => {
+            const me = await fetch(`${base}/admin-api/auth/me`);
+            assert.deepEqual(await me.json(), { user: { id: 4, username: "operator" } });
 
-        const access = await fetch(`${base}/admin-api/auth/access`);
-        assert.equal(access.status, 200);
-        assert.deepEqual(await access.json(), { role: "operator" });
-    }, { adminUser: { id: 4, username: "operator", role: "operator" } });
+            const access = await fetch(`${base}/admin-api/auth/access`);
+            assert.equal(access.status, 200);
+            assert.deepEqual(await access.json(), { role: "operator" });
+        },
+        { adminUser: { id: 4, username: "operator", role: "operator" } }
+    );
 });
 
 test("admin account routes create, update and delete accounts", async () => {
@@ -172,30 +190,34 @@ test("admin account routes create, update and delete accounts", async () => {
         }
     });
 
-    await withApp(router, async (base) => {
-        const created = await fetch(`${base}/admin-api/auth/admins`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: "ops", password: "very-secret", role: "operator" })
-        });
-        assert.equal(created.status, 200);
-        assert.equal((await created.json()).user.role, "operator");
+    await withApp(
+        router,
+        async (base) => {
+            const created = await fetch(`${base}/admin-api/auth/admins`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: "ops", password: "very-secret", role: "operator" })
+            });
+            assert.equal(created.status, 200);
+            assert.equal((await created.json()).user.role, "operator");
 
-        const updated = await fetch(`${base}/admin-api/auth/admins/2`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role: "moderator" })
-        });
-        assert.equal(updated.status, 200);
-        assert.equal((await updated.json()).user.role, "moderator");
+            const updated = await fetch(`${base}/admin-api/auth/admins/2`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ role: "moderator" })
+            });
+            assert.equal(updated.status, 200);
+            assert.equal((await updated.json()).user.role, "moderator");
 
-        const removed = await fetch(`${base}/admin-api/auth/admins/2`, { method: "DELETE" });
-        assert.equal(removed.status, 200);
-        assert.equal(admins.has(2), false);
+            const removed = await fetch(`${base}/admin-api/auth/admins/2`, { method: "DELETE" });
+            assert.equal(removed.status, 200);
+            assert.equal(admins.has(2), false);
 
-        const selfDelete = await fetch(`${base}/admin-api/auth/admins/1`, { method: "DELETE" });
-        assert.equal(selfDelete.status, 409);
-    }, { adminUser: { id: 1, username: "root", role: "owner" } });
+            const selfDelete = await fetch(`${base}/admin-api/auth/admins/1`, { method: "DELETE" });
+            assert.equal(selfDelete.status, 409);
+        },
+        { adminUser: { id: 1, username: "root", role: "owner" } }
+    );
 });
 
 test("admin account routes protect the last owner", async () => {
@@ -215,17 +237,21 @@ test("admin account routes protect the last owner", async () => {
         }
     });
 
-    await withApp(router, async (base) => {
-        const demote = await fetch(`${base}/admin-api/auth/admins/1`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role: "operator" })
-        });
-        assert.equal(demote.status, 409);
-        assert.match((await demote.json()).error, /最后一个 owner/);
+    await withApp(
+        router,
+        async (base) => {
+            const demote = await fetch(`${base}/admin-api/auth/admins/1`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ role: "operator" })
+            });
+            assert.equal(demote.status, 409);
+            assert.match((await demote.json()).error, /最后一个 owner/);
 
-        const remove = await fetch(`${base}/admin-api/auth/admins/1`, { method: "DELETE" });
-        assert.equal(remove.status, 409);
-        assert.match((await remove.json()).error, /最后一个 owner/);
-    }, { adminUser: { id: 99, username: "another", role: "owner" } });
+            const remove = await fetch(`${base}/admin-api/auth/admins/1`, { method: "DELETE" });
+            assert.equal(remove.status, 409);
+            assert.match((await remove.json()).error, /最后一个 owner/);
+        },
+        { adminUser: { id: 99, username: "another", role: "owner" } }
+    );
 });

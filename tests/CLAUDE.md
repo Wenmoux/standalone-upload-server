@@ -10,7 +10,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 
 - `admin-audit.test.js`: 管理审计 actor/target/reason、查询、过滤与脱敏契约。
 - `admin-lazy-workspace.test.js`: Admin 页内工作区按需加载、并发去重、失败重试与缓存刷新语义。
-- `admin-auth-routes.test.js`: Admin 登录、会话、角色和 CSRF 路由契约。
+- `admin-auth-routes.test.js`: Admin 登录 session 落库时序、会话、角色和 CSRF 路由契约。
 - `admin-exports.test.js`: Admin CSV 公式注入防护、编码、文件名与响应协议。
 - `admin-content-routes.test.js`: 管理端书籍、章节与 Reader/Bot 管理员授权路由契约。
 - `admin-modules.test.js`: Admin 领域服务组合与边界回归。

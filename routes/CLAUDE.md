@@ -7,7 +7,7 @@
 ## 成员清单
 
 CLAUDE.md: 本模块的语义地图，约束路由边界、鉴权落点和服务依赖。
-admin-auth.js: Admin 认证与管理员账号路由，承接登录/session、访问角色及 owner 约束。
+admin-auth.js: Admin 认证与管理员账号路由，登录响应前确认 session 已持久化，并承接访问角色及 owner 约束。
 admin-backups.js: Admin 备份路由，把创建、校验、上传、恢复、演练和远端操作映射到备份服务与任务中心。
 admin-config.js: Admin 配置路由，暴露 Telegram 类型开关、owner 全员通知、平台、导出和 EPUB Style2 模板/资源配置。
 admin-content.js: Admin 内容域组合路由，挂载维护、用户和书库子路由并处理其余后台内容/配置接口。
