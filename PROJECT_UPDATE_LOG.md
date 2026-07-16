@@ -11,6 +11,13 @@
 - GitHub 发布仍先完成静态门禁、真实 PostgreSQL、候选镜像与 digest 回拉冒烟，但 registry 写入只更新 `wenmoux/reader:v2.0`，不再为每次提交创建 `sha-*` 或额外 semver 标签。
 - 源码 revision、source hash 和构建时间继续写入镜像元数据与发布证据；需要严格复现或回滚时使用 `wenmoux/reader@sha256:...`，不依赖额外 Docker Hub 标签。
 
+## 2026-07-16：Reader 页面视觉边界收口
+
+- `BookDetail.vue`、`BookLibrary.vue` 与 `Index.vue` 的页面私有 Less 分别进入独立样式文件，业务页面只保留模板、请求状态和交互编排；生产构建后的页面 CSS/JS 体积保持稳定。
+- 三个页面分别从约 1,300、1,050、1,000 行降至约 600 行，Reader 正文、详情、书库和首页四个核心组合视图全部回落到 800 行阈值以内。
+- 新增结构契约测试，锁定外置样式引用、核心页面选择器、L3 文档和文件规模；架构热点清单同步移除已经收缩的 Reader 页面与 Admin `BooksView.vue`。
+- 根级格式门禁开始覆盖全部 Reader 视图与局部 Less，并一次性归一化既有页面格式，后续样式拆分或页面修改不能再绕过 Prettier。
+
 ## 2026-07-16：Reader 设置面板与样式边界拆分
 
 - 阅读设置抽屉从 `Reader.vue` 提取为独立设置面板；面板只接收设置、主题、音色和章头预览状态，并通过语义事件提交变更，设置持久化与 TTS 引擎编排仍由原领域 mixin 负责。

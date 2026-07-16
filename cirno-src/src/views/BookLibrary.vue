@@ -1,5 +1,5 @@
 <!--
- * [INPUT]: 依赖 搜索意图、平台配置、Reader session/主题和分页搜索 API
+ * [INPUT]: 依赖 book-library.less、搜索意图、平台配置、Reader session/主题和分页搜索 API
  * [OUTPUT]: 对外提供 BookLibrary 全库检索与分页浏览页面
  * [POS]: Reader views 的书库发现页，把 UI 筛选映射到统一搜索契约
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -95,7 +95,16 @@
         <div class="library-grid" v-else>
           <div class="library-card" v-for="book in pagedBooks" :key="bookKey(book)" @click="gotoBook(book)">
             <div class="cover-wrap">
-              <img v-if="book.book_info.cover" :src="book.book_info.cover" alt="" width="132" height="176" loading="lazy" decoding="async" @error="book.book_info.cover = ''" />
+              <img
+                v-if="book.book_info.cover"
+                :src="book.book_info.cover"
+                alt=""
+                width="132"
+                height="176"
+                loading="lazy"
+                decoding="async"
+                @error="book.book_info.cover = ''"
+              />
               <div v-else class="empty-cover">{{ coverText(book) }}</div>
             </div>
             <div class="book-info">
@@ -219,7 +228,8 @@ export default {
     const initialPlatform = routeString(this.$route, 'platform')
     const initialQuery = routeString(this.$route, 'q')
     const initialPlatformKey = initialPlatform ? resolveSiteFilterKey(initialPlatform) : ''
-    const initialKeyword = initialQuery || (initialAuthor ? `作者:${initialAuthor}` : initialTag ? `标签:${initialTag}` : '')
+    const initialKeyword =
+      initialQuery || (initialAuthor ? `作者:${initialAuthor}` : initialTag ? `标签:${initialTag}` : '')
     return {
       allBooks: [],
       total: 0,
@@ -270,7 +280,10 @@ export default {
         return this.siteOptions
       }
       if (this.activeTab === 'tag') {
-        return this.countOptions(book => this.tagKeys(book), key => (key === TAG_UNSET ? '未标注' : key))
+        return this.countOptions(
+          book => this.tagKeys(book),
+          key => (key === TAG_UNSET ? '未标注' : key)
+        )
           .slice(0, 60)
           .map(option => ({ key: option.key, label: option.label }))
       }
@@ -351,7 +364,9 @@ export default {
       this.shelfBookIds = ids
     },
     async loadSiteOptions() {
-      const data = await fetch('/reader-api/platforms', { credentials: 'include' }).then(res => (res.ok ? res.json() : null))
+      const data = await fetch('/reader-api/platforms', { credentials: 'include' }).then(res =>
+        res.ok ? res.json() : null
+      )
       const rows = (data && data.platforms) || []
       this.siteOptions = SITE_FILTERS.map(site => {
         const count = rows
@@ -533,7 +548,8 @@ export default {
       if (this.queryAuthor) query.author = this.queryAuthor
       const platform = this.activeTab === 'site' ? this.currentFilter : this.queryPlatform
       if (platform) query.platform = platform
-      if (this.activeTab === 'tag' && this.currentFilter && this.currentFilter !== TAG_UNSET) query.tag = this.currentFilter
+      if (this.activeTab === 'tag' && this.currentFilter && this.currentFilter !== TAG_UNSET)
+        query.tag = this.currentFilter
       if (this.sortMode !== 'updated_desc') query.sort = this.sortMode
       const sameQ = String(this.$route.query.q || '') === String(query.q || '')
       const sameAuthor = String(this.$route.query.author || '') === String(query.author || '')
@@ -627,439 +643,4 @@ export default {
 }
 </script>
 
-<style lang="less" scoped>
-.library-page {
-  width: 100%;
-  min-height: 100vh;
-  color: var(--reader-text-color);
-  background: var(--reader-paper-bg);
-  button {
-    border: 0;
-    font: inherit;
-    cursor: pointer;
-  }
-  .top-bar {
-    z-index: 200;
-    padding: 0 40px;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 68px;
-    background: var(--reader-topbar-bg);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--reader-border-color);
-    box-shadow: 0 4px 18px rgba(15, 23, 42, 0.05);
-    .brand {
-      color: var(--reader-text-color);
-      font-size: 20px;
-      font-weight: 600;
-      cursor: pointer;
-      user-select: none;
-    }
-    .nav-actions {
-      display: flex;
-      align-items: center;
-      gap: 28px;
-      .user-chip {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        cursor: pointer;
-        color: var(--reader-text-color);
-        .user-avatar {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          object-fit: cover;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-        }
-        .user-name {
-          max-width: 120px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          font-weight: 500;
-        }
-      }
-      .nav-link {
-        color: var(--reader-muted-color);
-        cursor: pointer;
-        font-size: 15px;
-        user-select: none;
-        &:hover,
-        &.active {
-          color: var(--reader-accent-color);
-        }
-      }
-    }
-  }
-  .library-shell {
-    padding: 96px 40px 42px;
-  }
-  .library-head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(360px, 560px);
-    gap: 24px;
-    align-items: center;
-    margin-bottom: 14px;
-    .library-tools {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 136px;
-      gap: 12px;
-      align-items: center;
-    }
-  }
-  .category-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    button {
-      height: 36px;
-      padding: 0 14px;
-      border-radius: 6px;
-      color: var(--reader-muted-color);
-      background: transparent;
-      font-size: 14px;
-      font-weight: 750;
-      &:hover,
-      &.active {
-        color: var(--reader-paper-bg);
-        background: var(--reader-accent-color);
-      }
-    }
-  }
-  .filter-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 28px;
-    padding-top: 14px;
-    border-top: 1px solid var(--reader-border-color);
-    .filter-chip {
-      min-height: 32px;
-      max-width: 240px;
-      padding: 0 10px;
-      border-radius: 6px;
-      color: var(--reader-muted-color);
-      background: var(--reader-soft-bg);
-      font-size: 13px;
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      span {
-        min-width: 22px;
-        height: 20px;
-        padding: 0 6px;
-        border-radius: 999px;
-        color: var(--reader-muted-color);
-        background: var(--reader-paper-bg);
-        font-size: 12px;
-        line-height: 20px;
-      }
-      &:hover,
-      &.active {
-        color: var(--reader-accent-color);
-      }
-    }
-  }
-  .page-spin {
-    display: block;
-    margin-top: 120px;
-    text-align: center;
-  }
-  .library-toolbar {
-    min-height: 28px;
-    margin-bottom: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    color: var(--reader-muted-color);
-    font-size: 14px;
-  }
-  .library-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-    gap: 34px 24px;
-    justify-content: stretch;
-    justify-items: center;
-    align-items: start;
-  }
-  .library-card {
-    width: 108px;
-    min-width: 0;
-    color: var(--reader-text-color);
-    cursor: pointer;
-    .cover-wrap {
-      width: 108px;
-      height: 144px;
-      overflow: hidden;
-      background: var(--reader-soft-bg);
-      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
-      transition: transform 0.18s ease, box-shadow 0.18s ease;
-      &:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
-      }
-      img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-      .empty-cover {
-        height: 100%;
-        padding: 12px;
-        color: var(--reader-muted-color);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        font-size: 16px;
-        font-weight: 750;
-        line-height: 1.45;
-      }
-    }
-    .book-info {
-      min-width: 0;
-    }
-    .book-title {
-      margin-top: 10px;
-      color: var(--reader-muted-color);
-      font-size: 14px;
-      line-height: 20px;
-      font-weight: 500;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .book-author {
-      margin-top: 2px;
-      color: var(--reader-muted-color);
-      font-size: 12px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      opacity: 0.8;
-    }
-    .book-meta {
-      margin-top: 2px;
-      color: var(--reader-muted-color);
-      font-size: 12px;
-      line-height: 18px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      opacity: 0.72;
-    }
-    .add-shelf-btn {
-      width: 100%;
-      height: 26px;
-      margin-top: 7px;
-      padding: 0 6px;
-      border-radius: 4px;
-      color: var(--reader-accent-color);
-      background: var(--reader-soft-bg);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-      i {
-        font-size: 14px;
-      }
-      &.added {
-        color: var(--reader-muted-color);
-      }
-      &:disabled {
-        cursor: default;
-        opacity: 0.8;
-      }
-    }
-  }
-  .library-pagination {
-    margin-top: 28px;
-    text-align: center;
-  }
-  .empty-state,
-  .error-state {
-    padding: 76px 20px;
-    color: var(--reader-muted-color);
-    text-align: center;
-    .empty-title,
-    .error-title {
-      color: var(--reader-text-color);
-      font-size: 20px;
-      font-weight: 750;
-    }
-    .empty-text,
-    .error-text {
-      margin-top: 10px;
-      font-size: 14px;
-    }
-    .primary-action {
-      height: 40px;
-      margin-top: 20px;
-      padding: 0 18px;
-      border-radius: 6px;
-      color: var(--reader-paper-bg);
-      background: var(--reader-accent-color);
-      font-size: 14px;
-      font-weight: 750;
-    }
-  }
-  :deep(.ant-input),
-  :deep(.ant-input-search .ant-input),
-  :deep(.ant-select-selection),
-  :deep(.ant-input-search-button ){
-    height: 40px;
-    border-radius: 6px;
-    font-size: 14px;
-  }
-  :deep(.ant-input),
-  :deep(.ant-input-search .ant-input),
-  :deep(.ant-select-selection ){
-    color: var(--reader-text-color);
-    background: var(--reader-soft-bg);
-    border-color: var(--reader-border-color);
-    box-shadow: none;
-  }
-  :deep(.ant-input::placeholder ){
-    color: var(--reader-muted-color);
-    opacity: 0.78;
-  }
-  :deep(.ant-input-search .ant-input ){
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-  :deep(.ant-input-search-button ){
-    min-width: 82px;
-    color: var(--reader-paper-bg);
-    background: var(--reader-accent-color);
-    border-color: var(--reader-accent-color);
-    font-weight: 800;
-    text-shadow: none;
-    box-shadow: none;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-  }
-  :deep(.ant-select-selection__rendered),
-  :deep(.ant-select-selection-selected-value),
-  :deep(.ant-select-arrow ){
-    color: var(--reader-text-color);
-  }
-  :deep(.library-select-dropdown ){
-    background: var(--reader-paper-bg);
-    border: 1px solid var(--reader-border-color);
-    box-shadow: var(--reader-shadow);
-  }
-  :deep(.library-select-dropdown .ant-select-dropdown-menu-item ){
-    color: var(--reader-muted-color);
-    background: var(--reader-paper-bg);
-  }
-  :deep(.library-select-dropdown .ant-select-dropdown-menu-item:hover),
-  :deep(.library-select-dropdown .ant-select-dropdown-menu-item-active:not(.ant-select-dropdown-menu-item-disabled) ){
-    color: var(--reader-text-color);
-    background: var(--reader-soft-bg);
-  }
-  :deep(.library-select-dropdown .ant-select-dropdown-menu-item-selected ){
-    color: var(--reader-accent-color);
-    font-weight: 750;
-    background: var(--reader-soft-bg);
-  }
-}
-
-@media (max-width: 860px) {
-  .library-page {
-    .top-bar {
-      height: 62px;
-      padding: 0 14px;
-      .brand {
-        font-size: 19px;
-      }
-      .nav-actions {
-        gap: 12px;
-        min-width: 0;
-        .user-chip {
-          gap: 6px;
-          .user-avatar {
-            width: 32px;
-            height: 32px;
-          }
-          .user-name {
-            max-width: 54px;
-            font-size: 14px;
-          }
-        }
-        .nav-link {
-          font-size: 14px;
-          white-space: nowrap;
-        }
-      }
-    }
-    .library-shell {
-      padding: 92px 18px 32px;
-    }
-    .library-head {
-      grid-template-columns: 1fr;
-      gap: 16px;
-      h1 {
-        font-size: 28px;
-      }
-      .library-tools {
-        grid-template-columns: 1fr 128px;
-      }
-    }
-    .library-grid {
-      grid-template-columns: repeat(2, 108px);
-      justify-content: center;
-      gap: 30px 52px;
-    }
-  }
-}
-
-@media (max-width: 520px) {
-  .library-page {
-    .top-bar {
-      padding: 0 10px;
-      .nav-actions {
-        gap: 9px;
-        .user-chip .user-name {
-          display: none;
-        }
-        .nav-link {
-          font-size: 13px;
-        }
-      }
-    }
-    .library-head .library-tools {
-      grid-template-columns: 1fr;
-    }
-    .library-grid {
-      gap: 30px 34px;
-    }
-  }
-}
-
-@media (max-width: 360px) {
-  .library-page {
-    .top-bar .nav-actions {
-      gap: 7px;
-      .nav-link {
-        font-size: 12px;
-      }
-    }
-    .library-grid {
-      gap: 28px 20px;
-    }
-  }
-}
-</style>
+<style src="../styles/book-library.less" lang="less" scoped></style>

@@ -45,9 +45,7 @@
           </div>
         </div>
         <div class="button">
-          <a-checkbox v-model:checked="remUser" class="checkbox" v-if="mode === 'login'">
-            记住账号
-          </a-checkbox>
+          <a-checkbox v-model:checked="remUser" class="checkbox" v-if="mode === 'login'">记住账号</a-checkbox>
           <div class="mode-tip" v-else>注册后会自动进入书架</div>
           <div class="login-button">
             <a-button
@@ -391,7 +389,7 @@ export default {
           margin-bottom: 18px;
         }
         :deep(.ant-input),
-        :deep(.ant-input-affix-wrapper ){
+        :deep(.ant-input-affix-wrapper) {
           height: 52px;
           color: #1f2933;
           font-size: 16px;
@@ -405,10 +403,10 @@ export default {
             box-shadow: 0 0 0 2px rgba(27, 136, 238, 0.14);
           }
         }
-        :deep(.ant-input::placeholder ){
+        :deep(.ant-input::placeholder) {
           color: #98a2b3;
         }
-        :deep(.ant-input-prefix ){
+        :deep(.ant-input-prefix) {
           color: #6b7280;
         }
       }
@@ -425,7 +423,7 @@ export default {
           min-width: 150px;
           display: flex;
           gap: 10px;
-          :deep(.ant-btn ){
+          :deep(.ant-btn) {
             height: 52px;
             font-size: 18px;
             font-weight: 700;

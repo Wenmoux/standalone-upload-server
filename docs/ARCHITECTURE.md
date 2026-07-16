@@ -131,7 +131,7 @@ Dockerfile 主要阶段：
 - `GET /reader-api/books/:bookId/chapters?includeContent=1` 是 Bot 历史导出的公开正文兼容面。新的正文客户端必须使用受书库权限保护的单章接口；彻底收紧前需要先给 Bot 提供内部鉴权导出接口和兼容期。
 - 书籍身份仍有平台无感的 `book_id` 路径；Manifest 已拒绝可见的跨平台同号冲突，但统一 `book_key` 尚未迁移完成。
 - 远端备份只负责上传、索引和保留删除，且没有自动创建 dump 的调度器；下载、解密和恢复仍需运维人员显式完成。
-- Reader 的详情/书库/首页、`docker/control-panel.js`、Admin `BooksView.vue` 与本地书库上传工具仍超过 800 行重构信号；`Reader.vue` 已通过领域 mixin、设置面板和独立样式边界回落到阈值内。新增能力应进入现有 component/mixin/service/route，而不是继续扩大组合根。
+- Reader 正文、详情、书库和首页已通过领域 mixin、局部组件与独立样式边界全部回落到 800 行以内，Admin `BooksView.vue` 当前也低于阈值。仍需优先收缩的生产热点是本地书库上传 UI/CLI、`docker/control-panel.js` 与 Reader 转换报告脚本；新增能力应进入现有 component/service/style/util，而不是继续扩大组合根。
 - 繁简转换已由动态加载的 OpenCC 主导，项目残留字表不足 50 项，并已删除约 2,400 字平行表和 800 篇整文 LRU；当前 `chinese-convert` chunk 约 1.20 MiB、gzip 约 526 KiB，主要体积来自 OpenCC 词典，后续优化应围绕词典切分或上游数据压缩，而不是恢复平行字表或调高警告阈值。
 
 ## 变更检查清单

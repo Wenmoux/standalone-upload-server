@@ -32,7 +32,11 @@
         </div>
         <div class="form-row">
           <div class="label">头像地址</div>
-          <a-input v-model:value.trim="profile.avatar_url" placeholder="粘贴头像图片 URL，可留空使用默认头像" size="large" />
+          <a-input
+            v-model:value.trim="profile.avatar_url"
+            placeholder="粘贴头像图片 URL，可留空使用默认头像"
+            size="large"
+          />
         </div>
         <div class="tips">头像先支持图片链接；留空会显示默认头像。</div>
         <a-button type="primary" size="large" :loading="saving" @click="saveProfile">保存资料</a-button>
@@ -237,7 +241,7 @@ export default {
         color: #4b5563;
         font-weight: 600;
       }
-      :deep(.ant-input ){
+      :deep(.ant-input) {
         color: #1f2933;
         background: #fff;
         border-color: #cfd7e3;

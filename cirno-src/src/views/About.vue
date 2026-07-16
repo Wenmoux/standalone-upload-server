@@ -23,13 +23,9 @@
       <div class="desc-box">
         <div class="title">
           晚风里
-          <div class="title-katakana">
-            チルノ
-          </div>
+          <div class="title-katakana">チルノ</div>
         </div>
-        <div class="sub-title">
-          一个网页版刺猬猫第三方阅读器
-        </div>
+        <div class="sub-title">一个网页版刺猬猫第三方阅读器</div>
         <div class="buttons">
           <div class="git-btn" @click="gotoGit">
             <i class="ri-github-fill icon"></i>
@@ -115,7 +111,7 @@ export default {
       padding-right: 40px;
       .menu-container {
         display: flex;
-        :deep(.ant-menu ){
+        :deep(.ant-menu) {
           border-bottom: none;
           .ant-menu-item {
             border-bottom: 0;
@@ -213,7 +209,7 @@ export default {
   }
 }
 
-:deep(.ant-popover ){
+:deep(.ant-popover) {
   .ant-popover-content {
     .ant-popover-title {
       padding: 16px;

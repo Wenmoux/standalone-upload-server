@@ -36,6 +36,9 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `router/index.js`: Hash 路由与 Reader 会话门禁，兼容裸路径进入并延迟加载页面。
 `store/index.js`: 最小 Vuex 共享状态，保存 API 基址、作品信息和 Reader 用户信息供旧组件消费。
 `styles/search-modal-fix.css`: 搜索弹窗在移动端与 Ant Design 组合下的全局布局修正。
+`styles/book-detail.less`: 单书详情页的局部视觉边界，覆盖元信息、目录、书架、书评与窄屏状态。
+`styles/book-library.less`: 全库发现页的局部视觉边界，覆盖筛选、书卡、分页与加载/空状态。
+`styles/reader-home.less`: 登录后首页的局部视觉边界，覆盖导航、个人书架和搜索入口。
 `styles/reader-settings-panel.less`: 阅读设置抽屉的局部视觉边界，覆盖桌面、平板和移动端表单布局。
 `styles/reader.less`: 正文组合页的局部视觉边界，承载章头、控制栏、间贴、纠错和响应式阅读布局。
 `utils/chinese-convert.js`: OpenCC 主导的繁简转换内核，以小型残留字表、上下文保护和碰撞安全的用户词表补足小说语义，同时保留双向转换。
@@ -52,9 +55,9 @@ Reader 浏览器应用的可执行语义层。`main.js` 装配路由、状态、
 `utils/search-intent.js`: 搜索语法解析器，把作者/标签/书名意图转换为服务端查询参数。
 `utils/virtual-list.js`: 定高虚拟列表窗口范围纯算法，被目录与详情页复用。
 `views/About.vue`: Reader 项目说明页，提供应用内导航和名称来源信息。
-`views/BookDetail.vue`: 书籍详情编排页，加载元数据、目录、书架状态、书评与举报操作并进入阅读。
-`views/BookLibrary.vue`: 全库浏览页，组合检索意图、平台配置、主题与分页结果。
-`views/Index.vue`: 登录后的首页/个人书架，承载搜索建议、平台筛选、最近内容和详情导航。
+`views/BookDetail.vue`: 书籍详情编排页，加载元数据、目录、书架状态、书评与举报操作并进入阅读；视觉规则由独立样式边界承载。
+`views/BookLibrary.vue`: 全库浏览页，组合检索意图、平台配置、主题与分页结果；视觉规则由独立样式边界承载。
+`views/Index.vue`: 登录后的首页/个人书架，承载搜索建议、平台筛选、最近内容和详情导航；视觉规则由独立样式边界承载。
 `views/Login.vue`: Reader 本地/CDK 注册登录与 Telegram 登录入口，成功后建立会话缓存并跳转首页。
 `views/Reader.vue`: 正文阅读组合根，只装配布局、段落/设置/目录/图片/间贴/票券组件及六个领域 mixin，不再直接持有章节加载、离线、间贴协议或大段局部样式。
 `views/Settings.vue`: 当前 Reader 账号与本地设置页，维护资料、退出会话并清理对应离线数据。
@@ -70,6 +73,6 @@ main -> router + store + plugins + PWA/RUM
 
 - `plugins/http.js` 是网络兼容层，业务页面不得新增裸露的第二套鉴权策略；少量原生 fetch 也必须保持同源凭证和会话语义。
 - 不可信正文必须先经过 `sanitize-html.js`；离线数据必须以 Reader 用户 ID 隔离。
-- `Reader.vue` 已回落到 800 行以内；新阅读能力仍须优先进入既有 mixin、component、style 或 util，保持组合根只做装配。
+- Reader 正文、详情、书库和首页组合视图均已回落到 800 行以内；新阅读能力仍须优先进入既有 mixin、component、style 或 util，保持页面根只做装配。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

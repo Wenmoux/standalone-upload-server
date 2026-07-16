@@ -85,6 +85,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `reader-rum.test.js`: Reader 性能事件采样和写入。
 - `reader-settings-mixin.test.js`: Reader 阅读设置状态机下沉、设置面板事件、样式边界、组合根规模与职责隔离契约。
 - `reader-state-mixins.test.js`: Reader 章节与间贴状态机下沉、加载失败反馈、死状态清理及跨章节迟到响应隔离契约。
+- `reader-view-boundaries.test.js`: Reader 首页、书库和详情页的规模、独立样式归属与 L3 契约守卫。
 - `reader-virtual-list.test.js`: 虚拟章节列表窗口计算。
 - `red-packets.test.js`: 红包参数、创建幂等、定向结算、重复领取、过期退款与事务回滚。
 - `review-governance.test.js`: 书评举报、申诉、审核与状态机。
