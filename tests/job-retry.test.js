@@ -47,6 +47,14 @@ test("system job retry reruns merged chapter structure repair jobs", async () =>
     assert.deepEqual(calls, [{ type: "chapters_repair_order", input: { limit: 3, retryOf: 7 } }]);
 });
 
+test("system job retry preserves full chapter structure scope", async () => {
+    const calls = [];
+    const service = createService({ id: 10, type: "chapters_repair_order", status: "failed", input_json: { scope: "all" } }, calls);
+    const result = await service.retrySystemJob({ body: {}, session: { adminUser: { username: "admin" } } }, 10);
+    assert.equal(result.updatedChapters, 3);
+    assert.deepEqual(calls, [{ type: "chapters_repair_order", input: { scope: "all", retryOf: 10 } }]);
+});
+
 test("system job retry reruns duplicate volume cleanup jobs", async () => {
     const calls = [];
     const service = createService({ id: 9, type: "chapters_cleanup_duplicate_volumes", status: "failed", input_json: { limit: 4 } }, calls);

@@ -13,17 +13,12 @@ test("chapter maintenance previews and repairs duplicate chapter order groups", 
     const client = {
         query: async (sql, params = []) => {
             if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
-            if (/SELECT id, book_id, chapter_id/.test(sql)) {
-                return {
-                    rows: [
-                        { id: 11, chapter_order: 1 },
-                        { id: 12, chapter_order: 1 },
-                        { id: 13, chapter_order: 3 }
-                    ]
-                };
+            if (/WITH ranked AS/.test(sql)) {
+                updates.push({ sql, params });
+                return { rows: [{ book_id: "b1", updated_chapters: 1 }] };
             }
-            if (/UPDATE chapter_cache SET chapter_order/.test(sql)) {
-                updates.push(params);
+            if (/chapter_order = -chapter_order/.test(sql)) {
+                updates.push({ sql, params });
                 return { rows: [], rowCount: 1 };
             }
             return { rows: [] };
@@ -44,10 +39,9 @@ test("chapter maintenance previews and repairs duplicate chapter order groups", 
     const repaired = await service.repairChapterOrderDuplicates({ limit: 5 });
     assert.equal(repaired.repairedBooks, 1);
     assert.equal(repaired.updatedChapters, 1);
-    assert.deepEqual(updates, [
-        [-2, 12],
-        [2, 12]
-    ]);
+    assert.equal(updates.length, 2);
+    assert.deepEqual(updates.map((call) => call.params), [[['b1']], [['b1']]]);
+    assert.match(updates[0].sql, /ROW_NUMBER\(\) OVER/);
 });
 
 test("chapter maintenance previews duplicate volume names and reports changed books", async () => {
@@ -57,12 +51,12 @@ test("chapter maintenance previews duplicate volume names and reports changed bo
         async query(sql, params = []) {
             clientCalls.push({ sql, params });
             if (/DELETE FROM chapter_cache/.test(sql)) {
-                return { rowCount: 2, rows: [{ title: "正文卷" }, { title: " 正文卷 " }] };
+                return { rowCount: 2, rows: [{ book_id: "b1", title: "正文卷" }, { book_id: "b1", title: " 正文卷 " }] };
             }
-            if (/SELECT id, book_id, chapter_id/.test(sql)) {
-                return { rows: [{ id: 11, chapter_order: 1 }, { id: 13, chapter_order: 4 }] };
+            if (/WITH ranked AS/.test(sql)) {
+                return { rows: [{ book_id: "b1", updated_chapters: 1 }] };
             }
-            if (/UPDATE chapter_cache SET chapter_order/.test(sql)) {
+            if (/chapter_order = -chapter_order/.test(sql)) {
                 return { rows: [], rowCount: 1 };
             }
             return { rows: [], rowCount: 0 };
@@ -99,16 +93,10 @@ test("chapter maintenance previews duplicate volume names and reports changed bo
     assert.equal(result.changedBooks[0].updated_chapters, 1);
     const deletion = clientCalls.find((call) => /DELETE FROM chapter_cache/.test(call.sql));
     assert.ok(deletion);
-    assert.match(deletion.sql, /PARTITION BY BTRIM\(title\)/);
+    assert.match(deletion.sql, /PARTITION BY book_id, BTRIM\(title\)/);
     assert.match(deletion.sql, /duplicate_rank > 1/);
-    const orderUpdates = clientCalls.filter((call) => /UPDATE chapter_cache SET chapter_order/.test(call.sql));
-    assert.deepEqual(
-        orderUpdates.map((call) => call.params),
-        [
-            [-2, 13],
-            [2, 13]
-        ]
-    );
+    assert.equal(clientCalls.filter((call) => /WITH ranked AS/.test(call.sql)).length, 1);
+    assert.equal(clientCalls.filter((call) => /chapter_order = -chapter_order/.test(call.sql)).length, 1);
 });
 
 test("chapter structure preview merges order and duplicate volume findings", async () => {
@@ -130,4 +118,50 @@ test("chapter structure preview merges order and duplicate volume findings", asy
     assert.equal(preview.duplicateVolumes, 1);
     assert.equal(preview.orderRows[0].book_id, "b1");
     assert.equal(preview.duplicateVolumeRows[0].duplicate_titles[0], "正文卷");
+});
+
+test("chapter structure repair processes every previewed book with set-based updates", async () => {
+    const previewCalls = [];
+    const clientCalls = [];
+    const client = {
+        async query(sql, params = []) {
+            clientCalls.push({ sql, params });
+            if (/DELETE FROM chapter_cache/.test(sql)) {
+                return { rowCount: 1, rows: [{ book_id: "b1", title: "正文卷" }] };
+            }
+            if (/WITH ranked AS/.test(sql)) {
+                return {
+                    rows: [
+                        { book_id: "b1", updated_chapters: 3 },
+                        { book_id: "b2", updated_chapters: 1 }
+                    ]
+                };
+            }
+            return { rows: [], rowCount: 0 };
+        },
+        release() {}
+    };
+    const service = createChapterMaintenanceService({
+        query: async (sql, params) => {
+            previewCalls.push({ sql, params });
+            if (/WITH duplicate_groups/.test(sql)) {
+                return { rows: [{ book_id: "b2", title: "Order Book", affected_chapters: 2 }] };
+            }
+            return {
+                rows: [
+                    { book_id: "b1", title: "Volume Book", duplicate_volumes: 1, duplicate_titles: ["正文卷"] }
+                ]
+            };
+        },
+        pool: { connect: async () => client }
+    });
+
+    const result = await service.repairChapterStructure();
+    assert.equal(result.scannedBooks, 2);
+    assert.equal(result.changedBookCount, 2);
+    assert.equal(result.removedVolumes, 1);
+    assert.equal(result.updatedChapters, 4);
+    assert.deepEqual(result.changedBooks.map((row) => row.book_id).sort(), ["b1", "b2"]);
+    assert.ok(previewCalls.every((call) => call.params.length === 0));
+    assert.equal(clientCalls.filter((call) => /WITH ranked AS/.test(call.sql)).length, 1);
 });

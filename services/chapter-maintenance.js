@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖注入的 PostgreSQL query/事务能力，读取并锁定章节顺序与分卷标记
- * [OUTPUT]: 对外提供章节结构预览/修复、重复顺序整理及同书同名分卷去重的维护服务工厂
- * [POS]: services 的章节结构修复用例层，以整书锁定先去除重复分卷再连续重排章节，并保留独立兼容能力
+ * [OUTPUT]: 对外提供全量章节结构预览/批量修复、重复顺序整理及同书同名分卷去重的维护服务工厂
+ * [POS]: services 的章节结构修复用例层，以有序整书锁和集合更新完成全库去重重排，并保留独立兼容能力
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createChapterMaintenanceService(options = {}) {
@@ -14,35 +14,66 @@ function createChapterMaintenanceService(options = {}) {
         return Math.max(1, Math.min(max, Number.isFinite(num) ? Math.trunc(num) : fallback));
     }
 
-    async function normalizeBookChapterOrder(client, bookId) {
-        const chapters = await client.query(
-            `SELECT id, book_id, chapter_id, title, chapter_order, platform
-             FROM chapter_cache
-             WHERE book_id = $1
-             ORDER BY ${chapterListOrderSql()}
-             FOR UPDATE`,
-            [bookId]
-        );
-        const changes = chapters.rows.flatMap((chapter, index) => {
-            const nextOrder = index + 1;
-            return Number(chapter.chapter_order || 0) === nextOrder ? [] : [{ id: chapter.id, nextOrder }];
-        });
-        for (const change of changes) {
-            await client.query("UPDATE chapter_cache SET chapter_order = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", [
-                -change.nextOrder,
-                change.id
-            ]);
-        }
-        for (const change of changes) {
-            await client.query("UPDATE chapter_cache SET chapter_order = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", [
-                change.nextOrder,
-                change.id
-            ]);
-        }
-        return changes.length;
+    function optionalLimit(value) {
+        if (value === undefined || value === null || value === "" || value === 0 || value === "0" || value === "all") return null;
+        return safeLimit(value);
     }
 
-    async function previewChapterOrderRepairs({ limit = 50 } = {}) {
+    function uniqueBookIds(rows = []) {
+        return [...new Set(rows.map((row) => String(row.book_id || "").trim()).filter(Boolean))].sort();
+    }
+
+    async function lockBooks(client, bookIds) {
+        if (!bookIds.length) return;
+        await client.query(
+            `SELECT pg_advisory_xact_lock(hashtext('chapter_order:' || target.book_id))
+             FROM UNNEST($1::text[]) AS target(book_id)
+             ORDER BY target.book_id`,
+            [bookIds]
+        );
+    }
+
+    async function normalizeBookChapterOrders(client, bookIds) {
+        if (!bookIds.length) return new Map();
+        const staged = await client.query(
+            `WITH ranked AS (
+                 SELECT id, book_id, chapter_order,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY book_id
+                            ORDER BY ${chapterListOrderSql()}
+                        )::integer AS next_order
+                 FROM chapter_cache
+                 WHERE book_id = ANY($1::text[])
+             ), changed AS (
+                 SELECT id, book_id, next_order
+                 FROM ranked
+                 WHERE chapter_order IS DISTINCT FROM next_order
+             ), updated AS (
+                 UPDATE chapter_cache chapter
+                 SET chapter_order = -changed.next_order,
+                     updated_at = CURRENT_TIMESTAMP
+                 FROM changed
+                 WHERE chapter.id = changed.id
+                 RETURNING chapter.book_id
+             )
+             SELECT book_id, COUNT(*)::int AS updated_chapters
+             FROM updated
+             GROUP BY book_id`,
+            [bookIds]
+        );
+        await client.query(
+            `UPDATE chapter_cache
+             SET chapter_order = -chapter_order,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE book_id = ANY($1::text[])
+               AND chapter_order < 0`,
+            [bookIds]
+        );
+        return new Map(staged.rows.map((row) => [String(row.book_id), Number(row.updated_chapters || 0)]));
+    }
+
+    async function previewChapterOrderRepairs({ limit = null } = {}) {
+        const targetLimit = optionalLimit(limit);
         const rows = await query(
             `WITH duplicate_groups AS (
                  SELECT book_id, chapter_order, COUNT(*)::int duplicates,
@@ -66,22 +97,24 @@ function createChapterMaintenanceService(options = {}) {
              ) m ON TRUE
              GROUP BY dg.book_id, m.title
              ORDER BY affected_chapters DESC, duplicate_order_groups DESC, dg.book_id ASC
-             LIMIT $1`,
-            [safeLimit(limit)]
+             ${targetLimit ? "LIMIT $1" : ""}`,
+            targetLimit ? [targetLimit] : []
         );
-        return { rows: rows.rows || [], limit: safeLimit(limit) };
+        return { rows: rows.rows || [], limit: targetLimit };
     }
 
-    async function repairChapterOrderDuplicates({ limit = 50 } = {}) {
+    async function repairChapterOrderDuplicates({ limit = null } = {}) {
         const targets = await previewChapterOrderRepairs({ limit });
         const client = await pool.connect();
         const repaired = [];
         let updatedChapters = 0;
         try {
             await client.query("BEGIN");
+            const bookIds = uniqueBookIds(targets.rows);
+            await lockBooks(client, bookIds);
+            const updatesByBook = await normalizeBookChapterOrders(client, bookIds);
             for (const target of targets.rows) {
-                await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`chapter_order:${target.book_id}`]);
-                const changedChapterCount = await normalizeBookChapterOrder(client, target.book_id);
+                const changedChapterCount = updatesByBook.get(String(target.book_id)) || 0;
                 updatedChapters += changedChapterCount;
                 repaired.push({
                     book_id: target.book_id,
@@ -108,8 +141,8 @@ function createChapterMaintenanceService(options = {}) {
         };
     }
 
-    async function previewDuplicateVolumeCleanup({ limit = 50 } = {}) {
-        const safe = safeLimit(limit);
+    async function previewDuplicateVolumeCleanup({ limit = null } = {}) {
+        const targetLimit = optionalLimit(limit);
         const rows = await query(
             `WITH ranked_volumes AS (
                  SELECT id, book_id, BTRIM(title) AS volume_name,
@@ -141,74 +174,112 @@ function createChapterMaintenanceService(options = {}) {
              ) metadata ON TRUE
              GROUP BY duplicate.book_id, metadata.title
              ORDER BY duplicate_volumes DESC, duplicate.book_id ASC
-             LIMIT $1`,
-            [safe]
+             ${targetLimit ? "LIMIT $1" : ""}`,
+            targetLimit ? [targetLimit] : []
         );
-        return { rows: rows.rows || [], limit: safe };
+        return { rows: rows.rows || [], limit: targetLimit };
     }
 
-    async function cleanupDuplicateVolumes({ limit = 50 } = {}) {
+    async function deleteDuplicateVolumes(client, bookIds) {
+        if (!bookIds.length) return { rows: [], rowCount: 0 };
+        return client.query(
+            `WITH ranked_volumes AS (
+                 SELECT id,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY book_id, BTRIM(title)
+                            ORDER BY chapter_order ASC NULLS LAST, id ASC
+                        ) AS duplicate_rank
+                 FROM chapter_cache
+                 WHERE book_id = ANY($1::text[])
+                   AND COALESCE(is_volume, FALSE) = TRUE
+                   AND NULLIF(BTRIM(COALESCE(title, '')), '') IS NOT NULL
+             )
+             DELETE FROM chapter_cache chapter
+             USING ranked_volumes ranked
+             WHERE chapter.id = ranked.id
+               AND ranked.duplicate_rank > 1
+             RETURNING chapter.book_id, chapter.title`,
+            [bookIds]
+        );
+    }
+
+    function buildChangedBooks({ targets = [], removedRows = [], updatesByBook = new Map() } = {}) {
+        const targetByBook = new Map();
+        for (const target of targets) {
+            const bookId = String(target.book_id || "").trim();
+            if (!bookId) continue;
+            const current = targetByBook.get(bookId) || {};
+            targetByBook.set(bookId, {
+                ...current,
+                ...target,
+                book_id: bookId,
+                title: target.title || current.title || bookId,
+                platform: target.platform || current.platform || ""
+            });
+        }
+        const removedByBook = new Map();
+        for (const row of removedRows) {
+            const bookId = String(row.book_id || "").trim();
+            if (!bookId) continue;
+            const current = removedByBook.get(bookId) || { count: 0, titles: new Set() };
+            current.count += 1;
+            const title = String(row.title || "").trim();
+            if (title) current.titles.add(title);
+            removedByBook.set(bookId, current);
+        }
+        return [...new Set([...targetByBook.keys(), ...removedByBook.keys(), ...updatesByBook.keys()])]
+            .map((bookId) => {
+                const target = targetByBook.get(bookId) || {};
+                const removed = removedByBook.get(bookId) || { count: 0, titles: new Set() };
+                return {
+                    book_id: bookId,
+                    title: target.title || bookId,
+                    platform: target.platform || "",
+                    removed_volumes: removed.count,
+                    removed_titles: [...removed.titles],
+                    updated_chapters: updatesByBook.get(bookId) || 0
+                };
+            })
+            .filter((row) => row.removed_volumes > 0 || row.updated_chapters > 0)
+            .sort(
+                (left, right) =>
+                    right.removed_volumes - left.removed_volumes ||
+                    right.updated_chapters - left.updated_chapters ||
+                    left.book_id.localeCompare(right.book_id)
+            );
+    }
+
+    async function cleanupDuplicateVolumes({ limit = null } = {}) {
         const targets = await previewDuplicateVolumeCleanup({ limit });
         if (!targets.rows.length) {
             return { success: true, scannedBooks: 0, changedBookCount: 0, removedVolumes: 0, changedBooks: [] };
         }
 
         const client = await pool.connect();
-        const changedBooks = [];
-        let removedVolumes = 0;
         try {
             await client.query("BEGIN");
-            for (const target of targets.rows) {
-                await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`chapter_order:${target.book_id}`]);
-                const removed = await client.query(
-                    `WITH ranked_volumes AS (
-                         SELECT id,
-                                ROW_NUMBER() OVER (
-                                    PARTITION BY BTRIM(title)
-                                    ORDER BY chapter_order ASC NULLS LAST, id ASC
-                                ) AS duplicate_rank
-                         FROM chapter_cache
-                         WHERE book_id = $1
-                           AND COALESCE(is_volume, FALSE) = TRUE
-                           AND NULLIF(BTRIM(COALESCE(title, '')), '') IS NOT NULL
-                     )
-                     DELETE FROM chapter_cache chapter
-                     USING ranked_volumes ranked
-                     WHERE chapter.id = ranked.id
-                       AND ranked.duplicate_rank > 1
-                     RETURNING chapter.title`,
-                    [target.book_id]
-                );
-                if (!removed.rowCount) continue;
-                const removedTitles = [...new Set(removed.rows.map((row) => String(row.title || "").trim()).filter(Boolean))];
-                const updatedChapters = await normalizeBookChapterOrder(client, target.book_id);
-                removedVolumes += removed.rowCount;
-                changedBooks.push({
-                    book_id: target.book_id,
-                    title: target.title || target.book_id,
-                    platform: target.platform || "",
-                    removed_volumes: removed.rowCount,
-                    removed_titles: removedTitles,
-                    updated_chapters: updatedChapters
-                });
-            }
+            const bookIds = uniqueBookIds(targets.rows);
+            await lockBooks(client, bookIds);
+            const removed = await deleteDuplicateVolumes(client, bookIds);
+            const updatesByBook = await normalizeBookChapterOrders(client, bookIds);
             await client.query("COMMIT");
+            const changedBooks = buildChangedBooks({ targets: targets.rows, removedRows: removed.rows, updatesByBook });
+            return {
+                success: true,
+                scannedBooks: targets.rows.length,
+                changedBookCount: changedBooks.length,
+                removedVolumes: removed.rowCount,
+                changedBooks
+            };
         } catch (err) {
             await client.query("ROLLBACK").catch(() => {});
             throw err;
         } finally {
             client.release();
         }
-        return {
-            success: true,
-            scannedBooks: targets.rows.length,
-            changedBookCount: changedBooks.length,
-            removedVolumes,
-            changedBooks
-        };
     }
 
-    async function previewChapterStructureRepairs({ limit = 50 } = {}) {
+    async function previewChapterStructureRepairs({ limit = null } = {}) {
         const [orderPreview, volumePreview] = await Promise.all([
             previewChapterOrderRepairs({ limit }),
             previewDuplicateVolumeCleanup({ limit })
@@ -222,27 +293,58 @@ function createChapterMaintenanceService(options = {}) {
             orderRows: orderPreview.rows,
             duplicateVolumeRows: volumePreview.rows,
             affectedBooks: affectedBookIds.size,
+            orderBooks: orderPreview.rows.length,
+            duplicateVolumeBooks: volumePreview.rows.length,
             affectedChapters: orderPreview.rows.reduce((total, row) => total + Number(row.affected_chapters || 0), 0),
             duplicateVolumes: volumePreview.rows.reduce((total, row) => total + Number(row.duplicate_volumes || 0), 0),
-            limit: safeLimit(limit)
+            limit: optionalLimit(limit),
+            complete: optionalLimit(limit) === null
         };
     }
 
-    async function repairChapterStructure({ limit = 50 } = {}) {
-        const volumeCleanup = await cleanupDuplicateVolumes({ limit });
-        const orderRepair = await repairChapterOrderDuplicates({ limit });
-        return {
-            success: true,
-            changedBookCount: volumeCleanup.changedBookCount,
-            removedVolumes: volumeCleanup.removedVolumes,
-            changedBooks: volumeCleanup.changedBooks,
-            repairedBooks: orderRepair.repairedBooks,
-            updatedChapters:
-                orderRepair.updatedChapters +
-                volumeCleanup.changedBooks.reduce((total, row) => total + Number(row.updated_chapters || 0), 0),
-            volumeCleanup,
-            orderRepair
-        };
+    async function repairChapterStructure({ limit = null } = {}) {
+        const preview = await previewChapterStructureRepairs({ limit });
+        const bookIds = uniqueBookIds([...preview.orderRows, ...preview.duplicateVolumeRows]);
+        if (!bookIds.length) {
+            return {
+                success: true,
+                scannedBooks: 0,
+                changedBookCount: 0,
+                removedVolumes: 0,
+                repairedBooks: 0,
+                updatedChapters: 0,
+                changedBooks: []
+            };
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+            await lockBooks(client, bookIds);
+            const volumeBookIds = uniqueBookIds(preview.duplicateVolumeRows);
+            const removed = await deleteDuplicateVolumes(client, volumeBookIds);
+            const updatesByBook = await normalizeBookChapterOrders(client, bookIds);
+            await client.query("COMMIT");
+            const changedBooks = buildChangedBooks({
+                targets: [...preview.duplicateVolumeRows, ...preview.orderRows],
+                removedRows: removed.rows,
+                updatesByBook
+            });
+            return {
+                success: true,
+                scannedBooks: bookIds.length,
+                changedBookCount: changedBooks.length,
+                removedVolumes: removed.rowCount,
+                repairedBooks: [...updatesByBook.values()].filter((count) => count > 0).length,
+                updatedChapters: [...updatesByBook.values()].reduce((total, count) => total + count, 0),
+                changedBooks
+            };
+        } catch (err) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
     }
 
     return {

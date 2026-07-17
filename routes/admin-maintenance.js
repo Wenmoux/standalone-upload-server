@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Express、Admin 权限、book/chapter maintenance 服务、任务追踪与精确确认短语
- * [OUTPUT]: 对外提供陈旧书籍清理、合并章节结构修复及兼容性独立维护的预览/确认执行路由
- * [POS]: routes 的破坏性维护边界，以预览和确认把同名分卷去重与章节顺序整理合并为可审计任务
+ * [OUTPUT]: 对外提供陈旧书籍清理、全量章节结构修复及兼容性独立维护的预览/确认执行路由
+ * [POS]: routes 的破坏性维护边界，以完整预览和确认把同名分卷去重与章节顺序整理合并为可审计任务
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -184,8 +184,13 @@ function createAdminMaintenanceRoutes(deps = {}) {
             const repair = repairChapterStructure || repairChapterOrderDuplicates;
             if (typeof repair !== "function")
                 return res.status(503).json({ error: "chapter order repair unavailable" });
-            const limit = Math.max(1, Math.min(500, Number(req.body?.limit || 50)));
-            const input = { limit };
+            const requestedLimit = req.body?.limit;
+            const numericLimit = Number(requestedLimit);
+            const limit =
+                requestedLimit === undefined || requestedLimit === null || requestedLimit === "" || !Number.isFinite(numericLimit)
+                    ? null
+                    : Math.max(1, Math.min(500, numericLimit));
+            const input = limit ? { scope: "limited", limit } : { scope: "all" };
             const worker = () => repair(input);
             const payload =
                 typeof runTrackedJob === "function" ? await runTrackedJob(req, "chapters_repair_order", input, worker) : await worker();

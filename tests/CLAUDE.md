@@ -12,9 +12,9 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `admin-lazy-workspace.test.js`: Admin 页内工作区按需加载、并发去重、失败重试与缓存刷新语义。
 - `admin-auth-routes.test.js`: Admin 登录 session 落库时序、会话、角色和 CSRF 路由契约。
 - `admin-exports.test.js`: Admin CSV 公式注入防护、编码、文件名与响应协议。
-- `admin-content-routes.test.js`: 管理端书籍、章节结构合并整理、兼容分卷清理与 Reader/Bot 管理员授权路由契约。
+- `admin-content-routes.test.js`: 管理端书籍、全量章节结构整理、兼容分卷清理与 Reader/Bot 管理员授权路由契约。
 - `admin-modules.test.js`: Admin 领域服务组合与边界回归。
-- `admin-ui-contract.test.js`: Admin 导航、会话恢复、无障碍公共控件、非阻塞输入与高密度工作区分层契约。
+- `admin-ui-contract.test.js`: Admin 导航、会话恢复、无障碍公共控件、全量章节整理结果定位、非阻塞输入与高密度工作区分层契约。
 - `api-tokens.test.js`: API Token 创建、哈希、权限与吊销语义。
 - `auth-service.test.js`: 密码、会话用户和管理员鉴权服务。
 - `backups.test.js`: 备份索引、保留、远端上传与恢复演练状态。
@@ -41,7 +41,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-task-status-handlers.test.js`: 任务查询、详情与取消命令。
 - `bot-text-share-utils.test.js`: 文本分享切分、长度与文件名规则。
 - `bot-ui-formatters.test.js`: Telegram 文案、书卡/书评发布按钮和转义格式。
-- `chapter-maintenance.test.js`: 跨平台重复顺序重排、同书同名分卷删除及合并章节结构预览与改动书籍返回。
+- `chapter-maintenance.test.js`: 跨平台重复顺序集合重排、同书同名分卷批量删除、全量章节结构预览与全部改动书籍返回。
 - `chapter-title-cleaner.test.js`: 标题清洗规则与幂等性。
 - `chinese-convert.test.js`: Reader 繁简转换报告模块边界、著/着、台湾词汇、用户词表、占位碰撞、设置面板接线、双向兼容与实现收缩回归。
 - `clean-chapter-titles-script.test.js`: 标题清洗 CLI 参数与执行边界。

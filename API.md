@@ -944,12 +944,11 @@ POST /admin-api/chapters/cleanup-duplicate-volumes
 
 ```json
 {
-    "confirm": true,
-    "limit": 50
+    "confirm": true
 }
 ```
 
-说明：该接口是后台统一的章节结构整理入口。预览会同时返回 `orderRows` 与 `duplicateVolumeRows`；执行时先删除同书中后出现的同名非空分卷，再把受影响书籍及存在重复 `chapter_order` 的书按当前显示顺序连续编号。不同卷名不会删除，响应的 `changedBooks` 会列出实际删除分卷及重排章节数，整个操作写入同一个 `chapters_repair_order` 任务。
+说明：该接口是后台统一的全量章节结构整理入口。预览不传 `limit` 时会返回全部 `orderRows` 与 `duplicateVolumeRows`，并以 `affectedBooks`、`duplicateVolumeBooks`、`duplicateVolumes` 等字段明确区分书籍数与待删除记录数；`limit` 只保留给兼容性调用。执行时先批量删除同书中后出现的同名非空分卷，再以两次集合更新把全部受影响书籍及存在重复 `chapter_order` 的书按当前显示顺序连续编号，不再逐章往返数据库。不同卷名不会删除，响应的 `changedBooks` 会列出所有实际改动书籍、删除记录数、卷名及重新编号章节数，整个操作写入同一个 `chapters_repair_order` 任务。
 
 `cleanup-duplicate-volumes` 兼容接口仍可独立调用及重试历史任务，但后台不再提供单独按钮。它只处理 `is_volume=true` 且卷名非空的行：同一本书内卷名去除首尾空格后相同时保留 `chapter_order` 最小的一条，相同顺序再保留数据库 `id` 最小的一条；不同卷名不删除，删除后会立即连续重排该书章节。
 

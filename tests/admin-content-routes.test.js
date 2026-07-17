@@ -499,7 +499,7 @@ test("admin chapter structure routes merge duplicate volumes into order repair j
         const repaired = await fetch(`${base}/admin-api/chapters/repair-order`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
-            body: JSON.stringify({ confirm: true, limit: 7 })
+            body: JSON.stringify({ confirm: true })
         });
         const body = await repaired.json();
         assert.equal(body.updatedChapters, 3);
@@ -508,7 +508,7 @@ test("admin chapter structure routes merge duplicate volumes into order repair j
         assert.equal(body.job.id, 6);
     });
 
-    assert.deepEqual(tracked, [{ type: "chapters_repair_order", input: { limit: 7 } }]);
+    assert.deepEqual(tracked, [{ type: "chapters_repair_order", input: { scope: "all" } }]);
 });
 
 test("admin duplicate volume cleanup previews and returns changed books", async () => {

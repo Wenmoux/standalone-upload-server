@@ -8,7 +8,7 @@
             <div class="row-actions">
                 <button class="secondary" type="button" @click="load">刷新</button>
                 <button type="button" :disabled="repairingOrder" @click="repairChapterOrder">
-                    {{ repairingOrder ? "整理中..." : "整理章节结构" }}
+                    {{ repairingOrder ? "正在批量整理全部书籍..." : "整理章节结构" }}
                 </button>
             </div>
         </div>
@@ -39,15 +39,17 @@
                 </div>
             </section>
 
-            <QualityPanel
-                v-if="changedVolumeBooks.length"
-                title="本次章节结构整理结果"
-                :rows="changedVolumeBooks"
-                :columns="volumeResultColumns"
-                :on-open="openBook"
-            >
-                <template #cell-removed_titles="{ value }">{{ Array.isArray(value) ? value.join("、") : value || "-" }}</template>
-            </QualityPanel>
+            <div v-if="changedStructureBooks.length" ref="structureResultPanel">
+                <QualityPanel
+                    title="本次章节结构整理结果"
+                    :description="`实际改动 ${number(lastRepairResult.changedBookCount)} 本；删除 ${number(lastRepairResult.removedVolumes)} 条重复分卷记录；重新编号 ${number(lastRepairResult.updatedChapters)} 章。`"
+                    :rows="changedStructureBooks"
+                    :columns="volumeResultColumns"
+                    :on-open="openBook"
+                >
+                    <template #cell-removed_titles="{ value }">{{ Array.isArray(value) && value.length ? value.join("、") : "-" }}</template>
+                </QualityPanel>
+            </div>
 
             <section class="quality-grid">
                 <QualityPanel title="缺章节 / 覆盖率低" :rows="samples.missing_chapters" :columns="missingColumns" :on-open="openBook">
@@ -73,11 +75,11 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、DataTable/StatCard、数据质量 Admin API、格式化工具和全局导航/确认服务
- * [OUTPUT]: 提供质量异常统计、书籍深链及合并同名分卷去重与连续顺序重排的章节结构整理页面
- * [POS]: admin-ui/src/views 的数据质量控制台，以一次预览确认完成章节结构维护并保留本次改动书籍清单
+ * [OUTPUT]: 提供质量异常统计、书籍深链及全量同名分卷去重与连续顺序重排的章节结构整理页面
+ * [POS]: admin-ui/src/views 的数据质量控制台，以完整总数和精简样例确认全库维护，并滚动呈现全部实际改动书籍
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { defineComponent, h, inject, onMounted, ref } from "vue";
+import { defineComponent, h, inject, nextTick, onMounted, ref } from "vue";
 import DataTable from "../components/DataTable.vue";
 import StatCard from "../components/StatCard.vue";
 import { api } from "../services/api";
@@ -92,7 +94,8 @@ const QualityPanel = defineComponent({
         title: { type: String, required: true },
         rows: { type: Array, default: () => [] },
         columns: { type: Array, required: true },
-        onOpen: { type: Function, required: true }
+        onOpen: { type: Function, required: true },
+        description: { type: String, default: "" }
     },
     setup(props, { slots }) {
         return () =>
@@ -101,7 +104,11 @@ const QualityPanel = defineComponent({
                     h("div", { class: "section-head" }, [
                         h("div", null, [
                             h("p", { class: "section-title" }, props.title),
-                            h("p", { class: "section-desc" }, props.rows.length ? `显示 ${props.rows.length} 条样例` : "暂无异常样例")
+                            h(
+                                "p",
+                                { class: "section-desc" },
+                                props.description || (props.rows.length ? `显示 ${props.rows.length} 条样例` : "暂无异常样例")
+                            )
                         ])
                     ]),
                     h(
@@ -129,7 +136,9 @@ const summary = ref({});
 const samples = ref({});
 const thresholds = ref({});
 const repairingOrder = ref(false);
-const changedVolumeBooks = ref([]);
+const changedStructureBooks = ref([]);
+const lastRepairResult = ref({});
+const structureResultPanel = ref(null);
 
 const bookColumns = [
     { key: "book_id", label: "书号" },
@@ -159,9 +168,9 @@ const volumeResultColumns = [
     { key: "book_id", label: "书号" },
     { key: "title", label: "书名" },
     { key: "platform", label: "站点" },
-    { key: "removed_volumes", label: "移除数" },
-    { key: "removed_titles", label: "同名分卷" },
-    { key: "updated_chapters", label: "重排章节" }
+    { key: "removed_volumes", label: "删除重复分卷（条）" },
+    { key: "removed_titles", label: "删除的重复卷名" },
+    { key: "updated_chapters", label: "重新编号章节（章）" }
 ];
 const largeColumns = [
     { key: "book_id", label: "书号" },
@@ -174,6 +183,13 @@ const largeColumns = [
 function openBook(row) {
     const bookId = String(row?.book_id || "").trim();
     if (bookId) navigate("books", { query: { q: bookId } });
+}
+
+function compactVolumeTitles(value) {
+    const titles = Array.isArray(value) ? value.map((item) => String(item || "").trim()).filter(Boolean) : [];
+    if (!titles.length) return "-";
+    const visible = titles.slice(0, 3).join("、");
+    return titles.length > 3 ? `${visible} 等 ${number(titles.length)} 种卷名` : visible;
 }
 
 async function load() {
@@ -194,11 +210,12 @@ async function load() {
 async function repairChapterOrder() {
     repairingOrder.value = true;
     try {
-        const preview = await api("/admin-api/chapters/repair-order/preview?limit=50");
+        const preview = await api("/admin-api/chapters/repair-order/preview");
         const orderRows = preview.orderRows || preview.rows || [];
         const volumeRows = preview.duplicateVolumeRows || [];
         if (!orderRows.length && !volumeRows.length) {
-            changedVolumeBooks.value = [];
+            changedStructureBooks.value = [];
+            lastRepairResult.value = {};
             return toast("没有需要整理的章节结构");
         }
         const affectedChapters = Number(
@@ -208,44 +225,51 @@ async function repairChapterOrder() {
             preview.duplicateVolumes || volumeRows.reduce((total, row) => total + Number(row.duplicate_volumes || 0), 0)
         );
         const orderSample = orderRows
-            .slice(0, 6)
-            .map((row) => `- ${row.title || row.book_id} / ${row.book_id} / ${row.platform || "-"} / ${number(row.affected_chapters)} 章`)
-            .join("\n");
-        const volumeSample = volumeRows
-            .slice(0, 6)
+            .slice(0, 5)
             .map(
                 (row) =>
-                    `- ${row.title || row.book_id} / ${row.book_id} / ${(row.duplicate_titles || []).join("、") || "-"} / ${number(row.duplicate_volumes)} 个`
+                    `- 《${row.title || row.book_id}》 · 书号 ${row.book_id} · ${number(row.duplicate_order_groups || 0)} 组重复顺序 · 涉及 ${number(row.affected_chapters)} 章`
+            )
+            .join("\n");
+        const volumeSample = volumeRows
+            .slice(0, 5)
+            .map(
+                (row) =>
+                    `- 《${row.title || row.book_id}》 · 书号 ${row.book_id} · 删除 ${number(row.duplicate_volumes)} 条重复分卷记录 · 卷名：${compactVolumeTitles(row.duplicate_titles)}`
             )
             .join("\n");
         const confirmation = await confirmAction({
             title: "整理章节结构",
             message: [
-                `将处理 ${number(preview.affectedBooks || orderRows.length + volumeRows.length)} 本书。`,
-                `同名分卷：移除约 ${number(duplicateVolumes)} 个后出现的重复项，不同卷名保留。`,
-                `章节顺序：整理 ${number(orderRows.length)} 本书、约 ${number(affectedChapters)} 章。`,
-                "执行时先清理同名分卷，再把受影响书籍连续重排。",
+                `数据库共发现 ${number(preview.affectedBooks || orderRows.length + volumeRows.length)} 本需要整理的书，本次会全部处理。`,
+                `重复分卷：${number(preview.duplicateVolumeBooks || volumeRows.length)} 本书，共删除 ${number(duplicateVolumes)} 条后出现的同名分卷记录；不同卷名保留。`,
+                orderRows.length
+                    ? `顺序重复：${number(preview.orderBooks || orderRows.length)} 本书存在相同正数 order，共涉及 ${number(affectedChapters)} 章。`
+                    : "顺序重复：当前没有发现相同的正数 order；删除分卷后仍会补齐受影响书籍的连续顺序。",
+                "执行采用数据库批量处理，不再逐章更新。完成后页面会自动定位到全部实际改动书籍。",
                 "",
-                "同名分卷样例：",
+                "重复分卷样例（以下最多展示 5 本，不代表执行范围）：",
                 volumeSample || "-",
                 "",
-                "顺序异常样例：",
+                "顺序重复样例（以下最多展示 5 本，不代表执行范围）：",
                 orderSample || "-",
-                "",
-                "执行后可在任务中心查看记录。"
+                ""
             ].join("\n"),
             confirmLabel: "执行整理"
         });
         if (!confirmation.confirmed) return;
         const result = await api("/admin-api/chapters/repair-order", {
             method: "POST",
-            body: JSON.stringify({ confirm: true, limit: 50, reason: confirmation.reason })
+            body: JSON.stringify({ confirm: true, reason: confirmation.reason })
         });
-        changedVolumeBooks.value = result.changedBooks || [];
+        changedStructureBooks.value = result.changedBooks || [];
+        lastRepairResult.value = result;
         toast(
-            `章节结构已整理：移除 ${number(result.removedVolumes || 0)} 个重复分卷，重排 ${number(result.updatedChapters || 0)} 章`
+            `整理完成：实际改动 ${number(result.changedBookCount || 0)} 本，删除 ${number(result.removedVolumes || 0)} 条重复分卷记录，重新编号 ${number(result.updatedChapters || 0)} 章`
         );
         await load();
+        await nextTick();
+        structureResultPanel.value?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
         toast(err.message || String(err));
     } finally {

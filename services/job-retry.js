@@ -117,7 +117,7 @@ function createSystemJobRetryService(options = {}) {
         }
 
         if (type === "chapters_repair_order") {
-            const limit = Math.max(1, Math.min(500, Number(input.limit || 50)));
+            const limit = input.scope === "all" ? null : Math.max(1, Math.min(500, Number(input.limit || 50)));
             const repair = chapterMaintenanceService.repairChapterStructure || chapterMaintenanceService.repairChapterOrderDuplicates;
             return runTrackedJob(req, type, inputWithRetry, () => repair({ limit }));
         }
