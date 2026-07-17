@@ -87,7 +87,7 @@ docker exec po18-app sh -lc 'latest=$(ls -1t /config/backups/pre-migration-*.dum
 - `021_book_manifest_checksums`：为 Manifest 元信息和章节增加校验和。
 - `022_review_governance`：增加书评举报、审核、申诉与有限改票。
 - `023_taxonomy_conflict_deduplication`：让后续元信息写入先去重 taxonomy token，再写入规范化主键。
-- `024_chapter_order_uniqueness`：只对存在正数重复顺序的书按 `chapter_order → chapter_id → id` 重排，再对全部平台建立同书正数顺序唯一索引。
+- `024_chapter_order_uniqueness`：只对存在正数重复顺序的书按 `chapter_order → chapter_id → id` 重排，显式冲刷延迟顺序约束后，再对全部平台建立同书正数顺序唯一索引。
 
 `019_taxonomy_input_deduplication` 的等价历史数据归并不可逆，因此没有 down SQL；023 的 down SQL 只恢复旧同步函数。024 的 down SQL 只恢复旧平台例外索引，不逆转已经重排的章节顺序；需要恢复原序号时必须使用预迁移备份。
 

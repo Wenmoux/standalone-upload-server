@@ -28,6 +28,8 @@ FROM ranked_chapters ranked
 WHERE chapter.id = ranked.id
   AND chapter.chapter_order IS DISTINCT FROM ranked.next_order;
 
+SET CONSTRAINTS trg_chapter_order_nonnegative_deferred IMMEDIATE;
+
 CREATE UNIQUE INDEX idx_pg_chapter_cache_book_order_unique
     ON chapter_cache(book_id, chapter_order)
     WHERE chapter_order > 0;
