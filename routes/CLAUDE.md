@@ -30,6 +30,6 @@ reader-api.js: Reader 主 API 路由，组合账号/TTS并承接发现、书架�
 reader-auth.js: Reader 账号路由，把 CDK 注册、密码/Telegram 登录和签到委托给原子领域服务，并处理资料与 session 生命周期。
 reader-tts.js: Reader TTS 路由，在会话鉴权与 SSRF 校验后代理或调用受支持语音提供商。
 review-governance.js: 书评治理路由，分别暴露 Reader/Bot 举报申诉与 Admin 审核处理边界。
-upload-api.js: 油猴上传兼容路由，以 Upload Token 保护元信息/正文写入，为所有平台提供不触碰正文的 order-only 更新，并让响应严格反映真实落库结果。
+upload-api.js: 油猴上传兼容路由，以 Upload Token 保护元信息/正文写入，为所有平台提供不触碰正文的 order-only 更新，目录检查不保留路由内快照而直接反映当前落库结果。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

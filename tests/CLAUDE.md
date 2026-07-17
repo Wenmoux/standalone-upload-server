@@ -103,7 +103,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `telegram-push.test.js`: Telegram 推送类型、注册用户收件人分页、批次和失败恢复。
 - `test-runner-script.test.js`: 根测试发现器和覆盖率门槛。
 - `tts.test.js`: TTS 供应商、分段与代理安全。
-- `upload-api-routes.test.js`: 上传鉴权、元数据、章节和删除路由。
+- `upload-api-routes.test.js`: 上传鉴权、元数据、章节、删除路由与目录强一致读取。
 - `user-currency.test.js`: 货币、签到、兑换、红包与幂等账本。
 - `validation.test.js`: 通用输入校验与分页边界。
 - `word-cloud.test.js`: 热词聚合、停用词和 SVG/图片输出。

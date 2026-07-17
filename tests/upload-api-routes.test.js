@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供上传鉴权、元数据、章节和删除路由的自动化回归断言
- * [POS]: tests 的上传鉴权、元数据、章节和删除路由守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供上传鉴权、元数据、章节、删除和目录强一致读取的自动化回归断言
+ * [POS]: tests 的上传协议守卫，防止 check-cache 因路由内快照返回过期 chapterOrder
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -328,19 +328,17 @@ test("upload API checks cache and deletes book chapters", async () => {
     ]);
 });
 
-test("upload API caches public cache lookups and invalidates after writes", async () => {
+test("upload API reads every cache lookup from PostgreSQL so chapter orders cannot go stale", async () => {
     let lookupQueries = 0;
     const router = createUploadApiRoutes(
         baseDeps({
-            cacheLookupTtlMs: 60000,
             query: async (sql) => {
                 if (/SELECT chapter_id, chapter_order/.test(sql)) {
                     lookupQueries += 1;
-                    return { rows: [{ chapter_id: "1", chapter_order: 1 }] };
+                    return { rows: [{ chapter_id: "732875384", chapter_order: lookupQueries === 1 ? 49 : 40 }] };
                 }
                 return { rows: [], rowCount: 0 };
-            },
-            saveChapter: async () => ({ success: true })
+            }
         })
     );
 
@@ -351,17 +349,14 @@ test("upload API caches public cache lookups and invalidates after writes", asyn
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ bookId: "b-cache" })
             });
-        assert.equal((await requestLookup()).status, 200);
-        assert.equal((await requestLookup()).status, 200);
-        assert.equal(lookupQueries, 1);
+        const first = await requestLookup();
+        assert.equal(first.status, 200);
+        assert.match(first.headers.get("cache-control"), /no-store/);
+        assert.equal((await first.json()).chapters[0].chapterOrder, 49);
 
-        const write = await fetch(`${base}/api/parse/chapter-content`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Upload-Token": "upload-token" },
-            body: JSON.stringify({ bookId: "b-cache", chapterId: "2", html: "<p>x</p>", fromUserScript: true })
-        });
-        assert.equal(write.status, 200);
-        assert.equal((await requestLookup()).status, 200);
+        const second = await requestLookup();
+        assert.equal(second.status, 200);
+        assert.equal((await second.json()).chapters[0].chapterOrder, 40);
         assert.equal(lookupQueries, 2);
     });
 });

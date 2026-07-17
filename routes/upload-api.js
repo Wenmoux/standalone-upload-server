@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Express、Upload Token、book-chapters/events 服务、缓存查询和请求校验
- * [OUTPUT]: 对外提供油猴兼容的元数据/章节批量写入、全平台仅顺序更新、逐项失败汇总、缓存检查与受控删除路由
- * [POS]: routes 的外部上传协议边界，保留历史字段兼容并把显式 order-only 请求交给章节服务安全裁决
+ * [INPUT]: 依赖 Express、Upload Token、book-chapters/events 服务、PostgreSQL 章节查询和请求校验
+ * [OUTPUT]: 对外提供油猴兼容的元数据/章节批量写入、全平台仅顺序更新、逐项失败汇总、强一致缓存目录检查与受控删除路由
+ * [POS]: routes 的外部上传协议边界，保留历史字段兼容，目录检查每次以数据库当前 chapter_order 为唯一事实源
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -20,32 +20,6 @@ function createUploadApiRoutes(options = {}) {
         chapterListOrderSql,
         recordEvent
     } = options;
-    const cacheLookupTtlMs = Math.max(0, Number(options.cacheLookupTtlMs ?? process.env.PO18_CHECK_CACHE_TTL_MS ?? 5000));
-    const cacheLookupMaxEntries = Math.max(1, Number(options.cacheLookupMaxEntries ?? process.env.PO18_CHECK_CACHE_MAX_ENTRIES ?? 500));
-    const cacheLookups = new Map();
-
-    function readCachedLookup(bookId) {
-        const row = cacheLookups.get(bookId);
-        if (!row || row.expiresAt <= Date.now()) {
-            cacheLookups.delete(bookId);
-            return null;
-        }
-        cacheLookups.delete(bookId);
-        cacheLookups.set(bookId, row);
-        return row.payload;
-    }
-
-    function writeCachedLookup(bookId, payload) {
-        if (!cacheLookupTtlMs) return;
-        cacheLookups.delete(bookId);
-        cacheLookups.set(bookId, { payload, expiresAt: Date.now() + cacheLookupTtlMs });
-        while (cacheLookups.size > cacheLookupMaxEntries) cacheLookups.delete(cacheLookups.keys().next().value);
-    }
-
-    function invalidateCachedLookup(bookId) {
-        cacheLookups.delete(String(bookId || ""));
-    }
-
     router.get("/api/parse/chapter-content", (req, res) => res.status(405).json({ error: "Method Not Allowed" }));
 
     router.post("/api/parse/chapter-content", requireUploadApi, async (req, res, next) => {
@@ -60,7 +34,6 @@ function createUploadApiRoutes(options = {}) {
 
             if ((fromUserScript && (html || text || safePgBool(req.body?.is_volume ?? req.body?.isVolume, false))) || orderOnlyRequested) {
                 const saved = await saveChapter(req.body);
-                invalidateCachedLookup(bookId);
                 const safeHtml = cleanPgText(html);
                 const safeText = cleanPgText(text);
                 if (saved?.orderOnly) {
@@ -138,8 +111,7 @@ function createUploadApiRoutes(options = {}) {
             const { bookId } = req.body || {};
             if (!bookId) return res.status(400).json({ error: "Missing bookId" });
             const safeBookId = String(bookId);
-            const cachedPayload = readCachedLookup(safeBookId);
-            if (cachedPayload) return res.json(cachedPayload);
+            res.setHeader("Cache-Control", "no-store");
             const cached = await query(
                 `WITH book_platform AS (
                     SELECT platform
@@ -165,7 +137,6 @@ function createUploadApiRoutes(options = {}) {
                 cachedChapters: chapterIds,
                 chapters
             };
-            writeCachedLookup(safeBookId, payload);
             return res.json(payload);
         } catch (err) {
             next(err);
@@ -175,7 +146,6 @@ function createUploadApiRoutes(options = {}) {
     router.delete("/api/chapters/:bookId", requireUploadApi, async (req, res, next) => {
         try {
             const result = await query("DELETE FROM chapter_cache WHERE book_id = $1", [String(req.params.bookId)]);
-            invalidateCachedLookup(req.params.bookId);
             await recordEvent({
                 eventType: "chapter",
                 action: "delete_book_chapters",

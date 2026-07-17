@@ -751,6 +751,7 @@ POST /api/parse/check-cache
 - 该接口现在只接受 `bookId`，不再支持单章检查。
 - `chapterIds` / `cachedChapters` 保持旧版字符串数组，方便旧脚本只判断缓存命中。
 - `chapters` 是新增对象数组，包含已缓存章节的 `chapterId` 和 `chapterOrder`。
+- `chapters[].chapterOrder` 直接读取当前 `chapter_cache.chapter_order`，不按返回数组位置重算，也不保留路由内旧快照；响应使用 `Cache-Control: no-store`。
 - 油猴脚本会先检查本地缓存；本地不存在时，再按 `bookId` 请求本接口，把服务端返回的 `chapterId` 合并到本地缓存后再决定是否上传。
 
 ### 4. 删除某书全部章节缓存
