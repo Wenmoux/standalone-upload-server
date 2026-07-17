@@ -25,7 +25,9 @@ function createService(job, calls = []) {
             cleanupStalePo18Books: async () => ({ success: true, deletedMetadata: 1 })
         },
         chapterMaintenanceService: {
-            repairChapterOrderDuplicates: async () => ({ success: true, updatedChapters: 2 })
+            repairChapterStructure: async () => ({ success: true, updatedChapters: 3, removedVolumes: 1 }),
+            repairChapterOrderDuplicates: async () => ({ success: true, updatedChapters: 2 }),
+            cleanupDuplicateVolumes: async () => ({ success: true, removedVolumes: 2 })
         },
         configFile: "/config/app.env",
         backupDir: "/config/backups",
@@ -36,12 +38,21 @@ function createService(job, calls = []) {
     });
 }
 
-test("system job retry reruns chapter order repair jobs", async () => {
+test("system job retry reruns merged chapter structure repair jobs", async () => {
     const calls = [];
     const service = createService({ id: 7, type: "chapters_repair_order", status: "failed", input_json: { limit: 3 } }, calls);
     const result = await service.retrySystemJob({ body: {}, session: { adminUser: { username: "admin" } } }, 7);
-    assert.equal(result.updatedChapters, 2);
+    assert.equal(result.updatedChapters, 3);
+    assert.equal(result.removedVolumes, 1);
     assert.deepEqual(calls, [{ type: "chapters_repair_order", input: { limit: 3, retryOf: 7 } }]);
+});
+
+test("system job retry reruns duplicate volume cleanup jobs", async () => {
+    const calls = [];
+    const service = createService({ id: 9, type: "chapters_cleanup_duplicate_volumes", status: "failed", input_json: { limit: 4 } }, calls);
+    const result = await service.retrySystemJob({ body: {}, session: { adminUser: { username: "admin" } } }, 9);
+    assert.equal(result.removedVolumes, 2);
+    assert.deepEqual(calls, [{ type: "chapters_cleanup_duplicate_volumes", input: { limit: 4, retryOf: 9 } }]);
 });
 
 test("system job retry requires confirmation for stale cleanup", async () => {

@@ -132,6 +132,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
     const { createReaderAccountService } = require("../services/reader-account");
     const { createBookManifestService } = require("../services/book-manifest");
     const { createBookChapterService } = require("../services/book-chapters");
+    const { createChapterMaintenanceService } = require("../services/chapter-maintenance");
     const { createBookSocialService } = require("../services/book-social");
     const { createReviewGovernanceService } = require("../services/review-governance");
     const { createRedPacketService } = require("../services/red-packets");
@@ -157,6 +158,7 @@ test("postgres integration covers CDK, red packets and backup jobs", { skip: pgU
         createUserCurrencyService,
         createReaderAccountService,
         createBookChapterService,
+        createChapterMaintenanceService,
         withApp,
         resetDatabase,
         seedBotUser,

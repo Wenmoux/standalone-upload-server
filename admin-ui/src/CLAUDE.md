@@ -27,7 +27,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `utils/lazyWorkspace.js`: 页内工作区按需加载调度器，统一首次加载缓存与当前分区强制刷新。
 `views/AuditView.vue`: 管理审计查询页，按操作、主体和时间筛选服务端审计记录。
 `views/BooklistView.vue`: 动态榜单缓存运维页，展示来源状态并触发显式刷新任务。
-`views/BooksView.vue`: 书籍/章节主维护页，涵盖筛选、清单导入、增删改、陈旧清理和章节批量操作。
+`views/BooksView.vue`: 书籍/章节主维护页，涵盖筛选、清单导入、增删改和章节批量操作；不再暴露旧 PO18 批量清理入口。
 `views/books-config.js`: 书库视图的稳定声明配置，集中提供平台、表格列、表单字段与数值转换清单。
 `views/CdksView.vue`: Reader 注册码生命周期页，负责生成、筛选和带原因撤销 CDK。
 `views/CorrectionsView.vue`: 正文纠错审核页，查询待办并执行通过、驳回与审核备注写入。
@@ -38,7 +38,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `views/LoginView.vue`: Admin 登录门面，提交凭据并把认证结果交给 `App.vue` 切换会话态。
 `views/PlatformsView.vue`: 平台标识映射页，维护服务端自动发现平台的人工展示名称。
 `views/Po18CrawlerView.vue`: PO18 遍历任务控制台，常驻呈现运行状态并分层维护 Cookie/计划/风险参数及任务控制。
-`views/QualityView.vue`: 数据质量诊断页，展示异常聚合并预览、执行章节顺序修复。
+`views/QualityView.vue`: 数据质量诊断页，展示异常聚合，以单一入口预览/执行同名分卷去重与章节连续重排，并保留本次改动书籍表。
 `views/SystemView.vue`: 按需加载的分区系统运维中心，按运行、权限、备份、日志组织指标、管理员、Token、诊断与重启。
 `views/system-backups.js`: 系统备份工作区组合层，封装索引、上传、远端归档、验证、恢复演练与数据库恢复状态机。
 `views/system-config.js`: 系统页稳定声明与纯展示规则，集中工作区、日志筛选、状态、性能、备份、版本和 RUM 映射。

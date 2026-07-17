@@ -73,7 +73,8 @@ function createSystemJobRetryService(options = {}) {
 
         if (type.startsWith("backup:")) {
             const backupType = type.slice("backup:".length);
-            if (backupType === "upload") throw httpError(400, "uploaded dump jobs cannot be retried because the request body is no longer available");
+            if (backupType === "upload")
+                throw httpError(400, "uploaded dump jobs cannot be retried because the request body is no longer available");
             return runTrackedJob(req, type, inputWithRetry, () =>
                 createBackupPayload({
                     type: backupType,
@@ -117,9 +118,13 @@ function createSystemJobRetryService(options = {}) {
 
         if (type === "chapters_repair_order") {
             const limit = Math.max(1, Math.min(500, Number(input.limit || 50)));
-            return runTrackedJob(req, type, inputWithRetry, () =>
-                chapterMaintenanceService.repairChapterOrderDuplicates({ limit })
-            );
+            const repair = chapterMaintenanceService.repairChapterStructure || chapterMaintenanceService.repairChapterOrderDuplicates;
+            return runTrackedJob(req, type, inputWithRetry, () => repair({ limit }));
+        }
+
+        if (type === "chapters_cleanup_duplicate_volumes") {
+            const limit = Math.max(1, Math.min(500, Number(input.limit || 50)));
+            return runTrackedJob(req, type, inputWithRetry, () => chapterMaintenanceService.cleanupDuplicateVolumes({ limit }));
         }
 
         if (type === "po18_crawler_run") {

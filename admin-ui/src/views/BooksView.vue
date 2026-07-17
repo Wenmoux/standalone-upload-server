@@ -53,7 +53,6 @@
                     </label>
                     <div class="row-actions">
                         <button type="button" @click="loadBooks(1)">查询</button>
-                        <button class="danger secondary" type="button" @click="cleanupStaleBooks">清理旧 PO18</button>
                     </div>
                 </div>
 
@@ -200,7 +199,7 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、DataTable/FormModal、books-config 声明、Admin API、格式化工具与全局确认/输入/提示服务
- * [OUTPUT]: 提供书籍/章节查询编辑、清单校验导入、陈旧清理和章节批量维护页面
+ * [OUTPUT]: 提供书籍/章节查询编辑、清单校验导入和章节批量维护页面
  * [POS]: admin-ui/src/views 的书库管理主视图，编排 books/chapters 多组受审计写接口
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -601,44 +600,6 @@ function chooseDeleteMode(message) {
         ],
         confirmLabel: "下一步"
     });
-}
-
-async function cleanupStaleBooks() {
-    try {
-        const preview = await api("/admin-api/books/cleanup-stale/preview");
-        if (!preview.metadataCount && !preview.bookCount && !preview.chapterCount) return toast("没有符合条件的旧 PO18 书籍");
-        const sample = (preview.sample || [])
-            .slice(0, 6)
-            .map((book) => `- ${book.title || book.book_id || "-"} / ${book.book_id || "-"} / ${book.platform || "-"} / ${book.source_update_date || book.latest_chapter_date || "-"} / ${number(book.metadata_chapter_count || 0)}章`)
-            .join("\n");
-        const message = [
-            `将删除 ${preview.platform || "po18"} 平台、原站更新时间早于 ${preview.cutoff}、章节数小于 ${number(preview.maxChapterCount)} 的书籍。`,
-            "",
-            `元信息：${number(preview.metadataCount)} 条`,
-            `去重书籍：${number(preview.bookCount)} 本`,
-            `章节缓存：${number(preview.chapterCount)} 章`,
-            "",
-            "样例：",
-            sample || "-",
-            "",
-            "该操作不可恢复。"
-        ].join("\n");
-        const confirmation = await confirmAction({
-            title: "清理旧 PO18 书籍",
-            message,
-            confirmLabel: "执行清理",
-            phrase: "CLEANUP"
-        });
-        if (!confirmation.confirmed) return;
-        const result = await api("/admin-api/books/cleanup-stale", {
-            method: "POST",
-            body: JSON.stringify({ confirm: true, reason: confirmation.reason })
-        });
-        await loadBooks(1);
-        toast(`已清理：元信息 ${number(result.deletedMetadata)}，章节 ${number(result.deletedChapters)}`);
-    } catch (err) {
-        toast(err.message || String(err));
-    }
 }
 
 async function loadChapters(bookId, title) {

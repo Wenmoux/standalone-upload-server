@@ -580,6 +580,10 @@ const adminContentRoutes = createAdminContentRoutes({
     saveChapter: bookChapterService.saveChapter,
     previewChapterOrderRepairs: chapterMaintenanceService.previewChapterOrderRepairs,
     repairChapterOrderDuplicates: chapterMaintenanceService.repairChapterOrderDuplicates,
+    previewDuplicateVolumeCleanup: chapterMaintenanceService.previewDuplicateVolumeCleanup,
+    cleanupDuplicateVolumes: chapterMaintenanceService.cleanupDuplicateVolumes,
+    previewChapterStructureRepairs: chapterMaintenanceService.previewChapterStructureRepairs,
+    repairChapterStructure: chapterMaintenanceService.repairChapterStructure,
     stalePo18BooksPreview: bookMaintenanceService.stalePo18BooksPreview,
     cleanupStalePo18Books: bookMaintenanceService.cleanupStalePo18Books,
     runTrackedJob

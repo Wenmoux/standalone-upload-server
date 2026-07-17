@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 chapter-title-cleaner 的标题规范化规则和注入的 PostgreSQL query/事务能力
- * [OUTPUT]: 对外提供书籍与章节写入、全平台仅顺序更新、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
+ * [OUTPUT]: 对外提供书籍与章节写入、全平台唯一顺序移动、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
  * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一字段类型，并隔离 order-only 与正文写入路径
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -41,19 +41,6 @@ function createBookChapterService(options = {}) {
         return match ? Number(match[1]) : 0;
     }
 
-    const chapterOrderSkipPlatforms = new Set(["po18", "p18", "qidian", "qd", "fanqie", "fq", "tomato"]);
-
-    function chapterOrderPlatformKey(value = "") {
-        return String(value || "")
-            .trim()
-            .toLowerCase()
-            .replace(/[\s_-]+/g, "");
-    }
-
-    function shouldNormalizeChapterOrder(platform = "") {
-        return !chapterOrderSkipPlatforms.has(chapterOrderPlatformKey(platform));
-    }
-
     function isOrderOnlyUpdate(payload = {}) {
         return (
             safePgBool(payload.orderOnly, false) ||
@@ -62,12 +49,73 @@ function createBookChapterService(options = {}) {
         );
     }
 
-    function chapterListOrderSql(bookPlatformSql = "platform") {
-        const platformExpr = `LOWER(TRIM(COALESCE(${bookPlatformSql}, platform, '')))`;
-        return `CASE WHEN ${platformExpr} IN ('qidian','qd') THEN chapter_order END ASC NULLS LAST,
-                CASE WHEN ${platformExpr} IN ('qidian','qd') THEN chapter_id END ASC NULLS LAST,
-                chapter_order ASC NULLS LAST,
+    function chapterListOrderSql() {
+        return `chapter_order ASC NULLS LAST,
+                chapter_id ASC NULLS LAST,
                 id ASC`;
+    }
+
+    async function shiftChapterOrderRange(client, { bookId, whereSql, params, delta }) {
+        const temporaryOrder = delta > 0 ? "-(chapter_order + 1)" : "-(chapter_order - 1)";
+        await client.query(
+            `UPDATE chapter_cache
+             SET chapter_order = ${temporaryOrder}
+             WHERE book_id = $1
+               AND ${whereSql}`,
+            [bookId, ...params]
+        );
+        await client.query(
+            `UPDATE chapter_cache
+             SET chapter_order = -chapter_order
+             WHERE book_id = $1
+               AND chapter_order < 0`,
+            [bookId]
+        );
+    }
+
+    async function moveChapterOrder(client, { bookId, chapterId, currentOrder, nextOrder }) {
+        const occupied = await client.query(
+            `SELECT 1
+             FROM chapter_cache
+             WHERE book_id = $1 AND chapter_order = $2 AND chapter_id <> $3
+             LIMIT 1`,
+            [bookId, nextOrder, chapterId]
+        );
+        if (!occupied.rows[0]) {
+            await client.query(
+                "UPDATE chapter_cache SET chapter_order = $1, updated_at = CURRENT_TIMESTAMP WHERE book_id = $2 AND chapter_id = $3",
+                [nextOrder, bookId, chapterId]
+            );
+            return;
+        }
+
+        await client.query("UPDATE chapter_cache SET chapter_order = 0 WHERE book_id = $1 AND chapter_id = $2", [bookId, chapterId]);
+        if (currentOrder > 0 && nextOrder > currentOrder) {
+            await shiftChapterOrderRange(client, {
+                bookId,
+                whereSql: "chapter_order > $2 AND chapter_order <= $3",
+                params: [currentOrder, nextOrder],
+                delta: -1
+            });
+        } else if (currentOrder > 0) {
+            await shiftChapterOrderRange(client, {
+                bookId,
+                whereSql: "chapter_order >= $2 AND chapter_order < $3",
+                params: [nextOrder, currentOrder],
+                delta: 1
+            });
+        } else {
+            await shiftChapterOrderRange(client, {
+                bookId,
+                whereSql: "chapter_order >= $2 AND chapter_order > 0",
+                params: [nextOrder],
+                delta: 1
+            });
+        }
+        await client.query(
+            "UPDATE chapter_cache SET chapter_order = $1, updated_at = CURRENT_TIMESTAMP WHERE book_id = $2 AND chapter_id = $3",
+            [nextOrder, bookId, chapterId]
+        );
     }
 
     function textFromHtml(html = "") {
@@ -331,21 +379,17 @@ function createBookChapterService(options = {}) {
         const requestedPlatform = cleanPgText(payload.platform || "");
         const orderOnly = isOrderOnlyUpdate(payload);
         let platform = requestedPlatform || "po18";
-        let normalizeOrder = shouldNormalizeChapterOrder(platform);
         const client = await pool.connect();
         let data;
         try {
             await client.query("BEGIN");
-            if (normalizeOrder && !orderOnly) {
-                await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`chapter_order:${bookId}`]);
-            }
+            await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`chapter_order:${bookId}`]);
             const existing = await client.query(
                 "SELECT chapter_order, platform FROM chapter_cache WHERE book_id = $1 AND chapter_id = $2 LIMIT 1",
                 [bookId, chapterId]
             );
             if (orderOnly && !requestedPlatform && existing.rows[0]?.platform) {
                 platform = cleanPgText(existing.rows[0].platform);
-                normalizeOrder = shouldNormalizeChapterOrder(platform);
             }
             const providedOrder = safePgInt(payload.chapterOrder ?? payload.chapter_order, 0);
             if (orderOnly) {
@@ -372,10 +416,12 @@ function createBookChapterService(options = {}) {
                     is_volume: false
                 };
                 if (Number(existing.rows[0].chapter_order || 0) !== providedOrder) {
-                    await client.query(
-                        "UPDATE chapter_cache SET chapter_order = $1, updated_at = CURRENT_TIMESTAMP WHERE book_id = $2 AND chapter_id = $3",
-                        [providedOrder, bookId, chapterId]
-                    );
+                    await moveChapterOrder(client, {
+                        bookId,
+                        chapterId,
+                        currentOrder: Number(existing.rows[0].chapter_order || 0),
+                        nextOrder: providedOrder
+                    });
                 }
                 await client.query("COMMIT");
                 const event = await recordEvent({
@@ -407,17 +453,18 @@ function createBookChapterService(options = {}) {
             const cleanedTitle = cleanChapterTitle(payload.title || "").title;
             let chapterOrder = providedOrder || parseChapterOrderFromTitle(payload.title || "");
             if (existing.rows[0]) {
-                chapterOrder =
-                    !normalizeOrder && providedOrder
-                        ? providedOrder
-                        : safePgInt(existing.rows[0].chapter_order, chapterOrder || safePgInt(chapterId, 0));
+                const currentOrder = safePgInt(existing.rows[0].chapter_order, chapterOrder || safePgInt(chapterId, 0));
+                chapterOrder = providedOrder || currentOrder;
+                if (providedOrder > 0 && providedOrder !== currentOrder) {
+                    await moveChapterOrder(client, { bookId, chapterId, currentOrder, nextOrder: providedOrder });
+                }
             } else if (!chapterOrder) {
                 const maxOrder = await client.query(
                     "SELECT COALESCE(MAX(chapter_order), 0)::int max_order FROM chapter_cache WHERE book_id = $1",
                     [bookId]
                 );
                 chapterOrder = Number(maxOrder.rows[0]?.max_order || 0) + 1;
-            } else if (normalizeOrder) {
+            } else {
                 const occupied = await client.query("SELECT 1 FROM chapter_cache WHERE book_id = $1 AND chapter_order = $2 LIMIT 1", [
                     bookId,
                     chapterOrder

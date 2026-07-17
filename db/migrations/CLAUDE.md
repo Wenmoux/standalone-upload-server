@@ -27,6 +27,7 @@
 - `021_book_manifest_checksums.sql`：为书籍 Manifest 的元信息和章节补充可验证 SHA-256 摘要。
 - `022_review_governance.sql`：建立书评举报、审核、申诉和有限改票治理模型。
 - `023_taxonomy_conflict_deduplication.sql`：将 taxonomy 同步函数改为先按规范值去重再写入，阻止重复标签触发单语句冲突。
+- `024_chapter_order_uniqueness.sql`：按 `chapter_order → chapter_id → id` 修复历史重复顺序，并将同书正数顺序唯一约束扩展到全部平台。
 
 ## 演进规则
 

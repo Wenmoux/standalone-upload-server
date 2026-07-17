@@ -850,7 +850,7 @@ POST /admin-api/jobs/:id/cancel
 
 - 需要后台管理员 session。
 - `/admin-api/jobs` 支持 `status`、`type`、`page`、`limit` 查询参数。
-- 备份、上传 dump、恢复数据库、榜单刷新、Bot 长任务、陈旧 PO18 批量清理和章节顺序修复会写入 `system_jobs`，用于排查耗时任务、失败原因和结果文件。
+- 备份、上传 dump、恢复数据库、榜单刷新、Bot 长任务、陈旧 PO18 批量清理和章节结构整理会写入 `system_jobs`，用于排查耗时任务、失败原因和结果文件。
 - `POST /admin-api/jobs/:id/retry` 仅允许重试 `failed` / `canceled` 任务；当前支持 `backup:*`、`rank_refresh`、`chapters_repair_order`，以及需要确认短语的 `restore:postgres`、`books_cleanup_stale`。
 - `POST /admin-api/jobs/:id/cancel` 仅允许取消仍处于 `queued` 的任务；已经 `running` 的任务不会强杀，避免导出、恢复、上传等任务留下半完成状态。
 - 恢复/清理等破坏性任务重试请求体需携带确认短语：
@@ -926,6 +926,8 @@ q / tag / platform / sort / page / limit
 
 执行会写入 `books_cleanup_stale` 任务，失败后可在任务中心重试。
 
+该兼容接口仍可供既有运维调用和历史任务重试，但 Admin 书籍页不再提供“清理旧 PO18”按钮。
+
 ### 6. 管理章节列表
 
 ```http
@@ -934,6 +936,8 @@ DELETE /admin-api/books/:bookId/chapters
 POST /admin-api/chapters
 GET /admin-api/chapters/repair-order/preview
 POST /admin-api/chapters/repair-order
+GET /admin-api/chapters/cleanup-duplicate-volumes/preview
+POST /admin-api/chapters/cleanup-duplicate-volumes
 ```
 
 `POST /admin-api/chapters/repair-order` 需要：
@@ -945,7 +949,9 @@ POST /admin-api/chapters/repair-order
 }
 ```
 
-说明：该接口会把重复 `chapter_order` 的书按当前章节显示顺序重新编号，并写入任务中心。
+说明：该接口是后台统一的章节结构整理入口。预览会同时返回 `orderRows` 与 `duplicateVolumeRows`；执行时先删除同书中后出现的同名非空分卷，再把受影响书籍及存在重复 `chapter_order` 的书按当前显示顺序连续编号。不同卷名不会删除，响应的 `changedBooks` 会列出实际删除分卷及重排章节数，整个操作写入同一个 `chapters_repair_order` 任务。
+
+`cleanup-duplicate-volumes` 兼容接口仍可独立调用及重试历史任务，但后台不再提供单独按钮。它只处理 `is_volume=true` 且卷名非空的行：同一本书内卷名去除首尾空格后相同时保留 `chapter_order` 最小的一条，相同顺序再保留数据库 `id` 最小的一条；不同卷名不删除，删除后会立即连续重排该书章节。
 
 ### 7. 更新记录
 
@@ -1028,6 +1034,8 @@ DELETE /admin-api/books/:bookId/chapters
 POST /admin-api/chapters
 GET  /admin-api/chapters/repair-order/preview
 POST /admin-api/chapters/repair-order
+GET  /admin-api/chapters/cleanup-duplicate-volumes/preview
+POST /admin-api/chapters/cleanup-duplicate-volumes
 PUT  /admin-api/chapters/:id
 DELETE /admin-api/chapters/:id
 GET  /admin-api/events
@@ -1173,6 +1181,7 @@ GET /reader-api/books/545061/chapters?includeContent=1
 - `GET /bot-api/books/:bookId/reviews`、`POST /bot-api/books/:bookId/reviews`、`POST /bot-api/book-reviews/:reviewId/vote`。
 - `GET /admin-api/books/cleanup-stale/preview`、`POST /admin-api/books/cleanup-stale`。
 - `GET /admin-api/chapters/repair-order/preview`、`POST /admin-api/chapters/repair-order`。
+- `GET /admin-api/chapters/cleanup-duplicate-volumes/preview`、`POST /admin-api/chapters/cleanup-duplicate-volumes`。
 - `POST /admin-api/backup/upload`、`POST /admin-api/backup/restore`、`GET /admin-api/backup/config`、`GET /admin-api/backup/diagnostics`。
 
 鉴权变化：

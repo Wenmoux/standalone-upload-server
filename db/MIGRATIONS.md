@@ -76,7 +76,7 @@ docker exec po18-app sh -lc 'latest=$(ls -1t /config/backups/pre-migration-*.dum
 
 ## 5. 当前迁移链
 
-当前链为 `001_baseline`，随后是 `004_trgm_indexes` 至 `023_taxonomy_conflict_deduplication`，共 22 个正向 migration。`002`–`003` 的空档属于历史版本边界；`019_taxonomy_input_deduplication` 是专门排在 020 前的历史数据兼容修复，不能重命名既有文件改变顺序。
+当前链为 `001_baseline`，随后是 `004_trgm_indexes` 至 `024_chapter_order_uniqueness`，共 23 个正向 migration。`002`–`003` 的空档属于历史版本边界；`019_taxonomy_input_deduplication` 是专门排在 020 前的历史数据兼容修复，不能重命名既有文件改变顺序。
 
 后段迁移的关键语义：
 
@@ -87,8 +87,9 @@ docker exec po18-app sh -lc 'latest=$(ls -1t /config/backups/pre-migration-*.dum
 - `021_book_manifest_checksums`：为 Manifest 元信息和章节增加校验和。
 - `022_review_governance`：增加书评举报、审核、申诉与有限改票。
 - `023_taxonomy_conflict_deduplication`：让后续元信息写入先去重 taxonomy token，再写入规范化主键。
+- `024_chapter_order_uniqueness`：只对存在正数重复顺序的书按 `chapter_order → chapter_id → id` 重排，再对全部平台建立同书正数顺序唯一索引。
 
-`019_taxonomy_input_deduplication` 的等价历史数据归并不可逆，因此没有 down SQL；023 的 down SQL 只恢复旧同步函数，回滚后重复 token 写入风险会重新出现。
+`019_taxonomy_input_deduplication` 的等价历史数据归并不可逆，因此没有 down SQL；023 的 down SQL 只恢复旧同步函数。024 的 down SQL 只恢复旧平台例外索引，不逆转已经重排的章节顺序；需要恢复原序号时必须使用预迁移备份。
 
 这些迁移均没有引入 `book_key`，也没有改变现有平台无感知 API 字段。
 

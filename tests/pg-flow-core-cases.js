@@ -29,6 +29,7 @@ async function runPgCoreFlowCases(t, context = {}) {
         createUserCurrencyService,
         createReaderAccountService,
         createBookChapterService,
+        createChapterMaintenanceService,
         withApp,
         resetDatabase,
         seedBotUser,
@@ -84,7 +85,70 @@ async function runPgCoreFlowCases(t, context = {}) {
         ]);
     });
 
+    await t.test("legacy duplicate chapter orders are sorted by chapter id before uniqueness is enforced", async () => {
+        await query(
+            `INSERT INTO chapter_cache(book_id, chapter_id, title, platform, chapter_order)
+             VALUES ('order-legacy', '20', 'later id', 'qidian', 5),
+                    ('order-legacy', '10', 'earlier id', 'qidian', 5),
+                    ('order-legacy', '30', 'last id', 'qidian', 9)`
+        );
+        const files = await listMigrationFiles();
+        const orderMigration = files.find((file) => file.version === "024_chapter_order_uniqueness");
+        await query(await fs.readFile(orderMigration.path, "utf8"));
+
+        const repaired = await query(
+            `SELECT chapter_id, chapter_order
+             FROM chapter_cache
+             WHERE book_id = 'order-legacy'
+             ORDER BY chapter_order, chapter_id`
+        );
+        assert.deepEqual(repaired.rows, [
+            { chapter_id: "10", chapter_order: 1 },
+            { chapter_id: "20", chapter_order: 2 },
+            { chapter_id: "30", chapter_order: 3 }
+        ]);
+        await assert.rejects(
+            () =>
+                query(
+                    `INSERT INTO chapter_cache(book_id, chapter_id, title, platform, chapter_order)
+                     VALUES ('order-legacy', '40', 'duplicate', 'fanqie', 3)`
+                ),
+            (error) => error?.code === "23505"
+        );
+    });
+
     await resetDatabase(query, initPg);
+
+    await t.test("duplicate volume cleanup keeps the first same-name volume and preserves different names", async () => {
+        await query("INSERT INTO book_metadata(book_id, platform, title) VALUES ('volume-cleanup', 'po18', 'Volume Cleanup')");
+        await query(
+            `INSERT INTO chapter_cache(book_id, chapter_id, title, platform, chapter_order, is_volume)
+             VALUES ('volume-cleanup', 'v1', '正文卷', 'po18', 1, TRUE),
+                    ('volume-cleanup', 'c1', '第一章', 'po18', 2, FALSE),
+                    ('volume-cleanup', 'v2', '正文卷', 'po18', 3, TRUE),
+                    ('volume-cleanup', 'v3', '番外卷', 'po18', 4, TRUE),
+                    ('volume-cleanup', 'v4', ' 正文卷 ', 'po18', 5, TRUE)`
+        );
+        const service = createChapterMaintenanceService({ query, pool, chapterListOrderSql: () => "chapter_order ASC, id ASC" });
+        const preview = await service.previewDuplicateVolumeCleanup({ limit: 10 });
+        assert.equal(preview.rows[0].duplicate_volumes, 2);
+        assert.deepEqual(preview.rows[0].duplicate_titles, ["正文卷"]);
+
+        const result = await service.cleanupDuplicateVolumes({ limit: 10 });
+        assert.equal(result.changedBookCount, 1);
+        assert.equal(result.removedVolumes, 2);
+        const remaining = await query(
+            `SELECT chapter_id, title, is_volume
+             FROM chapter_cache
+             WHERE book_id = 'volume-cleanup'
+             ORDER BY chapter_order, id`
+        );
+        assert.deepEqual(remaining.rows, [
+            { chapter_id: "v1", title: "正文卷", is_volume: true },
+            { chapter_id: "c1", title: "第一章", is_volume: false },
+            { chapter_id: "v3", title: "番外卷", is_volume: true }
+        ]);
+    });
 
     await t.test("unchanged qidian metadata payload writes typed timestamp columns", async () => {
         const numericBookFields = new Set([

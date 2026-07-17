@@ -89,10 +89,16 @@ test("admin high-density workspaces lazy load and quality samples deep-link to b
     const system = source("views/SystemView.vue");
     const telegram = source("views/TelegramView.vue");
     const quality = source("views/QualityView.vue");
+    const books = source("views/BooksView.vue");
     assert.match(system, /useLazyWorkspace\("runtime"/);
     assert.match(telegram, /useLazyWorkspace\("runtime"/);
     assert.match(system, /onMounted\(loadActiveTab\)/);
     assert.match(telegram, /onMounted\(\(\) => loadActiveTab\(\)/);
     assert.match(quality, /navigate\("books", \{ query: \{ q: bookId \} \}\)/);
     assert.match(quality, /查看书籍/);
+    assert.match(quality, /duplicateVolumeRows/);
+    assert.match(quality, /整理章节结构/);
+    assert.doesNotMatch(quality, /cleanup-duplicate-volumes\/preview|清理重复分卷/);
+    assert.match(quality, /changedVolumeBooks\.value = result\.changedBooks/);
+    assert.doesNotMatch(books, /清理旧 PO18|cleanupStaleBooks/);
 });

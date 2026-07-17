@@ -59,7 +59,6 @@ function makeService(overrides = {}) {
             detail_url: book.detail_url || ""
         }),
         bookUpsertAssignment: (key) => `${key} = EXCLUDED.${key}`,
-        shouldNormalizeChapterOrder: () => true,
         parseChapterOrderFromTitle: () => 0,
         safePgInt: (value, fallback = 0) => Number(value || fallback || 0),
         safePgBool: (value) => !!value,
@@ -195,7 +194,7 @@ test("book chapter service keeps unconfirmed bracket notes on save", async () =>
     assert.ok(insert.params.includes("第1章 开始（上）"));
 });
 
-test("book chapter service does not renumber PO18 displayed chapter orders", async () => {
+test("book chapter service shifts an occupied PO18 order before inserting", async () => {
     const { service, calls } = makeService({
         pool: {
             connect: async () => ({
@@ -223,7 +222,7 @@ test("book chapter service does not renumber PO18 displayed chapter orders", asy
 
     assert.equal(
         calls.some((call) => /SET chapter_order = -/.test(call.sql || "")),
-        false
+        true
     );
     const insert = calls.find((call) => /INSERT INTO chapter_cache/.test(call.sql || ""));
     assert.ok(insert);
@@ -306,6 +305,70 @@ test("book chapter service updates fanqie order-only without replacing content",
     assert.equal(result.chapterId, "9004");
     assert.equal(result.chapterOrder, 12);
     assert.ok(calls.some((call) => call.event?.action === "order-only" && call.event.details.contentUpdated === false));
+});
+
+test("book chapter service moves an occupied order without leaving duplicates", async () => {
+    const { service, calls } = makeService({
+        pool: {
+            connect: async () => ({
+                async query(sql, params = []) {
+                    calls.push({ client: true, sql, params });
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 8, platform: "fanqie" }] };
+                    if (/SELECT 1\s+FROM chapter_cache/.test(sql)) return { rows: [{ exists: true }] };
+                    return { rows: [] };
+                },
+                release() {}
+            })
+        }
+    });
+
+    const result = await service.saveChapter({
+        bookId: "b1",
+        chapterId: "9004",
+        chapterOrder: 5,
+        platform: "fanqie",
+        orderOnly: true
+    });
+
+    assert.equal(result.updated, true);
+    assert.ok(calls.some((call) => /SET chapter_order = 0/.test(call.sql || "") && call.params[1] === "9004"));
+    assert.ok(calls.some((call) => /SET chapter_order = -\(chapter_order \+ 1\)/.test(call.sql || "")));
+    assert.ok(
+        calls.some(
+            (call) =>
+                /UPDATE chapter_cache SET chapter_order = \$1/.test(call.sql || "") &&
+                call.params[0] === 5 &&
+                call.params[1] === "b1" &&
+                call.params[2] === "9004"
+        )
+    );
+});
+
+test("book chapter service closes the old gap when moving to a later occupied order", async () => {
+    const { service, calls } = makeService({
+        pool: {
+            connect: async () => ({
+                async query(sql, params = []) {
+                    calls.push({ client: true, sql, params });
+                    if (/SELECT chapter_order/.test(sql)) return { rows: [{ chapter_order: 5, platform: "qidian" }] };
+                    if (/SELECT 1\s+FROM chapter_cache/.test(sql)) return { rows: [{ exists: true }] };
+                    return { rows: [] };
+                },
+                release() {}
+            })
+        }
+    });
+
+    await service.saveChapter({
+        bookId: "b1",
+        chapterId: "9004",
+        chapterOrder: 8,
+        platform: "qidian",
+        orderOnly: true
+    });
+
+    assert.ok(calls.some((call) => /SET chapter_order = -\(chapter_order - 1\)/.test(call.sql || "")));
+    assert.ok(calls.some((call) => /chapter_order > \$2 AND chapter_order <= \$3/.test(call.sql || "")));
 });
 
 test("book chapter service accepts platform-free order-only and preserves the cached platform", async () => {
@@ -391,5 +454,8 @@ test("book chapter service reports an unchanged order without issuing an update"
     const result = await service.saveChapter({ bookId: "b1", chapterId: "c1", chapterOrder: 12, orderOnly: true });
 
     assert.equal(result.updated, false);
-    assert.equal(calls.some((call) => /UPDATE chapter_cache/.test(call.sql || "")), false);
+    assert.equal(
+        calls.some((call) => /UPDATE chapter_cache/.test(call.sql || "")),
+        false
+    );
 });

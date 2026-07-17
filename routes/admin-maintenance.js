@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Express、Admin 权限、book/chapter maintenance 服务、任务追踪与精确确认短语
- * [OUTPUT]: 对外提供 陈旧书籍清理和章节顺序修复的预览/确认执行路由
- * [POS]: routes 的破坏性维护边界，以预览和确认把 HTTP 请求安全映射到可审计领域任务
+ * [OUTPUT]: 对外提供陈旧书籍清理、合并章节结构修复及兼容性独立维护的预览/确认执行路由
+ * [POS]: routes 的破坏性维护边界，以预览和确认把同名分卷去重与章节顺序整理合并为可审计任务
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -9,8 +9,10 @@ const express = require("express");
 const STALE_PO18_BOOK_PLATFORM = "po18";
 const STALE_PO18_BOOK_CUTOFF = "2025-01-01";
 const STALE_PO18_BOOK_MAX_CHAPTER_COUNT = 10;
-const STALE_PO18_BOOK_CHAPTER_COUNT_SQL = "GREATEST(COALESCE(total_chapters, 0), COALESCE(subscribed_chapters, 0), COALESCE(chapter_count, 0))";
-const STALE_PO18_BOOK_SOURCE_DATE_SQL = "CASE WHEN TRIM(COALESCE(latest_chapter_date, '')) ~ '^[0-9]{4}[-/][0-9]{1,2}[-/][0-9]{1,2}' THEN regexp_replace(TRIM(latest_chapter_date), '^([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2}).*$', '\\1-\\2-\\3')::date ELSE NULL END";
+const STALE_PO18_BOOK_CHAPTER_COUNT_SQL =
+    "GREATEST(COALESCE(total_chapters, 0), COALESCE(subscribed_chapters, 0), COALESCE(chapter_count, 0))";
+const STALE_PO18_BOOK_SOURCE_DATE_SQL =
+    "CASE WHEN TRIM(COALESCE(latest_chapter_date, '')) ~ '^[0-9]{4}[-/][0-9]{1,2}[-/][0-9]{1,2}' THEN regexp_replace(TRIM(latest_chapter_date), '^([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2}).*$', '\\1-\\2-\\3')::date ELSE NULL END";
 const STALE_PO18_BOOK_WHERE = `LOWER(TRIM(COALESCE(platform, ''))) = $1 AND ${STALE_PO18_BOOK_SOURCE_DATE_SQL} < $2::date AND ${STALE_PO18_BOOK_CHAPTER_COUNT_SQL} < $3`;
 
 async function stalePo18BooksPreview(query) {
@@ -130,6 +132,10 @@ function createAdminMaintenanceRoutes(deps = {}) {
         cleanupStalePo18Books: maintenanceCleanupStalePo18Books,
         previewChapterOrderRepairs,
         repairChapterOrderDuplicates,
+        previewDuplicateVolumeCleanup,
+        cleanupDuplicateVolumes,
+        previewChapterStructureRepairs,
+        repairChapterStructure,
         runTrackedJob
     } = deps;
 
@@ -153,9 +159,8 @@ function createAdminMaintenanceRoutes(deps = {}) {
             const worker = maintenanceCleanupStalePo18Books
                 ? () => maintenanceCleanupStalePo18Books({ actor: req.session.adminUser?.username || "admin" })
                 : () => cleanupStalePo18Books({ pool, recordEvent, req });
-            const payload = typeof runTrackedJob === "function"
-                ? await runTrackedJob(req, "books_cleanup_stale", input, worker)
-                : await worker();
+            const payload =
+                typeof runTrackedJob === "function" ? await runTrackedJob(req, "books_cleanup_stale", input, worker) : await worker();
             res.json(payload);
         } catch (err) {
             next(err);
@@ -164,8 +169,10 @@ function createAdminMaintenanceRoutes(deps = {}) {
 
     router.get("/admin-api/chapters/repair-order/preview", requireAdmin, async (req, res, next) => {
         try {
-            if (typeof previewChapterOrderRepairs !== "function") return res.status(503).json({ error: "chapter order repair unavailable" });
-            res.json(await previewChapterOrderRepairs({ limit: req.query.limit }));
+            const preview = previewChapterStructureRepairs || previewChapterOrderRepairs;
+            if (typeof preview !== "function")
+                return res.status(503).json({ error: "chapter order repair unavailable" });
+            res.json(await preview({ limit: req.query.limit }));
         } catch (err) {
             next(err);
         }
@@ -174,13 +181,44 @@ function createAdminMaintenanceRoutes(deps = {}) {
     router.post("/admin-api/chapters/repair-order", requireAdmin, async (req, res, next) => {
         if (req.body?.confirm !== true) return res.status(400).json({ error: "missing confirm" });
         try {
-            if (typeof repairChapterOrderDuplicates !== "function") return res.status(503).json({ error: "chapter order repair unavailable" });
+            const repair = repairChapterStructure || repairChapterOrderDuplicates;
+            if (typeof repair !== "function")
+                return res.status(503).json({ error: "chapter order repair unavailable" });
             const limit = Math.max(1, Math.min(500, Number(req.body?.limit || 50)));
             const input = { limit };
-            const worker = () => repairChapterOrderDuplicates(input);
-            const payload = typeof runTrackedJob === "function"
-                ? await runTrackedJob(req, "chapters_repair_order", input, worker)
-                : await worker();
+            const worker = () => repair(input);
+            const payload =
+                typeof runTrackedJob === "function" ? await runTrackedJob(req, "chapters_repair_order", input, worker) : await worker();
+            res.json(payload);
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/admin-api/chapters/cleanup-duplicate-volumes/preview", requireAdmin, async (req, res, next) => {
+        try {
+            if (typeof previewDuplicateVolumeCleanup !== "function") {
+                return res.status(503).json({ error: "duplicate volume cleanup unavailable" });
+            }
+            res.json(await previewDuplicateVolumeCleanup({ limit: req.query.limit }));
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.post("/admin-api/chapters/cleanup-duplicate-volumes", requireAdmin, async (req, res, next) => {
+        if (req.body?.confirm !== true) return res.status(400).json({ error: "missing confirm" });
+        try {
+            if (typeof cleanupDuplicateVolumes !== "function") {
+                return res.status(503).json({ error: "duplicate volume cleanup unavailable" });
+            }
+            const limit = Math.max(1, Math.min(500, Number(req.body?.limit || 50)));
+            const input = { limit };
+            const worker = () => cleanupDuplicateVolumes(input);
+            const payload =
+                typeof runTrackedJob === "function"
+                    ? await runTrackedJob(req, "chapters_cleanup_duplicate_volumes", input, worker)
+                    : await worker();
             res.json(payload);
         } catch (err) {
             next(err);

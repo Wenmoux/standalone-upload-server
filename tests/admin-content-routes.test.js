@@ -458,12 +458,23 @@ test("admin chapter bulk delete is scoped to the current book", async () => {
     assert.equal(events[0].details.deleted, 2);
 });
 
-test("admin chapter order repair routes preview and track repair jobs", async () => {
+test("admin chapter structure routes merge duplicate volumes into order repair jobs", async () => {
     const tracked = [];
     const router = createAdminContentRoutes(
         baseDeps({
-            previewChapterOrderRepairs: async () => ({ rows: [{ book_id: "b1", affected_chapters: 2 }] }),
-            repairChapterOrderDuplicates: async (input) => ({ success: true, updatedChapters: 2, input }),
+            previewChapterStructureRepairs: async () => ({
+                rows: [{ book_id: "b1", affected_chapters: 2 }],
+                orderRows: [{ book_id: "b1", affected_chapters: 2 }],
+                duplicateVolumeRows: [{ book_id: "b1", duplicate_volumes: 1, duplicate_titles: ["正文卷"] }],
+                duplicateVolumes: 1
+            }),
+            repairChapterStructure: async (input) => ({
+                success: true,
+                updatedChapters: 3,
+                removedVolumes: 1,
+                changedBooks: [{ book_id: "b1", removed_volumes: 1, updated_chapters: 1 }],
+                input
+            }),
             runTrackedJob: async (req, type, input, worker) => {
                 tracked.push({ type, input });
                 const payload = await worker();
@@ -474,7 +485,9 @@ test("admin chapter order repair routes preview and track repair jobs", async ()
 
     await withApp(router, async (base) => {
         const preview = await fetch(`${base}/admin-api/chapters/repair-order/preview`, { headers: { "X-Test-Admin": "1" } });
-        assert.equal((await preview.json()).rows[0].book_id, "b1");
+        const previewBody = await preview.json();
+        assert.equal(previewBody.rows[0].book_id, "b1");
+        assert.equal(previewBody.duplicateVolumeRows[0].duplicate_titles[0], "正文卷");
 
         const missingConfirm = await fetch(`${base}/admin-api/chapters/repair-order`, {
             method: "POST",
@@ -489,9 +502,59 @@ test("admin chapter order repair routes preview and track repair jobs", async ()
             body: JSON.stringify({ confirm: true, limit: 7 })
         });
         const body = await repaired.json();
-        assert.equal(body.updatedChapters, 2);
+        assert.equal(body.updatedChapters, 3);
+        assert.equal(body.removedVolumes, 1);
+        assert.equal(body.changedBooks[0].book_id, "b1");
         assert.equal(body.job.id, 6);
     });
 
     assert.deepEqual(tracked, [{ type: "chapters_repair_order", input: { limit: 7 } }]);
+});
+
+test("admin duplicate volume cleanup previews and returns changed books", async () => {
+    const tracked = [];
+    const router = createAdminContentRoutes(
+        baseDeps({
+            previewDuplicateVolumeCleanup: async () => ({
+                rows: [{ book_id: "b1", duplicate_volumes: 1, duplicate_titles: ["正文卷"] }]
+            }),
+            cleanupDuplicateVolumes: async (input) => ({
+                success: true,
+                changedBookCount: 1,
+                removedVolumes: 1,
+                changedBooks: [{ book_id: "b1", title: "Book", removed_volumes: 1, removed_titles: ["正文卷"] }],
+                input
+            }),
+            runTrackedJob: async (req, type, input, worker) => {
+                tracked.push({ type, input });
+                return { ...(await worker()), job: { id: 8, type } };
+            }
+        })
+    );
+
+    await withApp(router, async (base) => {
+        const preview = await fetch(`${base}/admin-api/chapters/cleanup-duplicate-volumes/preview`, {
+            headers: { "X-Test-Admin": "1" }
+        });
+        assert.equal((await preview.json()).rows[0].duplicate_titles[0], "正文卷");
+
+        const missingConfirm = await fetch(`${base}/admin-api/chapters/cleanup-duplicate-volumes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({})
+        });
+        assert.equal(missingConfirm.status, 400);
+
+        const cleaned = await fetch(`${base}/admin-api/chapters/cleanup-duplicate-volumes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ confirm: true, limit: 9 })
+        });
+        const body = await cleaned.json();
+        assert.equal(body.removedVolumes, 1);
+        assert.equal(body.changedBooks[0].book_id, "b1");
+        assert.equal(body.job.id, 8);
+    });
+
+    assert.deepEqual(tracked, [{ type: "chapters_cleanup_duplicate_volumes", input: { limit: 9 } }]);
 });

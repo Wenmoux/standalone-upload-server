@@ -13,7 +13,7 @@ admin-config.js: Admin 配置路由，暴露 Telegram 类型开关、owner 全�
 admin-content.js: Admin 内容域组合路由，挂载维护、用户和书库子路由并处理其余后台内容/配置接口。
 admin-crawler.js: PO18 爬虫管理路由，提供配置、运行、暂停、恢复、停止和 Cookie 测试入口。
 admin-library.js: Admin 书库路由，负责书籍/章节 CRUD、筛选导出、书评及目录查询的 HTTP 适配。
-admin-maintenance.js: Admin 数据维护路由，暴露陈旧书籍清理与章节顺序修复的预览/确认执行。
+admin-maintenance.js: Admin 数据维护路由，暴露陈旧书籍清理、合并分卷去重与顺序重排的章节结构整理，并保留独立维护兼容接口和任务跟踪。
 admin-manifests.js: Admin Book Manifest 路由，提供单书导出、包验证和确认导入。
 admin-system.js: Admin 系统路由，聚合状态、诊断、日志、概览、任务与安全审计入口。
 admin-users.js: Admin 用户与经济管理路由，覆盖 owner 专属 Reader/Bot 管理员切换、用户、CDK、流水、搜索需求及 CSV 导出。

@@ -12,14 +12,14 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `admin-lazy-workspace.test.js`: Admin 页内工作区按需加载、并发去重、失败重试与缓存刷新语义。
 - `admin-auth-routes.test.js`: Admin 登录 session 落库时序、会话、角色和 CSRF 路由契约。
 - `admin-exports.test.js`: Admin CSV 公式注入防护、编码、文件名与响应协议。
-- `admin-content-routes.test.js`: 管理端书籍、章节与 Reader/Bot 管理员授权路由契约。
+- `admin-content-routes.test.js`: 管理端书籍、章节结构合并整理、兼容分卷清理与 Reader/Bot 管理员授权路由契约。
 - `admin-modules.test.js`: Admin 领域服务组合与边界回归。
 - `admin-ui-contract.test.js`: Admin 导航、会话恢复、无障碍公共控件、非阻塞输入与高密度工作区分层契约。
 - `api-tokens.test.js`: API Token 创建、哈希、权限与吊销语义。
 - `auth-service.test.js`: 密码、会话用户和管理员鉴权服务。
 - `backups.test.js`: 备份索引、保留、远端上传与恢复演练状态。
 - `body-limits.test.js`: 分路由请求体限制、旧身份入口无类型 JSON 与兼容隔离语义。
-- `book-chapters.test.js`: 章节读取、写入、顺序与缓存行为。
+- `book-chapters.test.js`: 章节读取、写入、全平台唯一顺序移动与缓存行为。
 - `book-crowd.test.js`: 书籍反馈、众筹榜单、服务端成本、重复支持与事务回滚语义。
 - `book-manifest.test.js`: 书籍清单导入导出、校验和及确认边界。
 - `book-maintenance.test.js`: 陈旧 PO18 书籍预览、事务锁定、平台隔离清理与回滚。
@@ -41,7 +41,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-task-status-handlers.test.js`: 任务查询、详情与取消命令。
 - `bot-text-share-utils.test.js`: 文本分享切分、长度与文件名规则。
 - `bot-ui-formatters.test.js`: Telegram 文案、书卡/书评发布按钮和转义格式。
-- `chapter-maintenance.test.js`: 章节维护领域操作。
+- `chapter-maintenance.test.js`: 跨平台重复顺序重排、同书同名分卷删除及合并章节结构预览与改动书籍返回。
 - `chapter-title-cleaner.test.js`: 标题清洗规则与幂等性。
 - `chinese-convert.test.js`: Reader 繁简转换报告模块边界、著/着、台湾词汇、用户词表、占位碰撞、设置面板接线、双向兼容与实现收缩回归。
 - `clean-chapter-titles-script.test.js`: 标题清洗 CLI 参数与执行边界。
@@ -60,9 +60,9 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `health.test.js`: 健康聚合服务与依赖状态。
 - `hot-keywords.test.js`: 热词规范化、一次批量合并、串行累积和稳定排序。
 - `http-security.test.js`: 生产绑定、Metrics Token 与安全响应头。
-- `job-retry.test.js`: 持久任务重试分类、退避和耗尽行为。
+- `job-retry.test.js`: 持久任务重试分类、合并章节结构及历史分卷清理重放、退避和耗尽行为。
 - `local-library-upload.test.js`: 本地书库扫描/传输/CLI 组合边界、批次状态、独立工作台资源与默认值安全注入契约。
-- `migrations.test.js`: 迁移顺序、回滚配对和不可变约束。
+- `migrations.test.js`: 迁移顺序、回滚配对、历史重复修复和不可变约束。
 - `network-security.test.js`: 出站 URL、私网与代理安全规则。
 - `openapi-error-response.test.js`: OpenAPI 索引与统一错误响应契约。
 - `pg-bot-client.test.js`: Bot HTTP 客户端分页、鉴权、书评操作键和错误映射。

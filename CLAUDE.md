@@ -51,6 +51,7 @@ routes → services → pg-store → PostgreSQL
 - `server-pg` 是唯一数据库业务入口；Bot 不直接连接 PostgreSQL。端口可先承载健康探测，但迁移和启动初始化完成前，启动闸门会以 503 拒绝全部业务流量。
 - Reader server 只提供静态文件并代理 `/reader-auth`、`/reader-api`。
 - `db/migrations` 是 schema 唯一正向来源，`db/rollbacks` 只用于显式人工回滚。
+- `chapter_cache` 的正数 `chapter_order` 在同一本书内跨平台唯一；上传冲突通过事务内区间移动解决，历史重复由 024 按 `chapter_order → chapter_id → id` 稳定重排。
 - `/config` 是运行配置、日志与备份的持久边界；源代码不得依赖其中的私人数据。
 
 ## 全局法则

@@ -223,6 +223,16 @@ test("taxonomy conflict repair deduplicates trigger input before writing its pri
     assert.doesNotMatch(sql, /ON CONFLICT DO UPDATE/);
 });
 
+test("chapter order uniqueness migration repairs duplicates by chapter id before enforcing all platforms", async () => {
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "024_chapter_order_uniqueness.sql"), "utf8");
+    assert.match(sql, /HAVING COUNT\(\*\) > 1/);
+    assert.match(sql, /ORDER BY chapter\.chapter_order ASC, chapter\.chapter_id ASC, chapter\.id ASC/);
+    assert.match(sql, /ROW_NUMBER\(\) OVER/);
+    assert.match(sql, /CREATE UNIQUE INDEX idx_pg_chapter_cache_book_order_unique/);
+    assert.match(sql, /WHERE chapter_order > 0/);
+    assert.doesNotMatch(sql, /NOT IN \('qidian'/);
+});
+
 test("book manifest migration adds validated checksums without changing identity keys", async () => {
     const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "021_book_manifest_checksums.sql"), "utf8");
     assert.match(sql, /book_metadata[\s\S]*manifest_checksum/);

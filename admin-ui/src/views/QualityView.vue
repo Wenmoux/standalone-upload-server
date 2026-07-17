@@ -8,7 +8,7 @@
             <div class="row-actions">
                 <button class="secondary" type="button" @click="load">刷新</button>
                 <button type="button" :disabled="repairingOrder" @click="repairChapterOrder">
-                    {{ repairingOrder ? "修复中..." : "修复章节顺序" }}
+                    {{ repairingOrder ? "整理中..." : "整理章节结构" }}
                 </button>
             </div>
         </div>
@@ -21,7 +21,9 @@
                     <div class="section-head">
                         <div>
                             <p class="section-title">质量摘要</p>
-                            <p class="section-desc">阈值：长期未更新 {{ thresholds.stale_days }} 天；大章节 {{ bytes(thresholds.large_chapter_bytes) }} 以上。</p>
+                            <p class="section-desc">
+                                阈值：长期未更新 {{ thresholds.stale_days }} 天；大章节 {{ bytes(thresholds.large_chapter_bytes) }} 以上。
+                            </p>
                         </div>
                     </div>
                     <div class="dashboard">
@@ -36,6 +38,16 @@
                     </div>
                 </div>
             </section>
+
+            <QualityPanel
+                v-if="changedVolumeBooks.length"
+                title="本次章节结构整理结果"
+                :rows="changedVolumeBooks"
+                :columns="volumeResultColumns"
+                :on-open="openBook"
+            >
+                <template #cell-removed_titles="{ value }">{{ Array.isArray(value) ? value.join("、") : value || "-" }}</template>
+            </QualityPanel>
 
             <section class="quality-grid">
                 <QualityPanel title="缺章节 / 覆盖率低" :rows="samples.missing_chapters" :columns="missingColumns" :on-open="openBook">
@@ -61,8 +73,8 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、DataTable/StatCard、数据质量 Admin API、格式化工具和全局导航/确认服务
- * [OUTPUT]: 提供重复/缺失/异常统计、书籍筛选深链及章节顺序修复的预览与执行页面
- * [POS]: admin-ui/src/views 的数据质量控制台，把异常样本导向书库定位，修复遵循服务端预览后执行协议
+ * [OUTPUT]: 提供质量异常统计、书籍深链及合并同名分卷去重与连续顺序重排的章节结构整理页面
+ * [POS]: admin-ui/src/views 的数据质量控制台，以一次预览确认完成章节结构维护并保留本次改动书籍清单
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { defineComponent, h, inject, onMounted, ref } from "vue";
@@ -86,7 +98,12 @@ const QualityPanel = defineComponent({
         return () =>
             h("section", { class: "panel quality-panel" }, [
                 h("div", { class: "section" }, [
-                    h("div", { class: "section-head" }, [h("div", null, [h("p", { class: "section-title" }, props.title), h("p", { class: "section-desc" }, props.rows.length ? `显示 ${props.rows.length} 条样例` : "暂无异常样例")])]),
+                    h("div", { class: "section-head" }, [
+                        h("div", null, [
+                            h("p", { class: "section-title" }, props.title),
+                            h("p", { class: "section-desc" }, props.rows.length ? `显示 ${props.rows.length} 条样例` : "暂无异常样例")
+                        ])
+                    ]),
                     h(
                         DataTable,
                         {
@@ -97,7 +114,8 @@ const QualityPanel = defineComponent({
                         },
                         {
                             ...slots,
-                            "cell-actions": ({ row }) => h("button", { class: "secondary", type: "button", onClick: () => props.onOpen(row) }, "查看书籍")
+                            "cell-actions": ({ row }) =>
+                                h("button", { class: "secondary", type: "button", onClick: () => props.onOpen(row) }, "查看书籍")
                         }
                     )
                 ])
@@ -111,6 +129,7 @@ const summary = ref({});
 const samples = ref({});
 const thresholds = ref({});
 const repairingOrder = ref(false);
+const changedVolumeBooks = ref([]);
 
 const bookColumns = [
     { key: "book_id", label: "书号" },
@@ -135,6 +154,14 @@ const orderColumns = [
     { key: "book_id", label: "书号" },
     { key: "chapter_order", label: "顺序号" },
     { key: "duplicates", label: "重复数" }
+];
+const volumeResultColumns = [
+    { key: "book_id", label: "书号" },
+    { key: "title", label: "书名" },
+    { key: "platform", label: "站点" },
+    { key: "removed_volumes", label: "移除数" },
+    { key: "removed_titles", label: "同名分卷" },
+    { key: "updated_chapters", label: "重排章节" }
 ];
 const largeColumns = [
     { key: "book_id", label: "书号" },
@@ -168,24 +195,56 @@ async function repairChapterOrder() {
     repairingOrder.value = true;
     try {
         const preview = await api("/admin-api/chapters/repair-order/preview?limit=50");
-        const rows = preview.rows || [];
-        if (!rows.length) return toast("没有需要修复的章节顺序");
-        const affectedChapters = rows.reduce((total, row) => total + Number(row.affected_chapters || 0), 0);
-        const sample = rows
+        const orderRows = preview.orderRows || preview.rows || [];
+        const volumeRows = preview.duplicateVolumeRows || [];
+        if (!orderRows.length && !volumeRows.length) {
+            changedVolumeBooks.value = [];
+            return toast("没有需要整理的章节结构");
+        }
+        const affectedChapters = Number(
+            preview.affectedChapters || orderRows.reduce((total, row) => total + Number(row.affected_chapters || 0), 0)
+        );
+        const duplicateVolumes = Number(
+            preview.duplicateVolumes || volumeRows.reduce((total, row) => total + Number(row.duplicate_volumes || 0), 0)
+        );
+        const orderSample = orderRows
             .slice(0, 6)
             .map((row) => `- ${row.title || row.book_id} / ${row.book_id} / ${row.platform || "-"} / ${number(row.affected_chapters)} 章`)
             .join("\n");
+        const volumeSample = volumeRows
+            .slice(0, 6)
+            .map(
+                (row) =>
+                    `- ${row.title || row.book_id} / ${row.book_id} / ${(row.duplicate_titles || []).join("、") || "-"} / ${number(row.duplicate_volumes)} 个`
+            )
+            .join("\n");
         const confirmation = await confirmAction({
-            title: "修复章节顺序",
-            message: [`将修复 ${number(rows.length)} 本书、约 ${number(affectedChapters)} 章的重复章节顺序。`, "", "样例：", sample || "-", "", "执行后可在任务中心查看记录。"].join("\n"),
-            confirmLabel: "执行修复"
+            title: "整理章节结构",
+            message: [
+                `将处理 ${number(preview.affectedBooks || orderRows.length + volumeRows.length)} 本书。`,
+                `同名分卷：移除约 ${number(duplicateVolumes)} 个后出现的重复项，不同卷名保留。`,
+                `章节顺序：整理 ${number(orderRows.length)} 本书、约 ${number(affectedChapters)} 章。`,
+                "执行时先清理同名分卷，再把受影响书籍连续重排。",
+                "",
+                "同名分卷样例：",
+                volumeSample || "-",
+                "",
+                "顺序异常样例：",
+                orderSample || "-",
+                "",
+                "执行后可在任务中心查看记录。"
+            ].join("\n"),
+            confirmLabel: "执行整理"
         });
         if (!confirmation.confirmed) return;
         const result = await api("/admin-api/chapters/repair-order", {
             method: "POST",
             body: JSON.stringify({ confirm: true, limit: 50, reason: confirmation.reason })
         });
-        toast(`章节顺序已修复：${number(result.updatedChapters || 0)} 章`);
+        changedVolumeBooks.value = result.changedBooks || [];
+        toast(
+            `章节结构已整理：移除 ${number(result.removedVolumes || 0)} 个重复分卷，重排 ${number(result.updatedChapters || 0)} 章`
+        );
         await load();
     } catch (err) {
         toast(err.message || String(err));
