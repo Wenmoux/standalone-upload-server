@@ -224,18 +224,16 @@ async function repairChapterOrder() {
         const duplicateVolumes = Number(
             preview.duplicateVolumes || volumeRows.reduce((total, row) => total + Number(row.duplicate_volumes || 0), 0)
         );
-        const orderSample = orderRows
-            .slice(0, 5)
+        const orderDetails = orderRows
             .map(
-                (row) =>
-                    `- 《${row.title || row.book_id}》 · 书号 ${row.book_id} · ${number(row.duplicate_order_groups || 0)} 组重复顺序 · 涉及 ${number(row.affected_chapters)} 章`
+                (row, index) =>
+                    `${index + 1}. 《${row.title || row.book_id}》 · 书号 ${row.book_id} · ${number(row.duplicate_order_groups || 0)} 组重复顺序 · 涉及 ${number(row.affected_chapters)} 章`
             )
             .join("\n");
-        const volumeSample = volumeRows
-            .slice(0, 5)
+        const volumeDetails = volumeRows
             .map(
-                (row) =>
-                    `- 《${row.title || row.book_id}》 · 书号 ${row.book_id} · 删除 ${number(row.duplicate_volumes)} 条重复分卷记录 · 卷名：${compactVolumeTitles(row.duplicate_titles)}`
+                (row, index) =>
+                    `${index + 1}. 《${row.title || row.book_id}》 · 书号 ${row.book_id} · 删除 ${number(row.duplicate_volumes)} 条重复分卷记录 · 卷名：${compactVolumeTitles(row.duplicate_titles)}`
             )
             .join("\n");
         const confirmation = await confirmAction({
@@ -248,11 +246,11 @@ async function repairChapterOrder() {
                     : "顺序重复：当前没有发现相同的正数 order；删除分卷后仍会补齐受影响书籍的连续顺序。",
                 "执行采用数据库批量处理，不再逐章更新。完成后页面会自动定位到全部实际改动书籍。",
                 "",
-                "重复分卷样例（以下最多展示 5 本，不代表执行范围）：",
-                volumeSample || "-",
+                `重复分卷完整明细（共 ${number(volumeRows.length)} 本，以下为全部）：`,
+                volumeDetails || "-",
                 "",
-                "顺序重复样例（以下最多展示 5 本，不代表执行范围）：",
-                orderSample || "-",
+                `顺序重复完整明细（共 ${number(orderRows.length)} 本，以下为全部）：`,
+                orderDetails || "-",
                 ""
             ].join("\n"),
             confirmLabel: "执行整理"

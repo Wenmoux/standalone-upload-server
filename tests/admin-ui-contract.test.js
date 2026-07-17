@@ -103,6 +103,8 @@ test("admin high-density workspaces lazy load and quality samples deep-link to b
     assert.match(quality, /repair-order\/preview"\)/);
     assert.doesNotMatch(quality, /repair-order\/preview\?limit=/);
     assert.match(quality, /数据库共发现.*本需要整理的书，本次会全部处理/);
+    assert.match(quality, /重复分卷完整明细.*以下为全部/);
+    assert.doesNotMatch(quality, /slice\(0, 5\)|最多展示 5 本|不代表执行范围/);
     assert.match(quality, /scrollIntoView/);
     assert.doesNotMatch(books, /清理旧 PO18|cleanupStaleBooks/);
 });

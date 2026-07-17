@@ -38,7 +38,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `views/LoginView.vue`: Admin 登录门面，提交凭据并把认证结果交给 `App.vue` 切换会话态。
 `views/PlatformsView.vue`: 平台标识映射页，维护服务端自动发现平台的人工展示名称。
 `views/Po18CrawlerView.vue`: PO18 遍历任务控制台，常驻呈现运行状态并分层维护 Cookie/计划/风险参数及任务控制。
-`views/QualityView.vue`: 数据质量诊断页，展示异常聚合，以完整总数和精简样例确认全量同名分卷去重与章节连续重排，完成后自动定位全部实际改动书籍表。
+`views/QualityView.vue`: 数据质量诊断页，展示异常聚合，以完整总数和逐书明细确认全量同名分卷去重与章节连续重排，完成后自动定位全部实际改动书籍表。
 `views/SystemView.vue`: 按需加载的分区系统运维中心，按运行、权限、备份、日志组织指标、管理员、Token、诊断与重启。
 `views/system-backups.js`: 系统备份工作区组合层，封装索引、上传、远端归档、验证、恢复演练与数据库恢复状态机。
 `views/system-config.js`: 系统页稳定声明与纯展示规则，集中工作区、日志筛选、状态、性能、备份、版本和 RUM 映射。
