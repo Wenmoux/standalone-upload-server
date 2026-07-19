@@ -16,6 +16,7 @@ const { createTelegramPollingRuntime } = require("../bot/polling-runtime");
 const { automaticPushUnpinTarget, createAutomaticPushUnpinHandler } = require("../bot/automatic-push-unpin");
 const { createSearchQueryParser, parseBookId } = require("../bot/search-query");
 const { createTaskSchedulers } = require("../bot/task-schedulers");
+const { createTelegramClient } = require("../bot/telegram");
 const { markTelegramSystemPush } = require("../telegram-push-contract");
 
 test("bot entrypoint initializes PO18 account handlers before task schedulers", async () => {
@@ -254,6 +255,53 @@ test("telegram polling runtime advances offset and reports handler errors", asyn
     ]);
     assert.ok(runtime.state().lastPollOkAt > 0);
     assert.equal(runtime.state().lastPollError, "");
+});
+
+test("telegram client treats unchanged message edits as idempotent", async () => {
+    const originalFetch = global.fetch;
+    const requests = [];
+    global.fetch = async (url, options) => {
+        requests.push({ url, body: JSON.parse(options.body) });
+        return new Response(
+            JSON.stringify({
+                ok: false,
+                error_code: 400,
+                description:
+                    "Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+    };
+    try {
+        const client = createTelegramClient({ token: "T", apiBase: "https://telegram.test", requestTimeoutMs: 1000 });
+        const result = await client.editMessage("42", "9", "同一页");
+
+        assert.deepEqual(result, { message_not_modified: true });
+        assert.equal(requests[0].url, "https://telegram.test/botT/editMessageText");
+        assert.equal(client.stats().failures_total, 0);
+        assert.equal(client.stats().send_failures_total, 0);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test("telegram client still reports ordinary edit failures", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () =>
+        new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: message to edit not found" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+        });
+    try {
+        const client = createTelegramClient({ token: "T", apiBase: "https://telegram.test", requestTimeoutMs: 1000 });
+
+        await assert.rejects(() => client.editMessage("42", "9", "同一页"), /message to edit not found/);
+        assert.equal(client.stats().failures_total, 1);
+        assert.equal(client.stats().send_failures_total, 1);
+        assert.match(client.stats().last_error, /message to edit not found/);
+    } finally {
+        global.fetch = originalFetch;
+    }
 });
 
 test("automatic push unpin only targets marked automatic forwards", async () => {

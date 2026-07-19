@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Node 文件/Blob 能力、Fetch 和 Telegram Bot HTTP API 的请求与错误语义
- * [OUTPUT]: 对外提供统一 Telegram 请求、消息编辑、文档/图片发送、回调应答和传输统计客户端
- * [POS]: bot 的 Telegram 网络适配层，集中处理超时、429 退避、文件上传、文本截断与可观测性
+ * [OUTPUT]: 对外提供统一 Telegram 请求、幂等消息编辑、文档/图片发送、回调应答和传输统计客户端
+ * [POS]: bot 的 Telegram 网络适配层，集中处理超时、429 退避、编辑无变化、文件上传、文本截断与可观测性
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs/promises");
@@ -17,6 +17,14 @@ function telegramNetworkMessage(method, err) {
     const code = err?.cause?.code || err?.code || "";
     const detail = err?.cause?.message || err?.message || String(err || "unknown error");
     return `Telegram ${method} network failed${code ? ` (${code})` : ""}: ${detail}`;
+}
+
+function isMessageNotModified(method, data = {}) {
+    return (
+        String(method || "") === "editMessageText" &&
+        Number(data.error_code || 0) === 400 &&
+        /message is not modified/i.test(String(data.description || ""))
+    );
 }
 
 async function fileBlob(filePath) {
@@ -86,7 +94,6 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         metrics.requests += 1;
         try {
             const response = await fetch(tgUrl(method), { ...options, signal: controller.signal });
-            if (!response.ok) recordFailure(method, response.status);
             return response;
         } catch (err) {
             recordFailure(method, 0, telegramNetworkMessage(method, err));
@@ -105,7 +112,8 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
             body: JSON.stringify(body)
         });
         const data = await response.json().catch(() => ({}));
-        if (response.ok && data.ok === false) recordFailure(method, data.error_code || response.status, data.description);
+        if (isMessageNotModified(method, data)) return { message_not_modified: true };
+        if (!response.ok || data.ok === false) recordFailure(method, data.error_code || response.status, data.description);
         if (!response.ok || data.ok === false) throw new Error(data.description || `Telegram ${method} failed`);
         return data.result;
     }
@@ -139,7 +147,7 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         form.append("document", await fileBlob(filePath), path.basename(filePath));
         const response = await telegramFetch("sendDocument", { method: "POST", body: form });
         const data = await response.json().catch(() => ({}));
-        if (response.ok && data.ok === false) recordFailure("sendDocument", data.error_code || response.status, data.description);
+        if (!response.ok || data.ok === false) recordFailure("sendDocument", data.error_code || response.status, data.description);
         if (!response.ok || data.ok === false) throw new Error(data.description || "sendDocument failed");
         return data.result;
     }
@@ -152,7 +160,7 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         form.append("photo", new Blob([bytes]), fileName);
         const response = await telegramFetch("sendPhoto", { method: "POST", body: form });
         const data = await response.json().catch(() => ({}));
-        if (response.ok && data.ok === false) recordFailure("sendPhoto", data.error_code || response.status, data.description);
+        if (!response.ok || data.ok === false) recordFailure("sendPhoto", data.error_code || response.status, data.description);
         if (!response.ok || data.ok === false) throw new Error(data.description || "sendPhoto failed");
         return data.result;
     }
@@ -174,4 +182,4 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
     };
 }
 
-module.exports = { createTelegramClient, truncate };
+module.exports = { createTelegramClient, isMessageNotModified, truncate };

@@ -34,7 +34,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-settings.test.js`: Bot 命令目录配置清洗、去重、合并与持久化语义。
 - `bot-export-errors.test.js`: 导出错误分类、私聊不可达识别、重试语义与面向用户消息。
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。
-- `bot-runtime-modules.test.js`: Bot 业务组合根/进程生命周期装配、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
+- `bot-runtime-modules.test.js`: Bot 业务组合根/进程生命周期装配、Telegram 幂等编辑、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
 - `bot-search-platforms.test.js`: 搜索平台参数和别名解析。
 - `bot-search-social-handlers.test.js`: 搜索与社交交互契约，覆盖私聊输入、群聊手动回复、书评草稿隔离、稳定发布键、失败保留及取消清理。
 - `bot-task-runtime.test.js`: 持久任务领取、执行、续租、fencing token 回写和完成语义。
