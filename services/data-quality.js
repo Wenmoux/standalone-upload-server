@@ -40,13 +40,15 @@ function createDataQualityService(options = {}) {
                     GROUP BY book_id
                   ),
                   order_drift AS (
+                    SELECT DISTINCT book_id
+                    FROM chapter_cache
+                    WHERE COALESCE(chapter_order, 0) < 0
+                    UNION
                     SELECT book_id
                     FROM chapter_cache
-                    WHERE COALESCE(is_volume, false) = false
-                    GROUP BY book_id
-                    HAVING MIN(chapter_order) < 0
-                       OR (COUNT(*) FILTER (WHERE chapter_order > 0) > 0 AND MIN(chapter_order) FILTER (WHERE chapter_order > 0) <> 1)
-                       OR MAX(chapter_order) FILTER (WHERE chapter_order > 0) <> COUNT(DISTINCT chapter_order) FILTER (WHERE chapter_order > 0)
+                    WHERE chapter_order > 0
+                    GROUP BY book_id, chapter_order
+                    HAVING COUNT(*) > 1
                   )
              SELECT COUNT(*)::int books,
                     COUNT(*) FILTER (WHERE COALESCE(cache.cached_chapters, 0) > 0)::int cached_books,

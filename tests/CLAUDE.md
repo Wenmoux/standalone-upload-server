@@ -24,12 +24,12 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `book-manifest.test.js`: 书籍清单导入导出、校验和及确认边界。
 - `book-maintenance.test.js`: 陈旧 PO18 书籍预览、事务锁定、平台隔离清理与回滚。
 - `book-social.test.js`: 书评幂等发布扣费、操作键冲突、投票奖励、频率限制与权限语义。
-- `bot-adapters.test.js`: Bot 外部适配器的请求和错误规范化。
+- `bot-adapters.test.js`: Bot 外部适配器的请求、PO18 会话/跨年书架/已购与缺失章筛选和错误规范化。
 - `bot-api-routes.test.js`: Bot API 账户、书籍、书评操作键、任务及 Worker fencing token 路由契约。
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
 - `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、PEER_ID_INVALID 降级、发送后结算、权限与文案契约。
-- `bot-library.test.js`: Bot PO18 加密凭据、书架、缺书请求与分享事实持久化用例。
+- `bot-library.test.js`: Bot PO18 加密凭据、凭据变更会话失效、书架、缺书请求与分享事实持久化用例。
 - `bot-menu-handlers.test.js`: Telegram 精简系统命令、宫格面板与 callback 领域委托契约。
 - `bot-settings.test.js`: Bot 命令目录配置清洗、去重、合并与持久化语义。
 - `bot-export-errors.test.js`: 导出错误分类、私聊不可达识别、重试语义与面向用户消息。
@@ -41,7 +41,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-task-status-handlers.test.js`: 任务查询、详情与取消命令。
 - `bot-text-share-utils.test.js`: 文本分享切分、长度与文件名规则。
 - `bot-ui-formatters.test.js`: Telegram 文案、书卡/书评发布按钮和转义格式。
-- `chapter-maintenance.test.js`: 跨平台重复顺序集合重排、同书同名分卷批量删除、全量章节结构预览与全部改动书籍返回。
+- `chapter-maintenance.test.js`: 跨平台重复顺序修复、合法顺序缺口保留、同书同名分卷批量删除、全量章节结构预览与全部改动书籍返回。
 - `chapter-title-cleaner.test.js`: 标题清洗规则与幂等性。
 - `chinese-convert.test.js`: Reader 繁简转换报告模块边界、著/着、台湾词汇、用户词表、占位碰撞、设置面板接线、双向兼容与实现收缩回归。
 - `clean-chapter-titles-script.test.js`: 标题清洗 CLI 参数与执行边界。
@@ -69,7 +69,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `pg-flow-core-cases.js`: 真实 PostgreSQL 迁移、元数据/章节统计、任务租约、API Token、凭据迁移和注册事务用例组。
 - `pg-flow-domain-cases.js`: 真实 PostgreSQL 红包并发、书评治理/清单、备份恢复与最新迁移回滚用例组。
 - `pg-flows.test.js`: 真实 PostgreSQL 集成组合根，装配共享 fixture 并顺序执行核心/领域用例组，避免并发重置 schema。
-- `po18-account-handlers.test.js`: PO18 账号绑定、验证码与书架命令。
+- `po18-account-handlers.test.js`: PO18 私聊账号绑定、受保护会话验证、保留凭据登出与已购书架命令。
 - `po18-crawler-http.test.js`: 爬虫 HTTP 封装、Cookie 与错误策略。
 - `po18-crawler.test.js`: PO18 配置/策略/运行状态/数据库来源边界、解析、抓取与落库流程。
 - `process-supervisor.test.js`: 子进程重启退避、信号和退出策略。
@@ -95,7 +95,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `schema-validation.test.js`: 高成本请求体 JSON Schema 注册与拒绝契约。
 - `search-benchmark.test.js`: 搜索基准预算和结果解析。
 - `server-runtime-modules.test.js`: server-pg 下沉模块的成长/值清洗/纠错/观测/书评频道防重/启动重试与 HTTP 管线顺序契约。
-- `share-handlers.test.js`: TXT/EPUB 分享、样式选择与投递流程。
+- `share-handlers.test.js`: TXT/EPUB 分享、PO18 缓存先行补抓、已购书架会话失效与投递流程。
 - `source-health.test.js`: 内容来源熔断与健康评分。
 - `source-line-budget.test.js`: 全仓维护源码 800 行预算门禁，排除历史备份、依赖和生成产物。
 - `startup-gate.test.js`: 数据库迁移及应用初始化期间的业务流量拒绝、健康放行与就绪切换契约。

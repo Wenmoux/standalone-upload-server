@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供Bot 外部适配器的请求和错误规范化的自动化回归断言
- * [POS]: tests 的Bot 外部适配器的请求和错误规范化守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供 Bot 外部适配器的请求、PO18 会话/跨年书架/已购与缺失章筛选和错误规范化回归断言
+ * [POS]: tests 的 Bot 外协议守卫，防止 PO18 页面改版、空年份或登录重定向被静默误判
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -29,6 +29,63 @@ test("po18 client parses bookshelf rows and auth cookies", () => {
     }]);
     assert.equal(hasPo18Auth([{ name: "authtoken_main", value: "abc" }]), true);
     assert.equal(hasPo18Auth([{ name: "authtoken_main", value: "deleted" }]), false);
+});
+
+test("po18 client parses current bookshelf links without legacy alt-row markup", () => {
+    const { parseBookshelfHtml } = createPo18Client();
+    const rows = parseBookshelfHtml(`
+        <section class="purchase-card">
+          <a href="https://www.po18.tw/books/810002/articles">书架书二</a>
+          <span class="l_author">作者乙</span>
+        </section>
+    `);
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].book_id, "810002");
+    assert.equal(rows[0].author, "作者乙");
+});
+
+test("po18 client scans older purchased years after consecutive empty years", async () => {
+    const currentYear = new Date().getFullYear();
+    const requestedYears = [];
+    const { fetchPo18Bookshelf } = createPo18Client({
+        fetchImpl: async (url) => {
+            const year = Number(new URL(url).searchParams.get("date_year"));
+            requestedYears.push(year);
+            const html = year === currentYear - 4 ? '<a href="/books/9001">旧年已购书</a><span class="l_author">作者</span>' : "";
+            return {
+                ok: true,
+                status: 200,
+                url,
+                headers: { get: () => "", getSetCookie: () => [] },
+                text: async () => html
+            };
+        }
+    });
+
+    const rows = await fetchPo18Bookshelf([{ name: "authtoken1", value: "ok" }], { minimumYear: currentYear - 4 });
+    assert.deepEqual(requestedYears, [currentYear, currentYear - 1, currentYear - 2, currentYear - 3, currentYear - 4]);
+    assert.equal(rows[0].book_id, "9001");
+});
+
+test("po18 client reports protected-page redirects as expired auth", async () => {
+    const { validatePo18Session } = createPo18Client({
+        fetchImpl: async () => ({
+            ok: false,
+            status: 302,
+            url: "https://www.po18.tw/panel/stock_manage/buyed_lists",
+            headers: {
+                get: (name) => (String(name).toLowerCase() === "location" ? "https://www.po18.tw/panel/startup" : ""),
+                getSetCookie: () => []
+            },
+            text: async () => ""
+        })
+    });
+
+    await assert.rejects(
+        validatePo18Session([{ name: "authtoken1", value: "stale" }]),
+        (error) => error.code === "PO18_AUTH_EXPIRED" && error.retryable === false
+    );
 });
 
 test("po18 client parses all login input fields", () => {
@@ -65,6 +122,7 @@ test("po18 client parses current chapter rows and displayed order", () => {
         chapter_order: 4,
         is_free: false,
         is_paid: false,
+        is_purchased: true,
         access: "0004\n            第四章\n            閱讀"
     }]);
 });
@@ -80,6 +138,46 @@ test("po18 client marks free and paid chapter rows", () => {
     assert.equal(rows[0].is_paid, false);
     assert.equal(rows[1].is_free, false);
     assert.equal(rows[1].is_paid, true);
+    assert.equal(rows[1].is_purchased, false);
+});
+
+test("po18 client fetches only missing free and readable purchased chapters", async () => {
+    const requested = [];
+    const response = (url, html) => ({
+        ok: true,
+        status: 200,
+        url,
+        headers: { get: () => "", getSetCookie: () => [] },
+        text: async () => html
+    });
+    const { fetchPo18PurchasedChapters } = createPo18Client({
+        fetchImpl: async (url) => {
+            requested.push(url);
+            if (url.includes("/panel/stock_manage/buyed_lists")) return response(url, "");
+            if (url.includes("/articles?page=1")) {
+                return response(
+                    url,
+                    `
+                    <div data-key="1"><div class="c_l"><span class="l_counter">0001</span><div class="l_chaptname"><a href="/books/123/articles/1">免费章</a></div><span>免費</span></div></div>
+                    <div data-key="2"><div class="c_l"><span class="l_counter">0002</span><div class="l_chaptname"><a href="/books/123/articles/2">已购章</a></div><span>閱讀</span></div></div>
+                    <div data-key="3"><div class="c_l"><span class="l_counter">0003</span><div class="l_chaptname"><a href="/books/123/articles/3">未购章</a></div><span>訂購</span></div></div>
+                    `
+                );
+            }
+            if (url.includes("/articlescontent/2")) return response(url, "<h1>已购章</h1><p>这是账号已经购买并可以阅读的正文内容。</p>");
+            throw new Error(`unexpected PO18 request: ${url}`);
+        }
+    });
+
+    const chapters = await fetchPo18PurchasedChapters(
+        "123",
+        [{ name: "authtoken1", value: "ok" }],
+        { maxPages: 1, skipChapterIds: new Set(["1"]), freeChapterCount: 1, includeMissingFree: true }
+    );
+    assert.deepEqual(chapters.map((chapter) => chapter.chapter_id), ["2"]);
+    assert.equal(chapters[0].is_paid, true);
+    assert.equal(requested.some((url) => url.includes("/articlescontent/1")), false);
+    assert.equal(requested.some((url) => url.includes("/articlescontent/3")), false);
 });
 
 test("po18 client follows redirects with a cookie jar", async () => {

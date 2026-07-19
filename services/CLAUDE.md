@@ -17,16 +17,16 @@ backup-crypto.js: 备份文件加密边界，使用 AES-256-GCM 流式封装远�
 backup-restore-drill.js: 恢复演练调度器，从本地备份清单选择归档并周期性创建可观测演练任务。
 backups.js: 备份用例编排层，连接 docker 备份原语与 system_jobs，负责创建、上传、校验、恢复和演练载荷。
 body-limits.js: 请求体预算策略，为不同路由安装分级 JSON/raw 解析器，并仅在身份入口解析旧客户端缺失类型或 `text/plain` 的 JSON。
-book-chapters.js: 书籍与章节持久化核心，统一字段清洗、幂等写入和全平台 order-only；以同书事务锁、临时顺序和区间移动维持正数 `chapter_order` 唯一。
+book-chapters.js: 书籍与章节持久化核心，统一字段清洗、幂等写入和全平台 order-only；以同书事务锁、临时顺序和单向腾位维持正数 `chapter_order` 唯一，同时保留来源目录的合法缺口。
 book-crowd.js: 书籍轻互动与众筹聚合根，统一反馈规范化、众筹公开视图及银币扣款/支持记录/流水原子结算。
 book-maintenance.js: 陈旧书籍维护用例，提供 PO18 清理预览、事务行锁定、平台隔离删除与事件审计。
 book-manifest.js: 可移植书籍清单协议，实现规范化、SHA-256 校验、导出、验证和幂等导入。
 book-review-channel.js: 书评频道外发适配器，读取最新书籍元信息，以数据库认领防止重试重复发送，再构造带系统标记的 Telegram 文案/按钮并回写状态。
 book-social.js: 书评聚合根，以操作账本幂等结算发布扣费，以原子频道认领隔离外部副作用，并通过书评行和有序用户锁避免作者互投死锁。
 bot-audit.js: Telegram Bot 审计服务，规范化命令执行结果并提供聚合与筛选查询。
-bot-library.js: Bot 书库持久化用例，集中 PO18 加密账号、书架、缺书请求与分享事实的数据清洗和 SQL，使 Bot 路由保持协议边界。
+bot-library.js: Bot 书库持久化用例，集中 PO18 加密账号、凭据变更时的旧 Cookie 失效、书架、缺书请求与分享事实 SQL，使 Bot 路由保持协议边界。
 bot-settings.js: Bot 命令开关服务，以命令目录为白名单清洗、去重、稳定排序、持久化和读取后台配置。
-chapter-maintenance.js: 章节结构维护服务，全量预览同书重复顺序与同名分卷，以排序后的整书锁、集合删除和两阶段集合更新完成去重重排，并返回全部实际改动书籍；独立能力仅供兼容调用。
+chapter-maintenance.js: 章节结构维护服务，全量预览同书重复顺序与同名分卷，以排序后的整书锁、集合删除和两阶段集合更新消除重复值；合法顺序缺口不压缩，并返回全部实际改动书籍。
 chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则清理空白、已确认括号/未闭合尾注、用户正则与首尾连接符，并保留未确认正文语义。
 config.js: `admin_config` 访问与配置语义层，统一平台标签、导出计价、EPUB 配置及数值归一化。
 correction-text.js: 纠错文本规则层，统一 Unicode 字符偏移、换行规范化与精确/首处替换语义。

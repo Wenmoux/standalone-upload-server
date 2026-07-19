@@ -138,15 +138,15 @@ async function runPgCoreFlowCases(t, context = {}) {
         assert.equal(result.changedBookCount, 1);
         assert.equal(result.removedVolumes, 2);
         const remaining = await query(
-            `SELECT chapter_id, title, is_volume
+            `SELECT chapter_id, title, chapter_order, is_volume
              FROM chapter_cache
              WHERE book_id = 'volume-cleanup'
              ORDER BY chapter_order, id`
         );
         assert.deepEqual(remaining.rows, [
-            { chapter_id: "v1", title: "正文卷", is_volume: true },
-            { chapter_id: "c1", title: "第一章", is_volume: false },
-            { chapter_id: "v3", title: "番外卷", is_volume: true }
+            { chapter_id: "v1", title: "正文卷", chapter_order: 1, is_volume: true },
+            { chapter_id: "c1", title: "第一章", chapter_order: 2, is_volume: false },
+            { chapter_id: "v3", title: "番外卷", chapter_order: 4, is_volume: true }
         ]);
     });
 

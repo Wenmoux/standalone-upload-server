@@ -315,6 +315,7 @@ test("automatic push unpin failures stay internal", async () => {
 test("bot task schedulers enqueue export jobs with system job metadata", () => {
     const jobs = [];
     const exports = [];
+    const messages = [];
     const schedulers = createTaskSchedulers({
         botTaskQueue: {
             enqueue(job) {
@@ -322,7 +323,7 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
                 return true;
             }
         },
-        sendMessage: () => {},
+        sendMessage: (chatId, text) => messages.push({ chatId, text }),
         isGroup: (chat) => chat.type === "group",
         sendExport: async (...args) => {
             exports.push(args);
@@ -356,6 +357,13 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         telegram_id: "99",
         chat_id: "c2"
     });
+
+    const privateJobCount = jobs.length;
+    schedulers.scheduleMyBookshelf({ chat: { id: "g1", type: "group" }, from: { id: 99 } });
+    schedulers.scheduleShareBookshelf({ chat: { id: "g1", type: "group" }, from: { id: 99 } });
+    assert.equal(jobs.length, privateJobCount);
+    assert.equal(messages.length, 2);
+    assert.match(messages[0].text, /只能在 Bot 私聊/);
 
     const broadcast = schedulers.recoverSystemJob({
         id: 77,

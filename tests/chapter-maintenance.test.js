@@ -13,7 +13,7 @@ test("chapter maintenance previews and repairs duplicate chapter order groups", 
     const client = {
         query: async (sql, params = []) => {
             if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
-            if (/WITH ranked AS/.test(sql)) {
+            if (/WITH ranked_duplicates AS/.test(sql)) {
                 updates.push({ sql, params });
                 return { rows: [{ book_id: "b1", updated_chapters: 1 }] };
             }
@@ -41,7 +41,9 @@ test("chapter maintenance previews and repairs duplicate chapter order groups", 
     assert.equal(repaired.updatedChapters, 1);
     assert.equal(updates.length, 2);
     assert.deepEqual(updates.map((call) => call.params), [[['b1']], [['b1']]]);
-    assert.match(updates[0].sql, /ROW_NUMBER\(\) OVER/);
+    assert.match(updates[0].sql, /PARTITION BY book_id, chapter_order/);
+    assert.match(updates[0].sql, /duplicate_rank > 1/);
+    assert.match(updates[0].sql, /MAX\(chapter_order\)/);
 });
 
 test("chapter maintenance previews duplicate volume names and reports changed books", async () => {
@@ -53,8 +55,8 @@ test("chapter maintenance previews duplicate volume names and reports changed bo
             if (/DELETE FROM chapter_cache/.test(sql)) {
                 return { rowCount: 2, rows: [{ book_id: "b1", title: "正文卷" }, { book_id: "b1", title: " 正文卷 " }] };
             }
-            if (/WITH ranked AS/.test(sql)) {
-                return { rows: [{ book_id: "b1", updated_chapters: 1 }] };
+            if (/WITH ranked_duplicates AS/.test(sql)) {
+                return { rows: [] };
             }
             if (/chapter_order = -chapter_order/.test(sql)) {
                 return { rows: [], rowCount: 1 };
@@ -90,12 +92,12 @@ test("chapter maintenance previews duplicate volume names and reports changed bo
     assert.equal(result.changedBookCount, 1);
     assert.equal(result.removedVolumes, 2);
     assert.deepEqual(result.changedBooks[0].removed_titles, ["正文卷"]);
-    assert.equal(result.changedBooks[0].updated_chapters, 1);
+    assert.equal(result.changedBooks[0].updated_chapters, 0);
     const deletion = clientCalls.find((call) => /DELETE FROM chapter_cache/.test(call.sql));
     assert.ok(deletion);
     assert.match(deletion.sql, /PARTITION BY book_id, BTRIM\(title\)/);
     assert.match(deletion.sql, /duplicate_rank > 1/);
-    assert.equal(clientCalls.filter((call) => /WITH ranked AS/.test(call.sql)).length, 1);
+    assert.equal(clientCalls.filter((call) => /WITH ranked_duplicates AS/.test(call.sql)).length, 1);
     assert.equal(clientCalls.filter((call) => /chapter_order = -chapter_order/.test(call.sql)).length, 1);
 });
 
@@ -129,12 +131,9 @@ test("chapter structure repair processes every previewed book with set-based upd
             if (/DELETE FROM chapter_cache/.test(sql)) {
                 return { rowCount: 1, rows: [{ book_id: "b1", title: "正文卷" }] };
             }
-            if (/WITH ranked AS/.test(sql)) {
+            if (/WITH ranked_duplicates AS/.test(sql)) {
                 return {
-                    rows: [
-                        { book_id: "b1", updated_chapters: 3 },
-                        { book_id: "b2", updated_chapters: 1 }
-                    ]
+                    rows: [{ book_id: "b2", updated_chapters: 1 }]
                 };
             }
             return { rows: [], rowCount: 0 };
@@ -160,8 +159,8 @@ test("chapter structure repair processes every previewed book with set-based upd
     assert.equal(result.scannedBooks, 2);
     assert.equal(result.changedBookCount, 2);
     assert.equal(result.removedVolumes, 1);
-    assert.equal(result.updatedChapters, 4);
+    assert.equal(result.updatedChapters, 1);
     assert.deepEqual(result.changedBooks.map((row) => row.book_id).sort(), ["b1", "b2"]);
     assert.ok(previewCalls.every((call) => call.params.length === 0));
-    assert.equal(clientCalls.filter((call) => /WITH ranked AS/.test(call.sql)).length, 1);
+    assert.equal(clientCalls.filter((call) => /WITH ranked_duplicates AS/.test(call.sql)).length, 1);
 });

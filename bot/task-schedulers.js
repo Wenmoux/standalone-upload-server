@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 botTaskQueue、Telegram 消息接口和导出、书架同步、共享、注册用户广播领域执行器
- * [OUTPUT]: 对外提供持久 Bot 任务类型、幂等任务构造与导出/同步/共享/全员通知调度和恢复工厂
- * [POS]: bot 任务域的声明式调度层，统一任务类型、互斥键、持久输入和实际执行函数之间的映射
+ * [OUTPUT]: 对外提供持久 Bot 任务类型、幂等任务构造与导出/私聊书架同步/共享/全员通知调度和恢复工厂
+ * [POS]: bot 任务域的声明式调度层，在入队前隔离 PO18 账号私密操作，并统一任务类型、互斥键、持久输入与执行函数的映射
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const PERSISTENT_BOT_JOB_TYPES = [
@@ -147,6 +147,7 @@ function createTaskSchedulers(deps = {}) {
     }
 
     function scheduleMyBookshelf(message) {
+        if (isGroup(message.chat)) return sendMessage(message.chat.id, "PO18 已购书架只能在 Bot 私聊中同步。");
         return botTaskQueue.enqueue(bookshelfJob(message));
     }
 
@@ -157,6 +158,7 @@ function createTaskSchedulers(deps = {}) {
     }
 
     function scheduleShareBookshelf(message) {
+        if (isGroup(message.chat)) return sendMessage(message.chat.id, "PO18 已购书架只能在 Bot 私聊中上传共享。");
         return botTaskQueue.enqueue(shareBookshelfJob(message));
     }
 

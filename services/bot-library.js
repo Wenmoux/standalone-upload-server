@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 PostgreSQL query、Bot 用户查询、PO18 凭据加密、Telegram 身份规范化与领域事件记录
- * [OUTPUT]: 对外提供 PO18 账户、Bot 书架、缺书请求与书籍分享事实的持久化用例工厂
- * [POS]: services 的 Bot 书库聚合边界，承接 routes/bot-api-library 的 SQL 与凭据状态转换，不持有 HTTP 响应
+ * [OUTPUT]: 对外提供会在凭据变更时失效旧会话的 PO18 账户、Bot 书架、缺书请求与书籍分享事实持久化用例
+ * [POS]: services 的 Bot 书库聚合边界，维持绑定账号/密码与 Cookie 主体一致，不持有 HTTP 响应
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function libraryError(status, message) {
@@ -64,12 +64,20 @@ function createBotLibraryService(options = {}) {
         const password = String(payload.password || "").slice(0, 1000);
         const cookies = Array.isArray(payload.cookies) ? payload.cookies.slice(0, 200) : undefined;
         const lastStatus = compactText(payload.last_status ?? payload.lastStatus, 120);
-        const current = await query("SELECT account, password, cookies_json FROM reader_po18_accounts WHERE user_id=$1", [user.id]);
-        const nextAccount = account || current.rows[0]?.account || "";
-        const currentPassword = (credentialCrypto?.decryptString(current.rows[0]?.password || "") ?? current.rows[0]?.password) || "";
-        const currentCookies = decryptCookies(current.rows[0]?.cookies_json);
-        const nextPassword = password || currentPassword;
-        const nextCookies = cookies === undefined ? currentCookies : cookies;
+        const current = await query("SELECT account, password, cookies_json, last_status FROM reader_po18_accounts WHERE user_id=$1", [user.id]);
+        const currentRow = current.rows[0] || {};
+        const currentAccount = currentRow.account || "";
+        const nextAccount = account || currentAccount;
+        const currentPassword = (credentialCrypto?.decryptString(currentRow.password || "") ?? currentRow.password) || "";
+        const currentCookies = decryptCookies(currentRow.cookies_json);
+        const accountChanged = Boolean(account && account !== currentAccount);
+        const passwordChanged = Boolean(password && password !== currentPassword);
+        const credentialsChanged = accountChanged || passwordChanged;
+        const nextPassword = password || (accountChanged ? "" : currentPassword);
+        const nextCookies = cookies === undefined ? (credentialsChanged ? [] : currentCookies) : cookies;
+        const sessionCleared = credentialsChanged || (cookies !== undefined && nextCookies.length === 0);
+        const loginSucceeded = cookies !== undefined && nextCookies.length > 0 && lastStatus === "login_ok";
+        const nextLastStatus = lastStatus || currentRow.last_status || "";
         const storedPassword = credentialCrypto?.encryptString(nextPassword) ?? nextPassword;
         const storedCookies = credentialCrypto?.encryptJson(nextCookies) ?? nextCookies;
         const saved = await query(
@@ -80,11 +88,11 @@ function createBotLibraryService(options = {}) {
                 account=EXCLUDED.account,
                 password=EXCLUDED.password,
                 cookies_json=EXCLUDED.cookies_json,
-                last_login_at=CASE WHEN $6 THEN CURRENT_TIMESTAMP ELSE reader_po18_accounts.last_login_at END,
+                last_login_at=CASE WHEN $6 THEN CURRENT_TIMESTAMP WHEN $8 THEN NULL ELSE reader_po18_accounts.last_login_at END,
                 last_status=EXCLUDED.last_status,
                 updated_at=CURRENT_TIMESTAMP
              RETURNING account, updated_at`,
-            [user.id, user.telegram_id, nextAccount, storedPassword, JSON.stringify(storedCookies), cookies !== undefined, lastStatus]
+            [user.id, user.telegram_id, nextAccount, storedPassword, JSON.stringify(storedCookies), loginSucceeded, nextLastStatus, sessionCleared]
         );
         return {
             account: saved.rows[0]?.account || nextAccount,

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供PO18 账号绑定、验证码与书架命令的自动化回归断言
- * [POS]: tests 的PO18 账号绑定、验证码与书架命令守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供 PO18 私聊账号绑定、受保护会话验证、保留绑定登出与已购书架的自动化回归断言
+ * [POS]: tests 的 PO18 账户交互守卫，防止过期 Cookie 被报为已登录、登出误删凭据或同步统计失真
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -9,7 +9,7 @@ const test = require("node:test");
 const { createPo18AccountHandlers } = require("../bot/po18-account-handlers");
 
 function message() {
-    return { from: { id: 42 }, chat: { id: 42 } };
+    return { from: { id: 42 }, chat: { id: 42, type: "private" } };
 }
 
 function handlers(overrides = {}) {
@@ -32,6 +32,7 @@ function handlers(overrides = {}) {
         callback: (parts) => parts.join(":"),
         parseLoginFields: () => ({ token: "x" }),
         hasPo18Auth: (cookies) => cookies.some((cookie) => cookie.name === "authtoken1"),
+        validatePo18Session: async (cookies) => ({ valid: true, cookies }),
         fetchPo18Bookshelf: async () => [],
         ...(overrides.options || {})
     });
@@ -85,4 +86,73 @@ test("PO18 code handler persists authenticated cookies", async () => {
     assert.equal(saved[0].telegramId, 42);
     assert.equal(saved[0].payload.last_status, "login_ok");
     assert.match(runtime.sent.at(-1).text, /登录成功/);
+});
+
+test("PO18 status validates the protected page and clears an expired session", async () => {
+    const saved = [];
+    const runtime = handlers({
+        client: {
+            po18Account: async () => ({ account: "reader", cookies: [{ name: "authtoken1", value: "expired" }] }),
+            savePo18Account: async (_telegramId, payload) => saved.push(payload)
+        },
+        options: {
+            validatePo18Session: async () => {
+                throw Object.assign(new Error("expired"), { code: "PO18_AUTH_EXPIRED" });
+            }
+        }
+    });
+
+    await runtime.handlePo18Status(message());
+    assert.deepEqual(saved, [{ cookies: [], last_status: "session_expired" }]);
+    assert.match(runtime.sent.at(-1).text, /登录已失效/);
+});
+
+test("PO18 logout preserves bound credentials and only clears cookies", async () => {
+    const saved = [];
+    let deleted = 0;
+    const runtime = handlers({
+        client: {
+            po18Account: async () => ({ account: "reader", password: "secret", cookies: [{ name: "authtoken1", value: "ok" }] }),
+            savePo18Account: async (_telegramId, payload) => saved.push(payload),
+            clearPo18Account: async () => {
+                deleted += 1;
+            }
+        }
+    });
+
+    await runtime.handlePo18Logout(message());
+    assert.equal(deleted, 0);
+    assert.deepEqual(saved, [{ cookies: [], last_status: "logged_out" }]);
+    assert.match(runtime.sent.at(-1).text, /账号密码已保留/);
+});
+
+test("PO18 bookshelf reports only successful favorite syncs", async () => {
+    let calls = 0;
+    const runtime = handlers({
+        client: {
+            po18Account: async () => ({ account: "reader", cookies: [{ name: "authtoken1", value: "ok" }] }),
+            addBookshelf: async () => {
+                calls += 1;
+                if (calls === 2) throw new Error("backend unavailable");
+            }
+        },
+        options: {
+            fetchPo18Bookshelf: async () => [
+                { book_id: "1", title: "书一", author: "甲" },
+                { book_id: "2", title: "书二", author: "乙" }
+            ],
+            deliverLongGroupResult: async (_message, text) => {
+                runtime.sent.push({ type: "delivered", text });
+            }
+        }
+    });
+
+    await runtime.handleMyBookshelf(message());
+    assert.match(runtime.sent.find((item) => item.type === "delivered").text, /同步收藏 1 本，失败 1 本/);
+});
+
+test("PO18 credential commands refuse group chats", async () => {
+    const runtime = handlers();
+    await runtime.handlePo18Set({ from: { id: 42 }, chat: { id: -100, type: "group" } }, "reader secret");
+    assert.match(runtime.sent.at(-1).text, /只能在 Bot 私聊/);
 });

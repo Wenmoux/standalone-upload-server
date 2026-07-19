@@ -153,7 +153,7 @@ const {
     parseRedPacketArgs,
     redPacketMarkup
 } = createBotUi({ escapeHtml, cleanText, truncate, isVolumeChapter, crowdVoteCost: CROWD_VOTE_COST });
-const { po18Fetch, parseLoginFields, hasPo18Auth, fetchPo18Bookshelf, fetchPo18PurchasedChapters } = createPo18Client({ cleanText });
+const { po18Fetch, parseLoginFields, hasPo18Auth, validatePo18Session, fetchPo18Bookshelf, fetchPo18PurchasedChapters } = createPo18Client({ cleanText });
 const { buildExport } = createExportBuilder({
     client,
     exportMaxChapters: EXPORT_MAX_CHAPTERS,
@@ -285,7 +285,9 @@ const { handleLoginPo18, handleMyBookshelf, handlePo18Code, handlePo18Logout, ha
         po18Fetch,
         parseLoginFields,
         hasPo18Auth,
-        fetchPo18Bookshelf
+        fetchPo18Bookshelf,
+        validatePo18Session,
+        isGroup
     }
 );
 

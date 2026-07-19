@@ -83,6 +83,23 @@ test("data quality service builds summary and samples", async () => {
     assert.deepEqual(payload.samples.duplicate_books, [{ book_id: "b3" }]);
 });
 
+test("data quality treats positive chapter order gaps as valid", async () => {
+    let metricsSql = "";
+    const service = createDataQualityService({
+        query: async (sql) => {
+            metricsSql = sql;
+            return { rows: [{ books: 1, order_drift_books: 0 }] };
+        }
+    });
+
+    const metrics = await service.collectDataQualityMetrics({ force: true });
+
+    assert.equal(metrics.order_drift_books, 0);
+    assert.doesNotMatch(metricsSql, /MIN\(chapter_order\).*<>\s*1/s);
+    assert.doesNotMatch(metricsSql, /MAX\(chapter_order\).*COUNT\(DISTINCT chapter_order\)/s);
+    assert.match(metricsSql, /GROUP BY book_id, chapter_order\s+HAVING COUNT\(\*\) > 1/);
+});
+
 test("admin overview helpers parse slow logs and failure reasons", () => {
     assert.deepEqual(parseSlowLogLines("GET /a 42ms\nPOST /b 7.5 ms", 2), [
         { ms: 42, line: "GET /a 42ms" },

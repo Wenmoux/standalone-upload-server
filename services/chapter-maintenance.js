@@ -1,13 +1,12 @@
 /**
  * [INPUT]: 依赖注入的 PostgreSQL query/事务能力，读取并锁定章节顺序与分卷标记
- * [OUTPUT]: 对外提供全量章节结构预览/批量修复、重复顺序整理及同书同名分卷去重的维护服务工厂
- * [POS]: services 的章节结构修复用例层，以有序整书锁和集合更新完成全库去重重排，并保留独立兼容能力
+ * [OUTPUT]: 对外提供全量章节结构预览/批量修复、保留合法顺序缺口的重复顺序整理及同书同名分卷去重维护服务工厂
+ * [POS]: services 的章节结构修复用例层，以有序整书锁和集合更新消除重复值，但不把来源分卷缺口压成连续编号
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createChapterMaintenanceService(options = {}) {
     const query = options.query;
     const pool = options.pool;
-    const chapterListOrderSql = options.chapterListOrderSql || (() => "chapter_order ASC, id ASC");
 
     function safeLimit(value, fallback = 50, max = 500) {
         const num = Number(value || fallback);
@@ -33,27 +32,43 @@ function createChapterMaintenanceService(options = {}) {
         );
     }
 
-    async function normalizeBookChapterOrders(client, bookIds) {
+    async function repairDuplicateBookChapterOrders(client, bookIds) {
         if (!bookIds.length) return new Map();
         const staged = await client.query(
-            `WITH ranked AS (
-                 SELECT id, book_id, chapter_order,
+            `WITH ranked_duplicates AS (
+                 SELECT id, book_id, chapter_id, chapter_order,
                         ROW_NUMBER() OVER (
-                            PARTITION BY book_id
-                            ORDER BY ${chapterListOrderSql()}
-                        )::integer AS next_order
+                            PARTITION BY book_id, chapter_order
+                            ORDER BY chapter_id ASC NULLS LAST, id ASC
+                        ) AS duplicate_rank
                  FROM chapter_cache
                  WHERE book_id = ANY($1::text[])
-             ), changed AS (
-                 SELECT id, book_id, next_order
-                 FROM ranked
-                 WHERE chapter_order IS DISTINCT FROM next_order
+                   AND chapter_order > 0
+             ), duplicates AS (
+                 SELECT id, book_id, chapter_id, chapter_order
+                 FROM ranked_duplicates
+                 WHERE duplicate_rank > 1
+             ), book_max AS (
+                 SELECT book_id, MAX(chapter_order)::bigint AS max_order
+                 FROM chapter_cache
+                 WHERE book_id = ANY($1::text[])
+                   AND chapter_order > 0
+                 GROUP BY book_id
+             ), assignments AS (
+                 SELECT duplicate.id,
+                        duplicate.book_id,
+                        (book_max.max_order + ROW_NUMBER() OVER (
+                            PARTITION BY duplicate.book_id
+                            ORDER BY duplicate.chapter_order ASC, duplicate.chapter_id ASC NULLS LAST, duplicate.id ASC
+                        ))::integer AS next_order
+                 FROM duplicates duplicate
+                 JOIN book_max USING (book_id)
              ), updated AS (
                  UPDATE chapter_cache chapter
-                 SET chapter_order = -changed.next_order,
+                 SET chapter_order = -assignment.next_order,
                      updated_at = CURRENT_TIMESTAMP
-                 FROM changed
-                 WHERE chapter.id = changed.id
+                 FROM assignments assignment
+                 WHERE chapter.id = assignment.id
                  RETURNING chapter.book_id
              )
              SELECT book_id, COUNT(*)::int AS updated_chapters
@@ -112,7 +127,7 @@ function createChapterMaintenanceService(options = {}) {
             await client.query("BEGIN");
             const bookIds = uniqueBookIds(targets.rows);
             await lockBooks(client, bookIds);
-            const updatesByBook = await normalizeBookChapterOrders(client, bookIds);
+            const updatesByBook = await repairDuplicateBookChapterOrders(client, bookIds);
             for (const target of targets.rows) {
                 const changedChapterCount = updatesByBook.get(String(target.book_id)) || 0;
                 updatedChapters += changedChapterCount;
@@ -261,7 +276,7 @@ function createChapterMaintenanceService(options = {}) {
             const bookIds = uniqueBookIds(targets.rows);
             await lockBooks(client, bookIds);
             const removed = await deleteDuplicateVolumes(client, bookIds);
-            const updatesByBook = await normalizeBookChapterOrders(client, bookIds);
+            const updatesByBook = await repairDuplicateBookChapterOrders(client, bookIds);
             await client.query("COMMIT");
             const changedBooks = buildChangedBooks({ targets: targets.rows, removedRows: removed.rows, updatesByBook });
             return {
@@ -323,7 +338,7 @@ function createChapterMaintenanceService(options = {}) {
             await lockBooks(client, bookIds);
             const volumeBookIds = uniqueBookIds(preview.duplicateVolumeRows);
             const removed = await deleteDuplicateVolumes(client, volumeBookIds);
-            const updatesByBook = await normalizeBookChapterOrders(client, bookIds);
+            const updatesByBook = await repairDuplicateBookChapterOrders(client, bookIds);
             await client.query("COMMIT");
             const changedBooks = buildChangedBooks({
                 targets: [...preview.duplicateVolumeRows, ...preview.orderRows],

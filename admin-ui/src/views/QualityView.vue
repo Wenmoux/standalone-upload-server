@@ -42,7 +42,7 @@
             <div v-if="changedStructureBooks.length" ref="structureResultPanel">
                 <QualityPanel
                     title="本次章节结构整理结果"
-                    :description="`实际改动 ${number(lastRepairResult.changedBookCount)} 本；删除 ${number(lastRepairResult.removedVolumes)} 条重复分卷记录；重新编号 ${number(lastRepairResult.updatedChapters)} 章。`"
+                    :description="`实际改动 ${number(lastRepairResult.changedBookCount)} 本；删除 ${number(lastRepairResult.removedVolumes)} 条重复分卷记录；调整 ${number(lastRepairResult.updatedChapters)} 条重复顺序。`"
                     :rows="changedStructureBooks"
                     :columns="volumeResultColumns"
                     :on-open="openBook"
@@ -75,7 +75,7 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、DataTable/StatCard、数据质量 Admin API、格式化工具和全局导航/确认服务
- * [OUTPUT]: 提供质量异常统计、书籍深链及全量同名分卷去重与连续顺序重排的章节结构整理页面
+ * [OUTPUT]: 提供质量异常统计、书籍深链及全量同名分卷去重与保留合法缺口的重复顺序修复页面
  * [POS]: admin-ui/src/views 的数据质量控制台，以完整总数和精简样例确认全库维护，并滚动呈现全部实际改动书籍
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -170,7 +170,7 @@ const volumeResultColumns = [
     { key: "platform", label: "站点" },
     { key: "removed_volumes", label: "删除重复分卷（条）" },
     { key: "removed_titles", label: "删除的重复卷名" },
-    { key: "updated_chapters", label: "重新编号章节（章）" }
+    { key: "updated_chapters", label: "调整重复顺序（章）" }
 ];
 const largeColumns = [
     { key: "book_id", label: "书号" },
@@ -243,8 +243,8 @@ async function repairChapterOrder() {
                 `重复分卷：${number(preview.duplicateVolumeBooks || volumeRows.length)} 本书，共删除 ${number(duplicateVolumes)} 条后出现的同名分卷记录；不同卷名保留。`,
                 orderRows.length
                     ? `顺序重复：${number(preview.orderBooks || orderRows.length)} 本书存在相同正数 order，共涉及 ${number(affectedChapters)} 章。`
-                    : "顺序重复：当前没有发现相同的正数 order；删除分卷后仍会补齐受影响书籍的连续顺序。",
-                "执行采用数据库批量处理，不再逐章更新。完成后页面会自动定位到全部实际改动书籍。",
+                    : "顺序重复：当前没有发现相同的正数 order；删除分卷后保留原有顺序缺口。",
+                "执行采用数据库批量处理，只消除重复顺序，不会压缩合法缺口。完成后页面会自动定位到全部实际改动书籍。",
                 "",
                 `重复分卷完整明细（共 ${number(volumeRows.length)} 本，以下为全部）：`,
                 volumeDetails || "-",
@@ -263,7 +263,7 @@ async function repairChapterOrder() {
         changedStructureBooks.value = result.changedBooks || [];
         lastRepairResult.value = result;
         toast(
-            `整理完成：实际改动 ${number(result.changedBookCount || 0)} 本，删除 ${number(result.removedVolumes || 0)} 条重复分卷记录，重新编号 ${number(result.updatedChapters || 0)} 章`
+            `整理完成：实际改动 ${number(result.changedBookCount || 0)} 本，删除 ${number(result.removedVolumes || 0)} 条重复分卷记录，调整 ${number(result.updatedChapters || 0)} 条重复顺序`
         );
         await load();
         await nextTick();

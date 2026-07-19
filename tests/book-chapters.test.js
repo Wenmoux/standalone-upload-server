@@ -344,7 +344,7 @@ test("book chapter service moves an occupied order without leaving duplicates", 
     );
 });
 
-test("book chapter service closes the old gap when moving to a later occupied order", async () => {
+test("book chapter service preserves the old gap when moving to a later occupied order", async () => {
     const { service, calls } = makeService({
         pool: {
             connect: async () => ({
@@ -367,8 +367,9 @@ test("book chapter service closes the old gap when moving to a later occupied or
         orderOnly: true
     });
 
-    assert.ok(calls.some((call) => /SET chapter_order = -\(chapter_order - 1\)/.test(call.sql || "")));
-    assert.ok(calls.some((call) => /chapter_order > \$2 AND chapter_order <= \$3/.test(call.sql || "")));
+    assert.ok(calls.some((call) => /SET chapter_order = -\(chapter_order \+ 1\)/.test(call.sql || "")));
+    assert.ok(calls.some((call) => /chapter_order >= \$2 AND chapter_order > 0/.test(call.sql || "")));
+    assert.ok(calls.some((call) => call.params?.[0] === "b1" && call.params?.[1] === 8));
 });
 
 test("book chapter service accepts platform-free order-only and preserves the cached platform", async () => {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 chapter-title-cleaner 的标题规范化规则和注入的 PostgreSQL query/事务能力
- * [OUTPUT]: 对外提供书籍与章节写入、全平台唯一顺序移动、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
- * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一字段类型，并隔离 order-only 与正文写入路径
+ * [OUTPUT]: 对外提供书籍与章节写入、保留来源缺口的全平台唯一顺序移动、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
+ * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一字段类型，并隔离保留显式顺序语义的 order-only 与正文写入路径
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { cleanChapterTitle } = require("./chapter-title-cleaner");
@@ -93,9 +93,9 @@ function createBookChapterService(options = {}) {
         if (currentOrder > 0 && nextOrder > currentOrder) {
             await shiftChapterOrderRange(client, {
                 bookId,
-                whereSql: "chapter_order > $2 AND chapter_order <= $3",
-                params: [currentOrder, nextOrder],
-                delta: -1
+                whereSql: "chapter_order >= $2 AND chapter_order > 0",
+                params: [nextOrder],
+                delta: 1
             });
         } else if (currentOrder > 0) {
             await shiftChapterOrderRange(client, {

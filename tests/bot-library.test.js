@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test/assert、Bot 书库服务、凭据加密器及受控 PostgreSQL 查询替身
- * [OUTPUT]: 提供 PO18 凭据、书架、缺书请求与分享事实持久化用例的自动化回归断言
- * [POS]: tests 的 Bot 书库领域边界守卫，确保 routes 下沉后凭据保密、字段清洗与 SQL 语义不退化
+ * [OUTPUT]: 提供 PO18 凭据主体一致、书架、缺书请求与分享事实持久化用例的自动化回归断言
+ * [POS]: tests 的 Bot 书库领域边界守卫，确保凭据加密、换账号/密码后旧 Cookie 失效与 SQL 语义不退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -50,6 +50,13 @@ test("bot library service preserves encrypted PO18 credentials and bookshelf sta
     assert.equal(saved.has_cookies, true);
     assert.equal(crypto.decryptString(account.password), "reader-password");
     assert.equal(crypto.decryptJson(account.cookies_json)[0].value, "new");
+    const changedPassword = await service.savePo18Account("42", { password: "reader-password-2", last_status: "account_saved" });
+    assert.equal(changedPassword.has_cookies, false);
+    assert.equal(crypto.decryptString(account.password), "reader-password-2");
+    assert.deepEqual(crypto.decryptJson(account.cookies_json), []);
+    const credentialChange = calls.filter((call) => /INSERT INTO reader_po18_accounts/.test(call.sql)).at(-1);
+    assert.equal(credentialChange.params[5], false);
+    assert.equal(credentialChange.params[7], true);
     await service.addBookshelfBook("42", "book-1");
     assert.deepEqual(await service.listBookshelfBooks("42"), [{ book_id: "book-1", title: "Book", cache_count: 3 }]);
     await service.removeBookshelfBook("42", "book-1");

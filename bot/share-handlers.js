@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 PgBotClient、PO18 已购内容客户端、共享载荷工具、Telegram 更新接口和奖励配置
- * [OUTPUT]: 对外提供单书与已购书架共享上传处理器，以及供测试验证的共享资格判定内核
- * [POS]: bot 共享域的长流程编排层，通过服务端幂等任务提交内容并避免重复上传与重复奖励
+ * [INPUT]: 依赖 PgBotClient、可识别会话失效的 PO18 已购内容客户端、共享载荷工具、Telegram 更新接口和奖励配置
+ * [OUTPUT]: 对外提供缓存先行的单书/跨年已购书架共享处理器，只补抓缺失免费章与账号实际可读的已购章
+ * [POS]: bot 共享域的长流程编排层，先合并目标缓存/本地正文再访问 PO18，避免重复抓取、上传和奖励
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 function createShareHandlers(options = {}) {
@@ -150,37 +150,63 @@ function createShareHandlers(options = {}) {
         }
 
         let chapters = await localShareChapters(book.book_id);
-        if (!chapters.length && isPo18ShareBook(book)) {
+        await notifyShareProgress(progressOptions, { phase: "cache", book, total: chapters.length });
+        const cache = await client.checkSharedCache(book.book_id);
+        const cachedIds = extractCacheIds(cache);
+        let po18FetchError = "";
+        if (isPo18ShareBook(book)) {
             const account = progressOptions.account !== undefined
                 ? progressOptions.account
                 : await client.po18Account(message.from.id).catch(() => null);
             if (account?.cookies?.length && hasPo18Auth(account.cookies)) {
                 await notifyShareProgress(progressOptions, { phase: "po18", book });
                 try {
-                    chapters = (await fetchPo18PurchasedChapters(book.book_id, account.cookies))
-                        .filter((chapter) => String(chapter.chapter_id || chapter.chapterId || chapter.id || "").trim());
+                    const localContentIds = chapters
+                        .filter((chapter) => String(chapter.html || chapter.text || "").trim())
+                        .map((chapter) => String(chapter.chapter_id || chapter.chapterId || chapter.id || "").trim())
+                        .filter(Boolean);
+                    const remoteChapters = await fetchPo18PurchasedChapters(book.book_id, account.cookies, {
+                        skipChapterIds: new Set([...cachedIds, ...localContentIds]),
+                        freeChapterCount: Number(book.free_chapters ?? book.freeChapters ?? 0),
+                        includeMissingFree: true
+                    });
+                    const seenChapterIds = new Set(
+                        chapters.map((chapter) => String(chapter.chapter_id || chapter.chapterId || chapter.id || "").trim()).filter(Boolean)
+                    );
+                    for (const chapter of remoteChapters) {
+                        const chapterId = String(chapter.chapter_id || chapter.chapterId || chapter.id || "").trim();
+                        if (!chapterId || seenChapterIds.has(chapterId)) continue;
+                        seenChapterIds.add(chapterId);
+                        chapters.push(chapter);
+                    }
                 } catch (err) {
-                    return {
-                        book,
-                        status: "chapter_fetch_failed",
-                        error: err.message || String(err),
-                        total: 0,
-                        uploaded: 0,
-                        rewardableUploaded: 0,
-                        skipped: 0,
-                        failed: 0
-                    };
+                    po18FetchError = err.message || String(err);
+                    if (err?.code === "PO18_AUTH_EXPIRED") {
+                        await client.savePo18Account(message.from.id, { cookies: [], last_status: "session_expired" }).catch(() => {});
+                    }
+                    if (!chapters.length) {
+                        return {
+                            book,
+                            status: "chapter_fetch_failed",
+                            error: po18FetchError,
+                            total: 0,
+                            uploaded: 0,
+                            rewardableUploaded: 0,
+                            skipped: 0,
+                            failed: 0
+                        };
+                    }
                 }
             }
         }
 
         if (!chapters.length) {
+            if (cachedIds.size) {
+                return { book, status: "cached", total: cachedIds.size, uploaded: 0, rewardableUploaded: 0, skipped: cachedIds.size, failed: 0 };
+            }
             return { book, status: "no_chapters", total: 0, uploaded: 0, rewardableUploaded: 0, skipped: 0, failed: 0 };
         }
 
-        await notifyShareProgress(progressOptions, { phase: "cache", book, total: chapters.length });
-        const cache = await client.checkSharedCache(book.book_id);
-        const cachedIds = extractCacheIds(cache);
         const uploadItems = chapters
             .map((chapter, index) => ({
                 chapter,
@@ -232,7 +258,8 @@ function createShareHandlers(options = {}) {
 
         return {
             book,
-            status: failed ? (uploaded ? "partial" : "failed") : "uploaded",
+            status: failed || po18FetchError ? (uploaded ? "partial" : "failed") : "uploaded",
+            po18Error: po18FetchError,
             total: chapters.length,
             uploaded,
             rewardableUploaded,
@@ -333,9 +360,19 @@ function createShareHandlers(options = {}) {
             return sendMessage(message.chat.id, "还没绑定 PO18 账号，先 /po18set 账号 密码，再 /loginpo18。");
         }
         const progress = await sendMessage(message.chat.id, `正在拉取你的 PO18 书架（账号：${escapeHtml(account.account || "?")}），准备上传共享...`);
-        const books = await fetchPo18Bookshelf(account.cookies);
+        let books;
+        try {
+            books = await fetchPo18Bookshelf(account.cookies);
+        } catch (error) {
+            if (error?.code === "PO18_AUTH_EXPIRED") {
+                await client.savePo18Account(message.from.id, { cookies: [], last_status: "session_expired" }).catch(() => {});
+                await editMessage(message.chat.id, progress.message_id, "PO18 登录已失效，请重新发送 /loginpo18 后再上传共享。").catch(() => {});
+                return { total: 0, authExpired: true };
+            }
+            throw error;
+        }
         if (!books.length) {
-            await editMessage(message.chat.id, progress.message_id, "没拉到已购书籍。要么书架是空的，要么 Cookie 失效了。").catch(() => {});
+            await editMessage(message.chat.id, progress.message_id, "已成功验证 PO18 登录，但账号的已购书架为空。").catch(() => {});
             return { total: 0 };
         }
 
