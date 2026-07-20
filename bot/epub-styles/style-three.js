@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node path、独立 Style3 CSS/XHTML 模板、参考 EPUB 拆出的字体/三张分部底图/阅读提示图和生成器安全文本上下文
- * [OUTPUT]: 对外提供 style3 疏影横斜的原版 CSS、字体资源、全屏分部页及制作说明、简介、数字章题渲染器
+ * [INPUT]: 依赖 Node path、独立 Style3 CSS/XHTML 模板、参考 EPUB 拆出的字体/三张已去除样例文字的分部装饰图/阅读提示图和生成器安全文本上下文
+ * [OUTPUT]: 对外提供 style3 疏影横斜的原版 CSS、字体资源、只叠加当前书籍动态卷名的全屏分部页及制作说明、简介、数字章题渲染器
  * [POS]: epub-styles 的文艺简约视觉插件，以原始资源和动态文本复现样例并服从上层 EPUB 结构契约
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -113,7 +113,7 @@ module.exports = {
         const artName = VOLUME_ART_NAMES[(Math.max(1, Number(volumeNo) || 1) - 1) % VOLUME_ART_NAMES.length];
         const art =
             typeof hasAsset === "function" && hasAsset(artName)
-                ? `<image width="1536" height="2048" clip-path="url(#style3-volume-art-clip)" xlink:href="../${artName}"/>`
+                ? `<image width="1536" height="2048" xlink:href="../${artName}"/>`
                 : "";
         return renderEpubTemplate("style3-volume.xhtml", {
             NUMBER: header.number,

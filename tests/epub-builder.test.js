@@ -41,6 +41,7 @@ test("style3 volume keeps dynamic text and fullscreen canvas when the reference 
     assert.match(page, /class="style3-volume-page"/);
     assert.match(page, /class="style3-semantic-title">第二部　卷名示例/);
     assert.match(page, /class="style3-volume-svg"/);
+    assert.doesNotMatch(page, /clipPath|clip-path/);
     assert.match(page, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
     assert.match(page, />Part II<\/text>/);
     assert.doesNotMatch(page, /<image/);
@@ -294,7 +295,8 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     assert.match(volume, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
     assert.match(volume, />Part I<\/text>/);
     assert.match(volume, /style3-volume-1\.jpg/);
-    assert.match(volume, /clip-path="url\(#style3-volume-art-clip\)"/);
+    assert.doesNotMatch(volume, /clipPath|clip-path|style3-volume-art-clip/);
+    assert.doesNotMatch(volume, /MILLIE|HER AND HER|SIGNIFICANT OTHER|米莉|她和她的他/);
     assert.match(chapter, /<h2>第1章　新工作<\/h2>/);
     assert.doesNotMatch(chapter, /<p>第1章[\s　]*新工作<\/p>/);
     assert.match(chapter, /<p>门铃响了两次。<\/p>/);

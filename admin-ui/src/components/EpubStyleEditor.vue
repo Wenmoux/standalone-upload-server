@@ -503,7 +503,7 @@ const style3PreviewBody = computed(() => {
             TITLE_LINES: '<tspan x="150" dy="0">少年游</tspan>',
             PART_Y: "730",
             PART: "I",
-            ART: `<image width="1536" height="2048" clip-path="url(#style3-volume-art-clip)" xlink:href="${style3VolumeArt}"/>`
+            ART: `<image width="1536" height="2048" xlink:href="${style3VolumeArt}"/>`
         });
     }
     return renderPreviewTemplate(style3ChapterTemplate, {
