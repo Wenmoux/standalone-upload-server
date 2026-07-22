@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供 Bot HTTP 客户端分页、鉴权、书评操作键和错误映射的自动化回归断言
+ * [OUTPUT]: 提供 Bot HTTP 客户端分页、动态平台读取、鉴权、书评操作键和错误映射的自动化回归断言
  * [POS]: tests 的 Bot HTTP 访问边界守卫，防止分页或幂等请求字段在协议演进中静默丢失
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -75,4 +75,23 @@ test("bot client forwards the stable book review operation key", async () => {
         idempotency_key: "telegram:book-review:chat:9"
     });
     assert.equal(captured.options.headers["X-Bot-Token"], "test-token");
+});
+
+test("bot client reads the server platform registry", async () => {
+    let captured = "";
+    const client = new PgBotClient({
+        baseUrl: "http://bot.test",
+        fetchImpl: async (url) => {
+            captured = url;
+            return {
+                ok: true,
+                async json() {
+                    return { platforms: [{ value: "hetu", label: "河图" }] };
+                }
+            };
+        }
+    });
+    const payload = await client.searchPlatforms();
+    assert.equal(captured, "http://bot.test/reader-api/platforms");
+    assert.equal(payload.platforms[0].value, "hetu");
 });

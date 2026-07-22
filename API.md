@@ -80,7 +80,7 @@ Content-Type: application/json
 ### 搜索、榜单与运行契约
 
 - `GET /reader-api/search` 支持 `fast=1`/`no_total=1`、`cursor` 和 `next_cursor`；fast 模式返回估算 `total`、`has_more`，不执行精确 `COUNT(*)`。
-- 标签和分类使用 `book_taxonomy.normalized_value` 精确匹配。
+- 标签和分类使用 `book_taxonomy.normalized_value` 精确匹配；平台筛选会展开共享别名组，避免历史 `qd/fq/tomato` 数据漏查。
 - 榜单 `meta` 新增 `calculationCycleMs`、`refreshMode`、`sampleCount`、`eligibleCount`、`latestDataAt`，并返回 `definitions` 与每种排序的 `definition`。
 - `/openapi.json` 会把已注册 Ajv 请求契约绑定到对应 request body，并为搜索、Manifest、审核队列提供部分响应 Schema；未登记的查询参数、鉴权和返回结构仍以本文与实现为准。
 
@@ -314,21 +314,22 @@ GET /reader-api/search
 
 参数：
 
-| 参数                                | 说明                                                                    |
-| ----------------------------------- | ----------------------------------------------------------------------- |
-| `keyword` / `q`                     | 关键词，匹配书名、作者、ID、标签                                        |
-| `author`                            | 作者筛选，模糊匹配                                                      |
-| `tag`                               | 规范化标签或分类精确匹配，不区分大小写                                  |
-| `category`                          | 规范化分类精确匹配，不区分大小写                                        |
-| `platform`                          | 站别，如 `po18`、`popo`、`haitang`                                      |
-| `word_min` / `word_max`             | 字数下限 / 上限                                                         |
-| `cache_min` / `cache_max`           | 已缓存章节数下限 / 上限                                                 |
-| `popularity_min` / `popularity_max` | 总人气下限 / 上限                                                       |
-| `sort`                              | 排序，见下方                                                            |
-| `page`                              | 页码，默认 `1`                                                          |
-| `limit`                             | 每页数量，默认 `20`，最大 `100`                                         |
-| `fast` / `fast_search` / `no_total` | 真值时跳过精确 `COUNT(*)`，返回估算 `total` 与 `has_more`               |
-| `cursor`                            | 上一页返回的不透明游标；携带游标时自动启用快速模式，且必须沿用原 `sort` |
+| 参数                                   | 说明                                                                    |
+| -------------------------------------- | ----------------------------------------------------------------------- |
+| `keyword` / `q`                        | 关键词，匹配书名、作者、ID、标签                                        |
+| `author`                               | 作者筛选，模糊匹配                                                      |
+| `tag`                                  | 规范化标签或分类精确匹配，不区分大小写                                  |
+| `category`                             | 规范化分类精确匹配，不区分大小写                                        |
+| `platform`                             | 站别；`qidian/qd`、`fanqie/fq/tomato` 等历史别名按同组匹配              |
+| `word_min` / `word_max`                | 字数下限 / 上限                                                         |
+| `cache_min` / `cache_max`              | 已缓存章节数下限 / 上限                                                 |
+| `include_uncached` / `includeUncached` | 真值时允许无关键词/标签查询包含只有元信息、尚无正文缓存的书             |
+| `popularity_min` / `popularity_max`    | 总人气下限 / 上限                                                       |
+| `sort`                                 | 排序，见下方                                                            |
+| `page`                                 | 页码，默认 `1`                                                          |
+| `limit`                                | 每页数量，默认 `20`，最大 `100`                                         |
+| `fast` / `fast_search` / `no_total`    | 真值时跳过精确 `COUNT(*)`，返回估算 `total` 与 `has_more`               |
+| `cursor`                               | 上一页返回的不透明游标；携带游标时自动启用快速模式，且必须沿用原 `sort` |
 
 排序：
 
@@ -343,7 +344,7 @@ book_id_desc / book_id_asc
 title_asc / title_desc
 ```
 
-游标分页只支持 `updated_*`、`chapters_*`、`popularity_*`、`word_*`、`cache_*`。`complete_*`、`book_id_*`、`title_*` 仍使用页码/偏移分页。未传关键词时，当前实现默认只返回至少缓存了 1 章的书；显式 `cache_min` 可以提高该门槛，但不能把无缓存书加入无关键词结果。
+游标分页只支持 `updated_*`、`chapters_*`、`popularity_*`、`word_*`、`cache_*`。`complete_*`、`book_id_*`、`title_*` 仍使用页码/偏移分页。未传关键词时默认只返回至少缓存了 1 章的书；`include_uncached=1` 可显式包含只有元信息的书，若同时传入 `cache_min`，仍以显式缓存下限为准。Bot 普通搜索使用该开关，热门和随机推荐继续要求正文缓存。
 
 示例：
 
@@ -352,6 +353,7 @@ GET /reader-api/search?keyword=狐魅&sort=cache_desc&page=1&limit=20
 GET /reader-api/search?author=作者名
 GET /reader-api/search?tag=仙侠&platform=po18
 GET /reader-api/search?author=作者名&tag=仙侠&platform=po18
+GET /reader-api/search?tag=古言&platform=fanqie&include_uncached=1
 ```
 
 返回：

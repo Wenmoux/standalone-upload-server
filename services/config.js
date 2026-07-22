@@ -1,40 +1,11 @@
 /**
- * [INPUT]: 依赖 epub-style-config 的导出配置契约和注入的 admin_config PostgreSQL 访问能力
+ * [INPUT]: 依赖 epub-style-config 的导出配置契约、共享平台语义和注入的 admin_config PostgreSQL 访问能力
  * [OUTPUT]: 对外提供平台标签、导出计价、EPUB 配置的读取/规范化服务及相关纯函数
  * [POS]: services 的持久配置语义层，集中解释数据库键值并向 Admin、Bot 与推送模块提供稳定模型
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { EPUB_STYLE_OPTIONS, normalizeEpubExportConfig, parseEpubExportConfig } = require("./epub-style-config");
-
-const DEFAULT_PLATFORM_LABELS = {
-    po18: "PO18",
-    popo: "POPO",
-    qidian: "\u8d77\u70b9",
-    qd: "\u8d77\u70b9",
-    fanqie: "\u756a\u8304",
-    fq: "\u756a\u8304",
-    tomato: "\u756a\u8304",
-    miguodu: "\u7c73\u56fd\u5ea6",
-    migudu: "\u7c73\u56fd\u5ea6",
-    miguo: "\u7c73\u56fd\u5ea6",
-    hetu: "\u6cb3\u56fe",
-    haitang: "\u6d77\u68e0",
-    ht: "\u6d77\u68e0",
-    longma: "\u9f99\u9a6c",
-    lianhongxintiao: "\u8138\u7ea2\u5fc3\u8df3",
-    lianhong: "\u8138\u7ea2\u5fc3\u8df3",
-    lhxt: "\u8138\u7ea2\u5fc3\u8df3"
-};
-
-function cleanPlatformKey(value = "") {
-    return String(value || "").trim();
-}
-
-function normalizePlatformKey(value = "") {
-    return cleanPlatformKey(value)
-        .toLowerCase()
-        .replace(/[\s_-]+/g, "");
-}
+const { DEFAULT_PLATFORM_LABELS, cleanPlatformKey, normalizePlatformKey } = require("./platforms");
 
 function parsePlatformLabels(value = "") {
     try {

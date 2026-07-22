@@ -28,7 +28,7 @@ bot-library.js: Bot 书库持久化用例，集中 PO18 加密账号、凭据变
 bot-settings.js: Bot 命令开关服务，以命令目录为白名单清洗、去重、稳定排序、持久化和读取后台配置。
 chapter-maintenance.js: 章节结构维护服务，全量预览同书重复顺序与同名分卷，以排序后的整书锁、集合删除和两阶段集合更新消除重复值；合法顺序缺口不压缩，并返回全部实际改动书籍。
 chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则清理空白、已确认括号/未闭合尾注、用户正则与首尾连接符，并保留未确认正文语义。
-config.js: `admin_config` 访问与配置语义层，统一平台标签、导出计价、EPUB 配置及数值归一化。
+config.js: `admin_config` 访问与配置语义层，消费共享平台语义并统一人工标签、导出计价、EPUB 配置及数值归一化。
 correction-text.js: 纠错文本规则层，统一 Unicode 字符偏移、换行规范化与精确/首处替换语义。
 credential-crypto.js: 外部站点凭证加密层，以版本化密文和轮换密钥保护数据库中的 PO18 Cookie/账号字段。
 csrf.js: 基于可信 Origin、浏览器 same-origin Fetch Metadata 与 session cookie 的 CSRF 防护，仅对旧版登录/注册身份入口兼容代理完全丢失来源头，并优先拒绝明确的 cross-site 与其他无来源写入。
@@ -55,6 +55,7 @@ po18-crawler-http.js: 爬虫 HTTP 适配器，在安全 fetch 之上实现 Cooki
 po18-crawler-parsers.js: PO18 HTML 解析边界，把发现页、书架、详情、目录与正文转换为稳定领域数据并识别登录失效。
 po18-crawler-policy.js: PO18 选书策略纯函数层，统一分类、关键词、章节区间、完结缓存判定和运行日志摘要口径。
 po18-crawler-runtime.js: PO18 单进程运行状态机，集中统计初值、日志窗口、任务生命周期、进度、暂停恢复、停止和管理快照。
+platforms.js: 平台标识事实源，集中主键、历史上传别名、展示名和等价查询值，使 Bot 与 Reader API 不再各自解释站点口径。
 postgres-values.js: PostgreSQL 值边界，统一 int4/boolean 转换、空字节与嵌套 JSON 清洗以及 SQL 时间文本。
 rank.js: 动态榜单服务，定义榜单口径、热度计算、缓存刷新和分页输出元数据。
 rate-limit.js: 进程内限流原语，按请求身份维护时间窗并生成标准 429 与 Retry-After。
@@ -74,6 +75,6 @@ telegram-push.js: Telegram 通知服务，统一多 Chat 推送、注册用户�
 tts.js: TTS 提供商适配层，封装 Edge、火山、阿里云、Azure、ElevenLabs 与 Cartesia 的请求和重试语义。
 user-currency.js: 用户经济领域服务，以事务处理签到、任务、转账、兑换、导出配额和流水一致性。
 validation.js: 路由输入校验原语，统一字符串/数值/枚举/确认短语与紧凑 JSON 限制。
-word-cloud.js: 词云领域服务，融合标签、热搜与榜单权重并输出稳定的归一化词频。
+word-cloud.js: 词云领域服务，按共享平台别名筛选热门书籍标签，并与全站热搜权重合并为稳定词频。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

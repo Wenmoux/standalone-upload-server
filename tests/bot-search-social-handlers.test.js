@@ -47,9 +47,18 @@ function searchDeps(overrides = {}) {
 }
 
 test("search handler keeps paging and cached search callback data", async () => {
+    const lifecycle = [];
     const fixture = searchDeps({
+        refreshSearchPlatforms: async () => lifecycle.push("refresh"),
+        parseSearchQuery: (query) => {
+            lifecycle.push("parse");
+            return { params: {}, type: "keyword", keyword: query, platform: "", cleanQuery: query };
+        },
         client: {
-            searchBooks: async () => ({ rows: [{ title: "A" }, { title: "B" }], page: 2, limit: 5, total: 12 }),
+            searchBooks: async () => {
+                lifecycle.push("search");
+                return { rows: [{ title: "A" }, { title: "B" }], page: 2, limit: 5, total: 12 };
+            },
             recordSearch: async () => {}
         }
     });
@@ -60,6 +69,7 @@ test("search handler keeps paging and cached search callback data", async () => 
     assert.match(fixture.sent[0].text, /当前第 2 页/);
     assert.deepEqual(fixture.sent[0].options.editTarget, { chatId: 1, messageId: 9 });
     assert.equal(fixture.sent[0].extra.reply_markup.inline_keyboard.length, 2);
+    assert.deepEqual(lifecycle, ["refresh", "parse", "search"]);
 });
 
 test("missing search submission preserves the existing payload fields", async () => {

@@ -63,8 +63,14 @@ test("bot search query parser normalizes tags and book ids", () => {
     assert.equal(parsed.keyword, "甜文");
     assert.equal(parsed.params.limit, 7);
     assert.equal(parsed.params.platform, "qidian");
-    assert.equal(parsed.params.cache_min, 1);
+    assert.equal(parsed.params.include_uncached, 1);
+    assert.equal(Object.prototype.hasOwnProperty.call(parsed.params, "cache_min"), false);
     assert.equal(parsed.params.fast, 1);
+
+    const chineseTag = parseSearchQuery("标签：古言 -fq");
+    assert.equal(chineseTag.type, "tag");
+    assert.equal(chineseTag.keyword, "古言");
+    assert.equal(chineseTag.params.platform, "fanqie");
 
     const allPlatforms = parseSearchQuery("狐魅");
     assert.equal(allPlatforms.type, "search");
@@ -72,7 +78,7 @@ test("bot search query parser normalizes tags and book ids", () => {
     assert.equal(allPlatforms.platform, "");
     assert.equal(Object.prototype.hasOwnProperty.call(allPlatforms.params, "platform"), false);
     assert.equal(allPlatforms.params.sort, "cache_desc");
-    assert.equal(allPlatforms.params.cache_min, 1);
+    assert.equal(allPlatforms.params.include_uncached, 1);
     assert.equal(allPlatforms.params.fast, 1);
 
     assert.equal(parseBookId("https://www.po18.tw/books/123/articles"), "123");

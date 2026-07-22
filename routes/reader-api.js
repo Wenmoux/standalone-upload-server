@@ -1,5 +1,5 @@
 ﻿/**
- * [INPUT]: 依赖 Express、Reader session/书库权限、书籍搜索/社交/RUM 服务及 reader-auth/tts 子路由
+ * [INPUT]: 依赖 Express、共享平台别名、Reader session/书库权限、书籍搜索/社交/RUM 服务及 reader-auth/tts 子路由
  * [OUTPUT]: 对外提供 Reader 发现、搜索、详情、目录/正文、书架、历史、书评、纠错和性能 API
  * [POS]: routes 的 Reader 主协议边界，按公开元数据、登录会话和有效书库权限分层暴露内容
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -7,6 +7,7 @@
 const express = require("express");
 const { createReaderAuthRoutes } = require("./reader-auth");
 const { createReaderTtsRoutes } = require("./reader-tts");
+const { platformQueryValues } = require("../services/platforms");
 
 function truthyQuery(value) {
     return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
@@ -19,11 +20,31 @@ function positiveInteger(value, fallback, max = 1000) {
 }
 
 const SEARCH_CURSOR_SORTS = Object.freeze({
-    updated_desc: { expression: "COALESCE(m.updated_at, m.created_at)", direction: "DESC", value: (row) => row.updated_at || row.created_at || null },
-    updated_asc: { expression: "COALESCE(m.updated_at, m.created_at)", direction: "ASC", value: (row) => row.updated_at || row.created_at || null },
-    chapters_desc: { expression: "COALESCE(m.total_chapters, m.subscribed_chapters, 0)", direction: "DESC", value: (row) => Number(row.total_chapters ?? row.subscribed_chapters ?? 0) },
-    chapters_asc: { expression: "COALESCE(m.total_chapters, m.subscribed_chapters, 0)", direction: "ASC", value: (row) => Number(row.total_chapters ?? row.subscribed_chapters ?? 0) },
-    popularity_desc: { expression: "COALESCE(m.total_popularity, 0)", direction: "DESC", value: (row) => Number(row.total_popularity || 0) },
+    updated_desc: {
+        expression: "COALESCE(m.updated_at, m.created_at)",
+        direction: "DESC",
+        value: (row) => row.updated_at || row.created_at || null
+    },
+    updated_asc: {
+        expression: "COALESCE(m.updated_at, m.created_at)",
+        direction: "ASC",
+        value: (row) => row.updated_at || row.created_at || null
+    },
+    chapters_desc: {
+        expression: "COALESCE(m.total_chapters, m.subscribed_chapters, 0)",
+        direction: "DESC",
+        value: (row) => Number(row.total_chapters ?? row.subscribed_chapters ?? 0)
+    },
+    chapters_asc: {
+        expression: "COALESCE(m.total_chapters, m.subscribed_chapters, 0)",
+        direction: "ASC",
+        value: (row) => Number(row.total_chapters ?? row.subscribed_chapters ?? 0)
+    },
+    popularity_desc: {
+        expression: "COALESCE(m.total_popularity, 0)",
+        direction: "DESC",
+        value: (row) => Number(row.total_popularity || 0)
+    },
     popularity_asc: { expression: "COALESCE(m.total_popularity, 0)", direction: "ASC", value: (row) => Number(row.total_popularity || 0) },
     word_desc: { expression: "COALESCE(m.word_count, 0)", direction: "DESC", value: (row) => Number(row.word_count || 0) },
     word_asc: { expression: "COALESCE(m.word_count, 0)", direction: "ASC", value: (row) => Number(row.word_count || 0) },
@@ -97,19 +118,20 @@ function createReaderApiRoutes(deps = {}) {
         try {
             const idsOnly = truthyQuery(req.query.idsOnly || req.query.ids_only || req.query.onlyIds || req.query.only_ids);
             if (idsOnly) {
-                const rows = await query(
-                    "SELECT book_id FROM reader_bookshelf WHERE user_id = $1 ORDER BY id DESC",
-                    [req.session.readerUser.id]
-                );
+                const rows = await query("SELECT book_id FROM reader_bookshelf WHERE user_id = $1 ORDER BY id DESC", [
+                    req.session.readerUser.id
+                ]);
                 res.json({ rows: rows.rows });
                 return;
             }
             const sort = String(req.query.sort || req.query.order || "last_read_time");
-            const orderBy = {
-                last_read_time: "COALESCE(rh.updated_at, rb.updated_at, rb.created_at) DESC, rb.id DESC",
-                reading_time: "COALESCE(rh.reading_seconds, 0) DESC, COALESCE(rh.updated_at, rb.updated_at, rb.created_at) DESC, rb.id DESC",
-                shelved_time: "rb.created_at DESC, rb.id DESC"
-            }[sort] || "COALESCE(rh.updated_at, rb.updated_at, rb.created_at) DESC, rb.id DESC";
+            const orderBy =
+                {
+                    last_read_time: "COALESCE(rh.updated_at, rb.updated_at, rb.created_at) DESC, rb.id DESC",
+                    reading_time:
+                        "COALESCE(rh.reading_seconds, 0) DESC, COALESCE(rh.updated_at, rb.updated_at, rb.created_at) DESC, rb.id DESC",
+                    shelved_time: "rb.created_at DESC, rb.id DESC"
+                }[sort] || "COALESCE(rh.updated_at, rb.updated_at, rb.created_at) DESC, rb.id DESC";
             const limit = positiveInteger(req.query.limit || req.query.count, 1000, 1000);
             const page = positiveInteger(req.query.page, 1, Number.MAX_SAFE_INTEGER);
             let offset = (page - 1) * limit;
@@ -165,7 +187,10 @@ function createReaderApiRoutes(deps = {}) {
 
     router.delete("/reader-api/me/bookshelf/:bookId", requireReader, async (req, res, next) => {
         try {
-            await query("DELETE FROM reader_bookshelf WHERE user_id = $1 AND book_id = $2", [req.session.readerUser.id, String(req.params.bookId)]);
+            await query("DELETE FROM reader_bookshelf WHERE user_id = $1 AND book_id = $2", [
+                req.session.readerUser.id,
+                String(req.params.bookId)
+            ]);
             res.json({ success: true });
         } catch (err) {
             next(err);
@@ -174,7 +199,10 @@ function createReaderApiRoutes(deps = {}) {
 
     router.get("/reader-api/me/bookshelf/:bookId/status", requireReader, async (req, res, next) => {
         try {
-            const result = await query("SELECT 1 FROM reader_bookshelf WHERE user_id = $1 AND book_id = $2 LIMIT 1", [req.session.readerUser.id, String(req.params.bookId)]);
+            const result = await query("SELECT 1 FROM reader_bookshelf WHERE user_id = $1 AND book_id = $2 LIMIT 1", [
+                req.session.readerUser.id,
+                String(req.params.bookId)
+            ]);
             res.json({ inShelf: !!result.rows[0] });
         } catch (err) {
             next(err);
@@ -206,7 +234,10 @@ function createReaderApiRoutes(deps = {}) {
             const bookId = String(req.body?.bookId || req.body?.book_id || "").trim();
             const chapterId = String(req.body?.chapterId || req.body?.chapter_id || "").trim();
             const progress = Math.max(0, Math.min(1, Number(req.body?.progress || 0)));
-            const readingSeconds = Math.max(0, Math.min(24 * 60 * 60, Math.floor(Number(req.body?.readingSeconds || req.body?.reading_seconds || 0))));
+            const readingSeconds = Math.max(
+                0,
+                Math.min(24 * 60 * 60, Math.floor(Number(req.body?.readingSeconds || req.body?.reading_seconds || 0)))
+            );
             if (!bookId || !chapterId) return res.status(400).json({ error: "缺少 bookId/chapterId" });
             await query(
                 `INSERT INTO reader_history(user_id, book_id, chapter_id, progress, reading_seconds, updated_at) VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)
@@ -240,9 +271,10 @@ function createReaderApiRoutes(deps = {}) {
         try {
             const keyword = String(req.query.q || req.query.keyword || "").trim();
             const platform = String(req.query.platform || "").trim();
+            const platformValues = platformQueryValues(platform);
             const limit = Math.min(20, Math.max(1, Number(req.query.limit || 10)));
             const params = [];
-            const platformSql = platform ? `AND platform = $${params.push(platform)}` : "";
+            const platformSql = platformValues.length ? `AND platform = ANY($${params.push(platformValues)}::text[])` : "";
             const suggestions = [];
             const seen = new Set();
             const pushSuggestion = (type, value, extra = {}) => {
@@ -292,8 +324,17 @@ function createReaderApiRoutes(deps = {}) {
             if (suggestions.length < limit) {
                 const hotRows = await getHotKeywords(limit);
                 for (const row of hotRows || []) {
-                    if (keyword && !String(row.keyword || "").toLowerCase().includes(keyword.toLowerCase())) continue;
-                    pushSuggestion("hot", row.keyword, { count: Number(row.count || 0), result_count: Number(row.result_count || row.total_results || 0) });
+                    if (
+                        keyword &&
+                        !String(row.keyword || "")
+                            .toLowerCase()
+                            .includes(keyword.toLowerCase())
+                    )
+                        continue;
+                    pushSuggestion("hot", row.keyword, {
+                        count: Number(row.count || 0),
+                        result_count: Number(row.result_count || row.total_results || 0)
+                    });
                 }
             }
 
@@ -316,6 +357,7 @@ function createReaderApiRoutes(deps = {}) {
             const tag = String(req.query.tag || "").trim();
             const category = String(req.query.category || "").trim();
             const platform = String(req.query.platform || "").trim();
+            const platformValues = platformQueryValues(platform);
             const numberFilter = (name) => {
                 const raw = req.query[name];
                 if (raw === undefined || raw === null || raw === "") return null;
@@ -331,15 +373,19 @@ function createReaderApiRoutes(deps = {}) {
             const sort = String(req.query.sort || "updated_desc");
             const cursorInput = String(req.query.cursor || "").trim();
             const cursor = decodeSearchCursor(cursorInput, sort);
-            if (cursor && !SEARCH_CURSOR_SORTS[sort]) throw Object.assign(new Error(`cursor pagination is not supported for sort ${sort}`), { status: 400 });
+            if (cursor && !SEARCH_CURSOR_SORTS[sort])
+                throw Object.assign(new Error(`cursor pagination is not supported for sort ${sort}`), { status: 400 });
             if (cursor) offset = 0;
             const fastSearch = !!cursor || truthyQuery(req.query.fast || req.query.fast_search || req.query.no_total);
-            const requireCachedBook = !keyword;
+            const includeUncached = truthyQuery(req.query.include_uncached || req.query.includeUncached);
+            const requireCachedBook = !keyword && !includeUncached;
             const effectiveCacheMin = requireCachedBook ? Math.max(1, cacheMin ?? 1) : cacheMin;
             const needsCacheJoin = effectiveCacheMin !== null || cacheMax !== null || isCacheCountSort(sort);
             if (keyword) {
                 params.push(`%${keyword}%`);
-                where.push(`(m.book_id ILIKE $${params.length} OR m.title ILIKE $${params.length} OR m.author ILIKE $${params.length} OR m.tags ILIKE $${params.length})`);
+                where.push(
+                    `(m.book_id ILIKE $${params.length} OR m.title ILIKE $${params.length} OR m.author ILIKE $${params.length} OR m.tags ILIKE $${params.length})`
+                );
             }
             if (author) {
                 params.push(`%${author}%`);
@@ -363,9 +409,9 @@ function createReaderApiRoutes(deps = {}) {
                       AND category_taxonomy.normalized_value = $${params.length}
                 )`);
             }
-            if (platform) {
-                params.push(platform);
-                where.push(`m.platform = $${params.length}`);
+            if (platformValues.length) {
+                params.push(platformValues);
+                where.push(`m.platform = ANY($${params.length}::text[])`);
             }
             if (wordMin !== null) {
                 params.push(wordMin);
@@ -398,10 +444,10 @@ function createReaderApiRoutes(deps = {}) {
                 where.push(`(${config.expression}, m.id) ${compare} ($${params.length - 1}, $${params.length})`);
             }
             const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-            const cacheJoinSql = needsCacheJoin
-                ? `LEFT JOIN book_stats cc ON cc.book_id = m.book_id`
-                : "";
-            const total = fastSearch ? null : await query(`SELECT COUNT(*)::int count FROM book_metadata m ${cacheJoinSql} ${whereSql}`, params);
+            const cacheJoinSql = needsCacheJoin ? `LEFT JOIN book_stats cc ON cc.book_id = m.book_id` : "";
+            const total = fastSearch
+                ? null
+                : await query(`SELECT COUNT(*)::int count FROM book_metadata m ${cacheJoinSql} ${whereSql}`, params);
             const pageOrder = needsCacheJoin ? bookOrder(sort, "m", "cc") : bookOrder(sort);
             const finalOrder = needsCacheJoin ? bookOrder(sort, "m", "bs") : bookOrder(sort);
             const limitIndex = params.length + 1;
@@ -452,9 +498,7 @@ function createReaderApiRoutes(deps = {}) {
             const pageRows = rows.rows || [];
             const hasMore = fastSearch && pageRows.length > limit;
             const visibleRows = hasMore ? pageRows.slice(0, limit) : pageRows;
-            const totalCount = fastSearch
-                ? offset + visibleRows.length + (hasMore ? 1 : 0)
-                : Number(total.rows[0]?.count || 0);
+            const totalCount = fastSearch ? offset + visibleRows.length + (hasMore ? 1 : 0) : Number(total.rows[0]?.count || 0);
             const payload = { rows: visibleRows, total: totalCount, page, limit };
             if (fastSearch) {
                 payload.has_more = hasMore;
@@ -556,7 +600,10 @@ function createReaderApiRoutes(deps = {}) {
 
     router.get("/reader-api/books/:bookId/chapters/:chapterId/html", requireReaderContentAccess, async (req, res, next) => {
         try {
-            const result = await query("SELECT title, html FROM chapter_cache WHERE book_id = $1 AND chapter_id = $2 LIMIT 1", [String(req.params.bookId), String(req.params.chapterId)]);
+            const result = await query("SELECT title, html FROM chapter_cache WHERE book_id = $1 AND chapter_id = $2 LIMIT 1", [
+                String(req.params.bookId),
+                String(req.params.chapterId)
+            ]);
             if (!result.rows[0]) return res.status(404).send("chapter not found");
             res.type("html").send(result.rows[0].html || "");
         } catch (err) {
@@ -667,7 +714,3 @@ module.exports = {
     decodeSearchCursor,
     encodeSearchCursor
 };
-
-
-
-

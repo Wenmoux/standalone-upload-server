@@ -9,7 +9,7 @@ const test = require("node:test");
 const { createBotUi } = require("../bot/ui-formatters");
 
 test("bot ui formatters build callbacks, buttons and export quotes", () => {
-    const ui = createBotUi({ crowdVoteCost: 88 });
+    const ui = createBotUi({ crowdVoteCost: 88, platformLabel: (platform) => ({ fanqie: "番茄" })[platform] || platform });
 
     assert.equal(ui.callback(["a", "b"]).length, 3);
     assert.equal(ui.callback(["x".repeat(80)]).length, 64);
@@ -18,6 +18,7 @@ test("bot ui formatters build callbacks, buttons and export quotes", () => {
     assert.equal(actions.inline_keyboard[0][0].callback_data, "info|book-1");
     assert.equal(actions.inline_keyboard[1][3].callback_data, "reviewnew|book-1");
     assert.equal(actions.inline_keyboard.at(-1)[0].url, "https://example.test/book");
+    assert.match(ui.bookListItem({ book_id: "1", title: "测试", platform: "fanqie" }), /站别：番茄/);
 
     const crowd = ui.crowdActions("book-1");
     assert.match(crowd.inline_keyboard[0][0].text, /88/);
@@ -36,12 +37,14 @@ test("bot ui formatters build callbacks, buttons and export quotes", () => {
     const reviews = ui.bookReviewsText("667518", {
         book: { title: "远南", author: "狄醉山", platform: "po18" },
         total: 1,
-        rows: [{
-            author_telegram_username: "wenmoux",
-            like_count: 0,
-            dislike_count: 0,
-            content: "太棒了！我的姐弟骨启蒙！远南99！"
-        }],
+        rows: [
+            {
+                author_telegram_username: "wenmoux",
+                like_count: 0,
+                dislike_count: 0,
+                content: "太棒了！我的姐弟骨启蒙！远南99！"
+            }
+        ],
         rules: { min_level: 2, cost_copper: 100, min_length: 6, max_length: 1200 }
     });
     assert.match(reviews, /<b>书评 · 远南<\/b>/);

@@ -35,7 +35,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-export-errors.test.js`: 导出错误分类、私聊不可达识别、重试语义与面向用户消息。
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。
 - `bot-runtime-modules.test.js`: Bot 业务组合根/进程生命周期装配、Telegram 幂等编辑、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
-- `bot-search-platforms.test.js`: 搜索平台参数和别名解析。
+- `bot-search-platforms.test.js`: 搜索平台参数、历史别名组和后台动态平台解析。
 - `bot-search-social-handlers.test.js`: 搜索与社交交互契约，覆盖私聊输入、群聊手动回复、书评草稿隔离、稳定发布键、失败保留及取消清理。
 - `bot-task-runtime.test.js`: 持久任务领取、执行、续租、fencing token 回写和完成语义。
 - `bot-task-status-handlers.test.js`: 任务查询、详情与取消命令。
@@ -65,7 +65,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `migrations.test.js`: 迁移顺序、回滚配对、历史重复修复和不可变约束。
 - `network-security.test.js`: 出站 URL、私网与代理安全规则。
 - `openapi-error-response.test.js`: OpenAPI 索引与统一错误响应契约。
-- `pg-bot-client.test.js`: Bot HTTP 客户端分页、鉴权、书评操作键和错误映射。
+- `pg-bot-client.test.js`: Bot HTTP 客户端分页、动态平台读取、鉴权、书评操作键和错误映射。
 - `pg-flow-core-cases.js`: 真实 PostgreSQL 迁移、元数据/章节统计、任务租约、API Token、凭据迁移和注册事务用例组。
 - `pg-flow-domain-cases.js`: 真实 PostgreSQL 红包并发、书评治理/清单、备份恢复与最新迁移回滚用例组。
 - `pg-flows.test.js`: 真实 PostgreSQL 集成组合根，装配共享 fixture 并顺序执行核心/领域用例组，避免并发重置 schema。
@@ -76,7 +76,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `rank-routes.test.js`: 排行 HTTP 参数与响应契约。
 - `rank.test.js`: 排行聚合、窗口与并列规则。
 - `rate-limit.test.js`: 内存限流窗口和响应元数据。
-- `reader-api-routes.test.js`: Reader 查询、内容、会话和权限路由。
+- `reader-api-routes.test.js`: Reader 查询、平台别名、未缓存元信息、内容、会话和权限路由。
 - `reader-account.test.js`: Reader CDK 注册、密码/Telegram 身份、Bot 注册奖励、邀请和批量导入事务。
 - `reader-check-in.test.js`: Reader/Bot 签到行锁、周期、奖励流水与回滚原子性。
 - `reader-icon-subset.test.js`: Reader 图标子集与产物约束。
@@ -106,6 +106,6 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `upload-api-routes.test.js`: 上传鉴权、元数据、章节、删除路由与目录强一致读取。
 - `user-currency.test.js`: 货币、签到、兑换、红包与幂等账本。
 - `validation.test.js`: 通用输入校验与分页边界。
-- `word-cloud.test.js`: 热词聚合、停用词和 SVG/图片输出。
+- `word-cloud.test.js`: 平台别名标签、热词聚合、停用词和 SVG/图片输出。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

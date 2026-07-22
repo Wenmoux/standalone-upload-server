@@ -362,12 +362,12 @@ test("reader search suggestions combine metadata and hot keywords", async () => 
         assert.equal(body.rows[0].book_id, "b1");
     });
 
-    assert.deepEqual(calls[0].params, ["po18", "%alpha%", 12]);
-    assert.match(calls[0].sql, /platform = \$1/);
+    assert.deepEqual(calls[0].params, [["po18", "p18"], "%alpha%", 12]);
+    assert.match(calls[0].sql, /platform = ANY\(\$1::text\[\]\)/);
     assert.match(calls[0].sql, /title ILIKE \$2/);
 });
 
-test("reader search combines author tag and platform filters", async () => {
+test("reader search combines author tag and platform alias filters", async () => {
     const calls = [];
     const router = createReaderApiRoutes(
         baseDeps({
@@ -381,7 +381,7 @@ test("reader search combines author tag and platform filters", async () => {
                             title: "Filtered Book",
                             author: "Alpha Writer",
                             tags: "AlphaTag",
-                            platform: "po18",
+                            platform: "tomato",
                             cache_count: 3
                         }
                     ]
@@ -391,7 +391,7 @@ test("reader search combines author tag and platform filters", async () => {
     );
 
     await withApp(router, async (base) => {
-        const response = await fetch(`${base}/reader-api/search?author=Alpha&tag=AlphaTag&platform=po18&limit=5&page=2`);
+        const response = await fetch(`${base}/reader-api/search?author=Alpha&tag=AlphaTag&platform=fanqie&limit=5&page=2`);
         assert.equal(response.status, 200);
         const body = await response.json();
         assert.equal(body.total, 1);
@@ -401,16 +401,40 @@ test("reader search combines author tag and platform filters", async () => {
     });
 
     assert.equal(calls.length, 2);
-    assert.deepEqual(calls[0].params, ["%Alpha%", "alphatag", "po18", 1]);
+    assert.deepEqual(calls[0].params, ["%Alpha%", "alphatag", ["fanqie", "fq", "tomato"], 1]);
     assert.match(calls[0].sql, /m\.author ILIKE \$1/);
     assert.match(calls[0].sql, /tag_taxonomy\.normalized_value = \$2/);
-    assert.match(calls[0].sql, /m\.platform = \$3/);
+    assert.match(calls[0].sql, /m\.platform = ANY\(\$3::text\[\]\)/);
     assert.match(calls[0].sql, /COALESCE\(cc\.cache_count, 0\) >= \$4/);
-    assert.deepEqual(calls[1].params, ["%Alpha%", "alphatag", "po18", 1, 5, 5]);
+    assert.deepEqual(calls[1].params, ["%Alpha%", "alphatag", ["fanqie", "fq", "tomato"], 1, 5, 5]);
     assert.match(calls[1].sql, /m\.author ILIKE \$1/);
     assert.match(calls[1].sql, /tag_taxonomy\.normalized_value = \$2/);
-    assert.match(calls[1].sql, /m\.platform = \$3/);
+    assert.match(calls[1].sql, /m\.platform = ANY\(\$3::text\[\]\)/);
     assert.match(calls[1].sql, /COALESCE\(cc\.cache_count, 0\) >= \$4/);
+});
+
+test("reader search can include uncached metadata for bot tag discovery", async () => {
+    const calls = [];
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                return { rows: [{ book_id: "b3", title: "Metadata Only", tags: "古言", platform: "fq", cache_count: 0 }] };
+            }
+        })
+    );
+
+    await withApp(router, async (base) => {
+        const response = await fetch(
+            `${base}/reader-api/search?tag=%E5%8F%A4%E8%A8%80&platform=fanqie&include_uncached=1&sort=cache_desc&fast=1`
+        );
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.rows[0].book_id, "b3");
+    });
+
+    assert.deepEqual(calls[0].params.slice(0, 2), ["古言", ["fanqie", "fq", "tomato"]]);
+    assert.doesNotMatch(calls[0].sql, /cache_count, 0\) >=/);
 });
 
 test("reader search filters exact category tokens", async () => {

@@ -1,9 +1,11 @@
 /**
- * [INPUT]: 依赖注入的标签/热搜/榜单查询与平台过滤参数，将多来源权重合并为词频
+ * [INPUT]: 依赖共享平台别名及注入的标签/热搜/榜单查询，将多来源权重合并为词频
  * [OUTPUT]: 对外提供词云服务以及词条规范化、标签拆分、热词计分和结果合并函数
  * [POS]: services 的发现聚合层，为 Bot 与 Reader 提供稳定词云而不暴露各来源查询结构
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
+const { canonicalPlatformKey, platformQueryValues } = require("./platforms");
+
 const TAG_SPLIT_RE = /[,，、/\s:：;；|#]+/u;
 
 function clampInt(value, min, max, fallback) {
@@ -83,10 +85,11 @@ function createWordCloudService(options = {}) {
 
     async function hotTagRows({ platform = "", sourceLimit = 300, limit = 80 } = {}) {
         if (typeof query !== "function") return [];
-        const safePlatform = String(platform || "").trim().toLowerCase().slice(0, 40);
+        const safePlatform = canonicalPlatformKey(platform).slice(0, 40);
+        const platformValues = platformQueryValues(safePlatform);
         const safeSourceLimit = clampInt(sourceLimit, 20, 2000, 300);
         const safeLimit = clampInt(limit, 5, 200, 80);
-        const params = [safePlatform, safeSourceLimit, safeLimit];
+        const params = [platformValues, safeSourceLimit, safeLimit];
         const result = await query(
             `WITH source_books AS (
                 SELECT bs.book_id,
@@ -95,7 +98,7 @@ function createWordCloudService(options = {}) {
                        bs.updated_at
                 FROM book_stats bs
                 WHERE bs.cache_count > 0
-                  AND ($1::text = '' OR LOWER(TRIM(COALESCE(bs.platform, ''))) = $1)
+                  AND (cardinality($1::text[]) = 0 OR bs.platform = ANY($1::text[]))
                 ORDER BY bs.cache_count DESC, bs.updated_at DESC, bs.book_id ASC
                 LIMIT $2
              ),
@@ -118,7 +121,7 @@ function createWordCloudService(options = {}) {
                     SELECT m.*
                     FROM book_metadata m
                     WHERE m.book_id = source_books.book_id
-                      AND ($1::text = '' OR LOWER(TRIM(COALESCE(m.platform, source_books.platform, ''))) = $1)
+                      AND (cardinality($1::text[]) = 0 OR m.platform = ANY($1::text[]))
                     ORDER BY COALESCE(m.updated_at, m.created_at) DESC, m.id DESC
                     LIMIT 1
                 ) meta ON true
@@ -149,7 +152,7 @@ function createWordCloudService(options = {}) {
         const limit = clampInt(options.limit, 10, 120, 60);
         const hotLimit = clampInt(options.hotLimit, 5, 100, Math.min(40, limit));
         const sourceLimit = clampInt(options.sourceLimit, 20, 2000, 300);
-        const platform = String(options.platform || "").trim().toLowerCase().slice(0, 40);
+        const platform = canonicalPlatformKey(options.platform).slice(0, 40);
         const key = cacheKey({ limit, hotLimit, sourceLimit, platform });
         const cached = readCache(key);
         if (cached) return { ...cached, cached: true };

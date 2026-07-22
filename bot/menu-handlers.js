@@ -33,7 +33,7 @@ function createMenuHandlers(options = {}) {
                 [
                     "<b>搜索书籍</b>",
                     "直接发送书名、作者或书号即可搜索。",
-                    "也可以使用：<code>/search 关键词 -qd</code> 或 <code>-fq</code> 限定平台。"
+                    "标签可写成 <code>#古言</code> 或 <code>标签：古言</code>；末尾加 <code>-qd</code>、<code>-fq</code>、<code>-hetu</code> 等平台后缀可限定站点。"
                 ].join("\n"),
                 { reply_markup: mainMenuMarkup() }
             );

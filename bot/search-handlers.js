@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 Node 临时文件能力、word-cloud 渲染器、PgBotClient、查询解析器和 Telegram UI/发送适配器
+ * [INPUT]: 依赖 Node 临时文件能力、word-cloud 渲染器、PgBotClient、动态平台刷新、查询解析器和 Telegram UI/发送适配器
  * [OUTPUT]: 对外提供搜索、热门、词云、随机推荐、详情卡片及缺书需求提交处理器
  * [POS]: bot 检索发现域的交互编排层，连接 server API 查询结果、分页会话与 Telegram 展示
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -32,8 +32,13 @@ function createSearchHandlers(options = {}) {
         searchRequestActions,
         mergeKeyboards,
         detailCardText,
-        bookActions
+        bookActions,
+        refreshSearchPlatforms
     } = options;
+
+    async function refreshPlatforms() {
+        if (typeof refreshSearchPlatforms === "function") await refreshSearchPlatforms();
+    }
 
     async function sendBookCards(target, rows, title) {
         const message = typeof target === "object" ? target : null;
@@ -44,10 +49,11 @@ function createSearchHandlers(options = {}) {
     }
 
     async function handleSearch(message, rawQuery, page = 1, editTarget = null) {
+        await refreshPlatforms();
         const query = rawQuery.trim();
-        if (!query) return sendMessage(message.chat.id, "用法：/search 关键词 [-qd|-fq] 或 /search #标签 [-qd|-fq]");
+        if (!query) return sendMessage(message.chat.id, "用法：/search 关键词 [-平台] 或 /search #标签 [-平台]");
         const { params, type, keyword, platform, cleanQuery } = parseSearchQuery(query);
-        if (!keyword) return sendMessage(message.chat.id, "用法：/search 关键词 [-qd|-fq] 或 /search #标签 [-qd|-fq]");
+        if (!keyword) return sendMessage(message.chat.id, "用法：/search 关键词 [-平台] 或 /search #标签 [-平台]");
         params.page = page;
         const data = await client.searchBooks(params);
         await client.recordSearch(keyword, type, data.total).catch(() => {});
@@ -87,11 +93,12 @@ function createSearchHandlers(options = {}) {
     }
 
     async function handleHot(message, args = "") {
+        await refreshPlatforms();
         const { platform } = parsePlatformSuffix(args, { defaultPlatform: defaultRecommendPlatform });
         const data = await client.searchBooks({ page: 1, limit: searchLimit, sort: "popularity_desc", platform, cache_min: 1, fast: 1 });
         const keywords = await client.hotKeywords(8).catch(() => ({ rows: [] }));
         const title = keywords.rows?.length
-            ? `${platformLabel(platform)} 热门排行\n热搜：${keywords.rows.map((row) => `${row.keyword}(${row.count})`).join(" / ")}`
+            ? `${platformLabel(platform)} 热门排行\n全站热搜：${keywords.rows.map((row) => `${row.keyword}(${row.count})`).join(" / ")}`
             : `${platformLabel(platform)} 热门排行`;
         await sendBookCards(message, data.rows, title);
     }
@@ -123,6 +130,7 @@ function createSearchHandlers(options = {}) {
     }
 
     async function handleWordCloud(message, args = "") {
+        await refreshPlatforms();
         const { platform, limit, sourceLimit } = parseWordCloudArgs(args);
         const label = platformLabel(platform);
         const progress = await sendMessage(message.chat.id, `正在生成 ${escapeHtml(label)} 热搜词云...`);
@@ -139,7 +147,7 @@ function createSearchHandlers(options = {}) {
             .join(" / ");
         const renderOptions = {
             title: `${label} 热搜词云`,
-            subtitle: `热搜词 + 热门书籍标签 · ${rows.length} 个关键词`,
+            subtitle: `全站热搜词 + ${label} 热门书籍标签 · ${rows.length} 个关键词`,
             generatedAt: new Date(payload.generated_at || Date.now()).toLocaleString("zh-CN", { hour12: false })
         };
         await sendWordCloudResult(
@@ -156,6 +164,7 @@ function createSearchHandlers(options = {}) {
     }
 
     async function handleRandom(message, args = "") {
+        await refreshPlatforms();
         const { platform } = parsePlatformSuffix(args, { defaultPlatform: defaultRecommendPlatform });
         const page = Math.max(1, Math.floor(Math.random() * 30) + 1);
         const data = await client.searchBooks({ page, limit: searchLimit, sort: "updated_desc", platform, cache_min: 1, fast: 1 });
@@ -182,6 +191,7 @@ function createSearchHandlers(options = {}) {
     }
 
     async function handleSearchRequestSubmit(message, rawQuery) {
+        await refreshPlatforms();
         const query = String(rawQuery || "").trim();
         if (!query) return "提交已过期，请重新搜索后再点提交。";
         const { type, keyword, platform, cleanQuery } = parseSearchQuery(query);

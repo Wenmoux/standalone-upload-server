@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 bot 内客户端、领域处理器、命令注册、任务运行时、进程生命周期边界与环境配置
+ * [INPUT]: 依赖 bot 内客户端、动态平台注册表、领域处理器、命令注册、任务运行时、进程生命周期边界与环境配置
  * [OUTPUT]: 装配 Telegram Bot 领域依赖与 update 分派，并把命令同步、任务恢复、polling/health 启动交给进程运行时
  * [POS]: bot 的唯一业务组合根，只负责依赖注入和 update 分派，领域交互与进程生命周期分别下沉到独立边界
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -14,7 +14,7 @@ const { registerIntegrationCommands } = require("./commands/integrations");
 const { registerSearchCommands } = require("./commands/search");
 const { registerSocialCommands } = require("./commands/social");
 const { asExportError, classifyExportError, formatExportFailure, isPrivateChatUnavailableError } = require("./export-errors");
-const { DEFAULT_RECOMMEND_PLATFORM, SEARCH_PLATFORM_SUFFIXES, parsePlatformSuffix, platformLabel } = require("./search-platforms");
+const { DEFAULT_RECOMMEND_PLATFORM, createSearchPlatformRegistry } = require("./search-platforms");
 const { createSearchQueryParser } = require("./search-query");
 const { createEpubBuilder } = require("./epub-builder");
 const { createPo18Client } = require("./po18-client");
@@ -90,11 +90,15 @@ const PRIVATE_EXPORT_START_TTL_MS = positiveMs(process.env.TELEGRAM_PRIVATE_EXPO
 const BOT_HEALTH_PORT = Number(process.env.BOT_HEALTH_PORT || 3300);
 const BOT_HEALTH_HOST = process.env.BOT_HEALTH_HOST || "127.0.0.1";
 const BOT_HEALTH_STALE_MS = Number(process.env.BOT_HEALTH_STALE_MS || 120000);
+const SEARCH_PLATFORM_CONFIG_TTL_MS = 60_000;
 const STARTED_AT = Date.now();
 const CROWD_VOTE_COST = 100;
 const PO18_BOOKSHELF_SHARE_REWARD_COPPER = Math.max(0, Number(process.env.PO18_BOOKSHELF_SHARE_REWARD_COPPER || 1000));
 const PO18_BOOKSHELF_SHARE_REWARD_MIN_CHAPTERS = Math.max(0, Number(process.env.PO18_BOOKSHELF_SHARE_REWARD_MIN_CHAPTERS || 20));
 const client = new PgBotClient();
+const searchPlatformRegistry = createSearchPlatformRegistry();
+const parsePlatformSuffix = (...args) => searchPlatformRegistry.parsePlatformSuffix(...args);
+const platformLabel = (...args) => searchPlatformRegistry.platformLabel(...args);
 const telegramClient = createTelegramClient({
     token: TELEGRAM_TOKEN,
     apiBase: TELEGRAM_API_BASE,
@@ -103,7 +107,7 @@ const telegramClient = createTelegramClient({
 const { telegram, sendMessage, editMessage, sendDocument, sendPhoto, answerCallback } = telegramClient;
 const maybeUnpinAutomaticPush = createAutomaticPushUnpinHandler({ telegram, logger: console });
 const rateLimiter = createRateLimiter({ maxKeys: Number(process.env.TELEGRAM_RATE_LIMIT_MAX_KEYS || 5000) });
-const { parseSearchQuery, parseBookId } = createSearchQueryParser({ searchLimit: SEARCH_LIMIT });
+const { parseSearchQuery, parseBookId } = createSearchQueryParser({ searchLimit: SEARCH_LIMIT, parsePlatformSuffix });
 const { commandOf, argsOf, isGroup, withCooldown, mentionsMe, recordBotAudit, withBotAudit, deliverLongGroupResult } = createMessageRuntime(
     {
         client,
@@ -152,7 +156,7 @@ const {
     freeExportText,
     parseRedPacketArgs,
     redPacketMarkup
-} = createBotUi({ escapeHtml, cleanText, truncate, isVolumeChapter, crowdVoteCost: CROWD_VOTE_COST });
+} = createBotUi({ escapeHtml, cleanText, truncate, isVolumeChapter, platformLabel, crowdVoteCost: CROWD_VOTE_COST });
 const { po18Fetch, parseLoginFields, hasPo18Auth, validatePo18Session, fetchPo18Bookshelf, fetchPo18PurchasedChapters } = createPo18Client({
     cleanText
 });
@@ -273,6 +277,7 @@ const reviewDrafts = createReviewDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 10
 const broadcastDrafts = createBroadcastDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 200, maxLength: 3000 });
 let commandRegistry = null;
 const commandSettingsState = { at: 0, payload: null };
+const searchPlatformState = { at: 0, loading: null };
 
 const { handleLoginPo18, handleMyBookshelf, handlePo18Code, handlePo18Logout, handlePo18Set, handlePo18Status } = createPo18AccountHandlers(
     {
@@ -388,6 +393,24 @@ async function refreshCommandSettings(force = false) {
     }
 }
 
+async function refreshSearchPlatforms(force = false) {
+    if (!force && searchPlatformState.at && Date.now() - searchPlatformState.at < SEARCH_PLATFORM_CONFIG_TTL_MS)
+        return searchPlatformRegistry.snapshot();
+    if (searchPlatformState.loading) return searchPlatformState.loading;
+    searchPlatformState.loading = client
+        .searchPlatforms()
+        .then((payload) => searchPlatformRegistry.update(payload))
+        .catch((err) => {
+            console.warn(`[bot-platforms] refresh failed: ${err.message || String(err)}`);
+            return searchPlatformRegistry.snapshot();
+        })
+        .finally(() => {
+            searchPlatformState.at = Date.now();
+            searchPlatformState.loading = null;
+        });
+    return searchPlatformState.loading;
+}
+
 function helpLinesFromCommands() {
     return buildHelpLinesFromCommands(getCommandRegistry(), escapeHtml);
 }
@@ -419,7 +442,8 @@ const { handleHot, handleInfo, handleRandom, handleSearch, handleSearchRequestSu
         searchRequestActions,
         mergeKeyboards,
         detailCardText,
-        bookActions
+        bookActions,
+        refreshSearchPlatforms
     });
 
 const {
@@ -508,11 +532,12 @@ async function handleMessage(message) {
     const args = argsOf(text);
     const platformCommand = cmd.match(/^\/(search|hot|random)-([a-z][a-z0-9_-]*)$/i);
     if (platformCommand) {
-        const suffixKey = platformCommand[2].toLowerCase().replace(/[_-]+/g, "");
-        if (SEARCH_PLATFORM_SUFFIXES[suffixKey]) {
+        await refreshSearchPlatforms();
+        const platform = searchPlatformRegistry.resolveSuffix(platformCommand[2]);
+        if (platform) {
             const platformArgs = [args, `-${platformCommand[2].toLowerCase()}`].filter(Boolean).join(" ");
             const action = platformCommand[1].toLowerCase();
-            const details = { platform: SEARCH_PLATFORM_SUFFIXES[suffixKey], shortcut: cmd };
+            const details = { platform, shortcut: cmd };
             if (action === "search")
                 return withBotAudit(message, cmd, "search", details, () =>
                     withCooldown(message, "search", BOT_SEARCH_COOLDOWN_MS, "搜索", () => handleSearch(message, platformArgs))
@@ -732,6 +757,7 @@ startBotProcessRuntime({
     healthStaleMs: BOT_HEALTH_STALE_MS,
     onConnectedUser(user) {
         botUser = user;
+        refreshSearchPlatforms(true).catch(() => {});
     },
     persistentJobTypes,
     pollTimeout: POLL_TIMEOUT,

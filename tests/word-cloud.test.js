@@ -14,9 +14,18 @@ test("word cloud helpers normalize and merge weighted words", () => {
     assert.deepEqual(splitCloudTags("玄幻，都市/ 轻小说#女性向"), ["玄幻", "都市", "轻小说", "女性向"]);
     const rows = mergeCloudRows(
         [{ text: "玄幻", weight: 10, type: "tag" }],
-        [{ keyword: "玄幻", weight: 5, type: "search" }, { text: "都市", count: 3 }]
+        [
+            { keyword: "玄幻", weight: 5, type: "search" },
+            { text: "都市", count: 3 }
+        ]
     );
-    assert.deepEqual(rows.map((row) => [row.text, row.weight]), [["玄幻", 15], ["都市", 3]]);
+    assert.deepEqual(
+        rows.map((row) => [row.text, row.weight]),
+        [
+            ["玄幻", 15],
+            ["都市", 3]
+        ]
+    );
     assert.deepEqual(rows[0].sources.sort(), ["search", "tag"]);
 });
 
@@ -30,9 +39,13 @@ test("word cloud service combines hot keywords and hot book tags", async () => {
         }
     });
     const payload = await service.wordCloudPayload({ limit: 5, platform: "qidian", sourceLimit: 50 });
-    assert.deepEqual(payload.rows.map((row) => row.text), ["修仙", "玄幻"]);
+    assert.deepEqual(
+        payload.rows.map((row) => row.text),
+        ["修仙", "玄幻"]
+    );
     assert.equal(payload.platform, "qidian");
-    assert.equal(sqlCalls[0].params[0], "qidian");
+    assert.deepEqual(sqlCalls[0].params[0], ["qidian", "qd"]);
+    assert.match(sqlCalls[0].sql, /bs\.platform = ANY\(\$1::text\[\]\)/);
     assert.equal(sqlCalls[0].params[1], 50);
 });
 
@@ -51,7 +64,10 @@ test("word cloud service caches repeated payload requests", async () => {
     assert.equal(calls, 1);
     assert.equal(first.cached, false);
     assert.equal(second.cached, true);
-    assert.deepEqual(second.rows.map((row) => row.text), first.rows.map((row) => row.text));
+    assert.deepEqual(
+        second.rows.map((row) => row.text),
+        first.rows.map((row) => row.text)
+    );
 });
 
 test("word cloud renderer produces non-empty svg layout", () => {

@@ -8,23 +8,31 @@ const { parsePlatformSuffix } = require("./search-platforms");
 
 function createSearchQueryParser(options = {}) {
     const searchLimit = Number(options.searchLimit || 5);
+    const parseSuffix = options.parsePlatformSuffix || parsePlatformSuffix;
 
     function parseSearchQuery(query) {
-        const parsed = parsePlatformSuffix(query);
+        const parsed = parseSuffix(query);
         const value = parsed.query;
-        const params = { page: 1, limit: searchLimit, sort: "cache_desc", cache_min: 1, fast: 1 };
+        const params = { page: 1, limit: searchLimit, sort: "cache_desc", include_uncached: 1, fast: 1 };
         if (parsed.platform) params.platform = parsed.platform;
         let type = "search";
-        if (value.startsWith("#")) {
-            params.tag = value.slice(1).trim();
+        if (/^[#＃]/.test(value)) {
+            params.tag = value.replace(/^[#＃]+/, "").trim();
             type = "tag";
-        } else if (/^tag[:：]/i.test(value)) {
-            params.tag = value.replace(/^tag[:：]/i, "").trim();
+        } else if (/^(?:tag|t|标签|分类)[:：]/i.test(value)) {
+            params.tag = value.replace(/^(?:tag|t|标签|分类)[:：]\s*/i, "").trim();
             type = "tag";
         } else {
             params.keyword = value;
         }
-        return { params, type, keyword: params.tag || params.keyword || "", platform: parsed.platform, suffix: parsed.suffix, cleanQuery: value };
+        return {
+            params,
+            type,
+            keyword: params.tag || params.keyword || "",
+            platform: parsed.platform,
+            suffix: parsed.suffix,
+            cleanQuery: value
+        };
     }
 
     return { parseSearchQuery, parseBookId };

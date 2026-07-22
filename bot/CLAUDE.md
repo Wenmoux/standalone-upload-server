@@ -26,7 +26,7 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `job-queue.js`: 提供进程内有界并发、同键互斥和取消信号；持久状态由上层 task runtime 负责。
 `message-runtime.js`: 编排命令解析、普通文本回退与审计包装，将 Telegram update 转换为注册器调用。
 `menu-handlers.js`: 功能面板 callback 分派器，把宫格入口委托给既有搜索、账户、任务和 PO18 处理器，不重复书籍卡片动作。
-`pg-bot-client.js`: Bot 到 server-pg 的唯一 HTTP 客户端，封装 Bot Token、超时、缓存、操作键和分页聚合。
+`pg-bot-client.js`: Bot 到 server-pg 的唯一 HTTP 客户端，封装 Bot Token、超时、缓存、动态平台读取、操作键和分页聚合。
 `pikpak-handler.js`: PikPak 外部存储交互层，封装目录、搜索、WebDAV 下载流与 Telegram 临时文件投递。
 `po18-account-handlers.js`: 处理仅私聊可用的 PO18 凭据绑定、验证码登录、受保护页状态验证、保留绑定登出和已购同步。
 `po18-client.js`: 封装 PO18 上游会话、登录失效判定、页面改版容错与跨年已购访问，正文拉取会跳过已缓存免费章和标记为订购的未购章。
@@ -35,9 +35,9 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `rate-limit.js`: 为搜索、详情、导出和集成命令提供按用户/动作的冷却时间计算。
 `README.md`: 当前 Bot 启动、命令、任务和维护边界的运行文档。
 `remote-storage.js`: 抽象共享文件的远端上传请求和错误处理，由共享任务调用。
-`search-handlers.js`: 实现搜索、热门、词云、随机与详情交互，协调平台参数、分页缓存和按钮卡片。
-`search-platforms.js`: 定义支持的平台后缀、默认平台和展示名称，保持命令与回调参数一致。
-`search-query.js`: 解析搜索词、标签、平台后缀与书号，集中处理用户输入边界。
+`search-handlers.js`: 实现搜索、热门、词云、随机与详情交互，在解析前刷新动态平台，并区分全库元信息搜索与有缓存推荐。
+`search-platforms.js`: 消费共享平台语义并吸收 Reader 动态平台配置，把 Telegram 后缀稳定映射到历史别名组。
+`search-query.js`: 解析搜索词、中英文标签语法、动态平台后缀与书号，为普通搜索显式声明包含未缓存元信息。
 `share-handlers.js`: 编排缓存先行的单书/跨年已购书架共享，免费章仅在本地和目标都缺失时补抓，付费章只上传账号实际可读内容并幂等结算奖励。
 `social-handlers.js`: 实现收藏、红包、众筹及书评治理交互，以 Telegram 消息/草稿事实生成稳定发布键；私聊消费普通输入，群聊只消费手动回复，取消时清理提示且不遗留 ForceReply。
 `task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、带分类原因的退避重试、恢复、取消、审计及 worker/attempt fencing token 回写。
@@ -61,6 +61,7 @@ Telegram update
 
 - `command-catalog.js` 管声明，`commands/` 管注册，领域 handler 管行为；三者不可互相复制命令分支。
 - `job-queue.js` 只管理单进程并发，跨重启/跨实例正确性由 `task-runtime.js` 与服务端 lease/fencing token 保证；恢复任务不得在 `onQueued` 阶段回写数据库状态。
+- Bot 搜索平台每分钟从 `/reader-api/platforms` 刷新，同时复用 `services/platforms.js` 的内置别名；普通搜索包含未缓存元信息，热门、随机与导出仍以可读缓存为边界。
 - EPUB 样式只扩展 `epub-styles/` 插件契约，ZIP、长屏封面、前置页、清单、全屏 spine 和转义始终由 `epub-builder.js` 统一。
 - 自动取消置顶只消费 `pinned_message.is_automatic_forward` 且携带根级系统标记的消息，并始终传入精确 `message_id`；普通群消息和未标记频道帖不受影响。
 
