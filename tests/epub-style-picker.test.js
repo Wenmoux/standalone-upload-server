@@ -10,16 +10,19 @@ const { EPUB_EXPORT_STYLE_CHOICES, epubStyleSelectionMarkup, normalizeEpubStyleC
 
 test("EPUB style picker offers all public styles before export", () => {
     const markup = epubStyleSelectionMarkup("b1");
-    assert.deepEqual(EPUB_EXPORT_STYLE_CHOICES.map((item) => item.id), ["style1", "style2", "style3"]);
+    assert.deepEqual(EPUB_EXPORT_STYLE_CHOICES.map((item) => item.id), ["style1", "style2", "style3", "style4"]);
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style1")?.label, "江湖纸卷");
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style2")?.label, "老二次元");
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style3")?.label, "空门夜雨");
+    assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style4")?.label, "丹青云卷");
     assert.deepEqual(markup.inline_keyboard.map((row) => row[0].callback_data), [
         "epubstyle|style1|b1",
         "epubstyle|style2|b1",
-        "epubstyle|style3|b1"
+        "epubstyle|style3|b1",
+        "epubstyle|style4|b1"
     ]);
     assert.equal(normalizeEpubStyleChoice("style2"), "style2");
     assert.equal(normalizeEpubStyleChoice("style3"), "style3");
+    assert.equal(normalizeEpubStyleChoice("style4"), "style4");
     assert.equal(normalizeEpubStyleChoice("crane"), "");
 });

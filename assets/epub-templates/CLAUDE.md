@@ -2,7 +2,7 @@
 
 > L2 | 父级: [../../CLAUDE.md](../../CLAUDE.md)
 
-三个 EPUB 样式的可执行模板文件。CSS 与 XHTML 骨架按 `style1/style2/style3` 前缀隔离；动态书名、作者、简介、卷章和正文只通过受控占位符注入，目录内不保存样例书名或正文。
+四个 EPUB 样式的可执行模板文件。CSS 与 XHTML 骨架按 `style1/style2/style3/style4` 前缀隔离；动态书名、作者、简介、卷章和正文只通过受控占位符注入，目录内不保存样例书名或正文。
 
 ## 成员清单
 
@@ -22,5 +22,11 @@
 `style3-intro.xhtml`: 样式三复用参考 EPUB 版权信息框结构的简介页骨架。
 `style3-volume.xhtml`: 样式三使用参考 EPUB 左对齐粗宋标题与底部横线的纯排版分卷页骨架。
 `style3-chapter.xhtml`: 样式三使用参考 EPUB 居中粗宋标题的正文章页骨架。
+`style4.css`: 样式四参考 EPUB 的有效页面规则，覆盖双原字体、彩墨前置页、竖排分卷和无头图双色章题正文。
+`style4-colophon.xhtml`: 样式四制作说明背景与左侧圆角信息框骨架。
+`style4-info.xhtml`: 样式四独立书籍信息页骨架，动态注入当前封面和元信息。
+`style4-intro.xhtml`: 样式四简介横幅、竖排标签、双虚线与正文骨架。
+`style4-volume.xhtml`: 样式四长屏彩墨底图和竖排动态卷名骨架。
+`style4-chapter.xhtml`: 样式四无固定图片的居中双色章题与正文章页骨架。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

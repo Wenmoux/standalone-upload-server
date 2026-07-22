@@ -7,7 +7,8 @@
 const EPUB_EXPORT_STYLE_CHOICES = Object.freeze([
     { id: "style1", label: "江湖纸卷" },
     { id: "style2", label: "老二次元" },
-    { id: "style3", label: "空门夜雨" }
+    { id: "style3", label: "空门夜雨" },
+    { id: "style4", label: "丹青云卷" }
 ]);
 
 const EPUB_EXPORT_STYLE_IDS = new Set(EPUB_EXPORT_STYLE_CHOICES.map((item) => item.id));

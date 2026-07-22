@@ -25,6 +25,11 @@ const EPUB_STYLE_OPTIONS = Object.freeze([
         description: "参考样例的完整楷体与粗宋字体、轻灰说明框、下划线分卷标题和居中章题。"
     },
     {
+        id: "style4",
+        name: "丹青云卷",
+        description: "彩墨长屏前置页、双原字体、独立书籍信息、竖排分卷和无头图正文。"
+    },
+    {
         id: "crane",
         name: "仙鹤章头",
         description: "原有仙鹤头图与深色圆角标题条。"

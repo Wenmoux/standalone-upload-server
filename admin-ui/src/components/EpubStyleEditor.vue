@@ -140,7 +140,7 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、独立 EPUB CSS/XHTML 模板、内置字体/图标/章头资产、Admin API 及父级传入的样式配置模型
+ * [INPUT]: 依赖 Vue、四套独立 EPUB CSS/XHTML 模板、内置字体/图标/页面资产、Admin API 及父级传入的样式配置模型
  * [OUTPUT]: 提供 EPUB 样式选择、完整 CSS/页面骨架查看、与导出同构的实时预览、参数编辑和精简资产替换界面
  * [POS]: admin-ui/src/components 的导出样式工作台，由 TelegramView 组合进导出配置流程并承担配置与最终 EPUB 视觉契约的一致性反馈
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -154,6 +154,12 @@ import style1StKaitiFont from "../../../bot/epub-styles/assets/style1-stkaiti.tt
 import style3ReaderMark from "../../../bot/epub-styles/assets/style3-reader-mark.png";
 import style3StKaitiFont from "../../../bot/epub-styles/assets/style3-stkaiti.ttf";
 import style3StSongtiFont from "../../../bot/epub-styles/assets/style3-stsongti-bold.ttf";
+import style4CcFont from "../../../bot/epub-styles/assets/style4-cc.ttf";
+import style4ColophonImage from "../../../bot/epub-styles/assets/style4-colophon.jpg";
+import style4InfoImage from "../../../bot/epub-styles/assets/style4-info.jpg";
+import style4IntroImage from "../../../bot/epub-styles/assets/style4-intro.png";
+import style4LlfFont from "../../../bot/epub-styles/assets/style4-llf.ttf";
+import style4VolumeImage from "../../../bot/epub-styles/assets/style4-volume.jpg";
 import style1Css from "../../../assets/epub-templates/style1.css?raw";
 import style1ChapterTemplate from "../../../assets/epub-templates/style1-chapter.xhtml?raw";
 import style1ColophonTemplate from "../../../assets/epub-templates/style1-colophon.xhtml?raw";
@@ -169,6 +175,12 @@ import style3ChapterTemplate from "../../../assets/epub-templates/style3-chapter
 import style3ColophonTemplate from "../../../assets/epub-templates/style3-colophon.xhtml?raw";
 import style3IntroTemplate from "../../../assets/epub-templates/style3-intro.xhtml?raw";
 import style3VolumeTemplate from "../../../assets/epub-templates/style3-volume.xhtml?raw";
+import style4Css from "../../../assets/epub-templates/style4.css?raw";
+import style4ChapterTemplate from "../../../assets/epub-templates/style4-chapter.xhtml?raw";
+import style4ColophonTemplate from "../../../assets/epub-templates/style4-colophon.xhtml?raw";
+import style4InfoTemplate from "../../../assets/epub-templates/style4-info.xhtml?raw";
+import style4IntroTemplate from "../../../assets/epub-templates/style4-intro.xhtml?raw";
+import style4VolumeTemplate from "../../../assets/epub-templates/style4-volume.xhtml?raw";
 import { api } from "../services/api";
 
 const model = defineModel({ type: Object, required: true });
@@ -185,6 +197,7 @@ const previewPage = ref("title");
 const previewPageDefs = [
     { id: "title", label: "标题" },
     { id: "colophon", label: "说明" },
+    { id: "info", label: "信息" },
     { id: "intro", label: "简介" },
     { id: "volume", label: "分卷" },
     { id: "chapter", label: "正文" }
@@ -208,6 +221,13 @@ const pageTemplates = {
         intro: style3IntroTemplate,
         volume: style3VolumeTemplate,
         chapter: style3ChapterTemplate
+    },
+    style4: {
+        colophon: style4ColophonTemplate,
+        info: style4InfoTemplate,
+        intro: style4IntroTemplate,
+        volume: style4VolumeTemplate,
+        chapter: style4ChapterTemplate
     }
 };
 
@@ -239,9 +259,14 @@ const style2 = computed(() => model.value.style2);
 const isStyle1 = computed(() => model.value.styleId === "style1");
 const isStyle2 = computed(() => model.value.styleId === "style2");
 const isStyle3 = computed(() => model.value.styleId === "style3");
-const hasPreview = computed(() => isStyle1.value || isStyle2.value || isStyle3.value);
+const isStyle4 = computed(() => model.value.styleId === "style4");
+const hasPreview = computed(() => isStyle1.value || isStyle2.value || isStyle3.value || isStyle4.value);
 const previewPages = computed(() =>
-    previewPageDefs.map((item) => (item.id === "title" && (isStyle1.value || isStyle3.value) ? { ...item, label: "封面" } : item))
+    previewPageDefs
+        .filter((item) => item.id !== "info" || isStyle4.value)
+        .map((item) =>
+            item.id === "title" && (isStyle1.value || isStyle3.value || isStyle4.value) ? { ...item, label: "封面" } : item
+        )
 );
 const selectedDescription = computed(
     () => props.styles.find((item) => item.id === model.value.styleId)?.description || "选择后应用于下一次 EPUB 导出。"
@@ -250,12 +275,13 @@ const previewLabel = computed(() => previewPages.value.find((item) => item.id ==
 const previewTitle = computed(() => {
     if (isStyle1.value) return "江湖纸卷预览";
     if (isStyle2.value) return "老二次元预览";
-    return "空门夜雨预览";
+    if (isStyle3.value) return "空门夜雨预览";
+    return "丹青云卷预览";
 });
 const effectiveCssHint = computed(() =>
     isStyle2.value
         ? "只读预览；内置基础 CSS 与追加 CSS 已合并，保存后用于下一次 EPUB 导出。"
-        : `只读预览；内容与${isStyle3.value ? "空门夜雨" : "江湖纸卷"}内置样式包 CSS 保持一致。`
+        : `只读预览；内容与${isStyle4.value ? "丹青云卷" : isStyle3.value ? "空门夜雨" : "江湖纸卷"}内置样式包 CSS 保持一致。`
 );
 const effectiveTemplate = computed(
     () =>
@@ -360,9 +386,24 @@ body.style3-cover-preview{box-sizing:border-box;display:flex;align-items:center;
 .style3-cover-card h1{margin:0 0 .8em;padding:0 0 .65em;border-bottom:1px solid #000;color:#000;font-family:"STSongti-TC-Bold",serif;font-size:1.7em;line-height:1.5;text-align:left;}
 .style3-cover-author{margin:0;color:#555;font-size:.82em;text-indent:0;duokan-text-indent:0;text-align:right;}
 `.replace(/<\/style/gi, "<\\/style");
+const style4PreviewCss = `${style4Css
+    .replace("../Fonts/style4-cc.ttf", style4CcFont)
+    .replace("../Fonts/style4-llf.ttf", style4LlfFont)
+    .replace("../Images/style4-colophon.jpg", style4ColophonImage)
+    .replace("../Images/style4-info.jpg", style4InfoImage)
+    .replace("../Images/style4-intro.png", style4IntroImage)
+    .replace("../Images/style4-volume.jpg", style4VolumeImage)}
+html,body{height:100%;min-height:100%;}
+body.style4-cover-preview{box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:1.4em;background:#eef2f3;}
+.style4-cover-card{box-sizing:border-box;display:flex;width:76%;min-height:88%;flex-direction:column;justify-content:flex-end;padding:2em 1.5em;background:#fff url("${style4VolumeImage}") center/cover no-repeat;box-shadow:0 12px 28px rgba(23,35,57,.18);}
+.style4-cover-card h1{margin:0 0 .7em;color:#172339;font-family:"llf",serif;font-size:1.65em;line-height:1.45;text-align:left;}
+.style4-cover-author{margin:0;color:#982406;font-family:"cc",serif;font-size:.82em;text-align:right;text-indent:0;duokan-text-indent:0;}
+.style4-cover-placeholder{box-sizing:border-box;width:80px;height:108px;padding-top:1.8em;border:1px solid #fff;background:#eef2f3;color:#903e55;font-family:"llf",serif;font-size:1.25em;box-shadow:4px 5px 5px #a49d9d;}
+`.replace(/<\/style/gi, "<\\/style");
 const effectiveCss = computed(() => {
     if (isStyle1.value) return style1Css.trim();
     if (isStyle3.value) return style3Css.trim();
+    if (isStyle4.value) return style4Css.trim();
     return style2EffectiveCss.value;
 });
 
@@ -502,16 +543,70 @@ const style3PreviewBody = computed(() => {
     });
 });
 
+const style4PreviewBody = computed(() => {
+    const title = "示例书名";
+    const author = "示例作者";
+    if (previewPage.value === "title") {
+        return `<body class="style4-cover-preview"><div class="style4-cover-card"><h1>${title}</h1><p class="style4-cover-author">${author}◎著</p></div></body>`;
+    }
+    if (previewPage.value === "colophon") {
+        return renderPreviewTemplate(style4ColophonTemplate, {
+            TITLE: model.value.includeColophon ? escapeHtml(model.value.colophonTitle) : "制作说明未生成",
+            BOOK: title,
+            AUTHOR: author,
+            CONTENT: model.value.includeColophon
+                ? escapeHtml(model.value.colophonText || "本书由 PO18 Reader 根据本地缓存内容生成。").replace(/\r?\n/g, "<br/>")
+                : "当前已关闭生成制作说明页。"
+        });
+    }
+    if (previewPage.value === "info") {
+        return renderPreviewTemplate(style4InfoTemplate, {
+            COVER: '<div class="cover"><div class="style4-cover-placeholder">书封</div></div>',
+            TITLE: title,
+            AUTHOR: author,
+            PLATFORM: "来源站点",
+            CATEGORY: "作品分类",
+            CHAPTERS: "658章",
+            WORDS: "324.3万字",
+            STATUS: "已完结",
+            DESCRIPTION: "这里展示导出时写入的书籍元信息与作品简介。"
+        });
+    }
+    if (previewPage.value === "intro") {
+        return renderPreviewTemplate(style4IntroTemplate, {
+            TITLE: escapeHtml(model.value.introTitle),
+            CONTENT: previewParagraphs("这里展示导出时写入的作品简介内容。\n\n段落、缩进和字体会使用当前样式的完整 CSS。")
+        });
+    }
+    if (previewPage.value === "volume") {
+        return renderPreviewTemplate(style4VolumeTemplate, { TITLE: "第<br/>一<br/>卷" });
+    }
+    return renderPreviewTemplate(style4ChapterTemplate, {
+        NUMBER: "第1章",
+        TITLE: "示例章节",
+        CONTENT: previewParagraphs("这里展示导出后的正文排版效果。\n\n正文不包含任何固定头图。")
+    });
+});
+
 const previewCss = computed(() => {
     if (isStyle1.value) return style1PreviewCss;
     if (isStyle3.value) return style3PreviewCss;
+    if (isStyle4.value) return style4PreviewCss;
     return style2PreviewCss.value;
 });
 const previewBody = computed(() => {
     if (isStyle1.value) return style1PreviewBody.value;
     if (isStyle3.value) return style3PreviewBody.value;
+    if (isStyle4.value) return style4PreviewBody.value;
     return style2PreviewBody.value;
 });
+
+watch(
+    () => model.value.styleId,
+    () => {
+        if (previewPage.value === "info" && !isStyle4.value) previewPage.value = "intro";
+    }
+);
 
 const previewDocument = computed(
     () =>

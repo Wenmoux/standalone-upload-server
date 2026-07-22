@@ -11,6 +11,7 @@ const test = require("node:test");
 const { createEpubBuilder } = require("../bot/epub-builder");
 const styleOne = require("../bot/epub-styles/style-one");
 const styleThree = require("../bot/epub-styles/style-three");
+const styleFour = require("../bot/epub-styles/style-four");
 
 function contentOf(files, name) {
     return files.find((file) => file.name === name)?.content.toString("utf8") || "";
@@ -28,6 +29,12 @@ test("style1 uses the standalone CSS template", () => {
 test("style3 uses the standalone CSS template", () => {
     const templateCss = fs.readFileSync(path.join(__dirname, "..", "assets", "epub-templates", "style3.css"), "utf8").trim();
     assert.equal(templateCss, styleThree.css.trim());
+});
+
+test("style4 uses the standalone CSS template without a chapter image rule", () => {
+    const templateCss = fs.readFileSync(path.join(__dirname, "..", "assets", "epub-templates", "style4.css"), "utf8").trim();
+    assert.equal(templateCss, styleFour.css.trim());
+    assert.doesNotMatch(templateCss, /logo\.png|guigui4|style4-chapter/);
 });
 
 test("style3 volume renders dynamic text as a plain typographic page", () => {
@@ -296,6 +303,94 @@ test("style3 EPUB builds pure-type cover matter, real volumes and nested chapter
     assert.doesNotMatch(toc, /<text>书封<\/text>/);
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 新工作<\/text>/);
     assert.equal(listEpubStyles().find((style) => style.id === "style3")?.name, "空门夜雨");
+});
+
+test("style4 EPUB reproduces illustrated front matter and omits the chapter header image", async () => {
+    const coverBytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=",
+        "base64"
+    );
+    const { makeEpubFiles, listEpubStyles } = createEpubBuilder({
+        fetchImpl: async () => ({
+            ok: true,
+            headers: { get: () => "image/png" },
+            arrayBuffer: async () => coverBytes
+        }),
+        yieldToEventLoop: async () => {}
+    });
+    const files = await makeEpubFiles(
+        {
+            book_id: "b-style4",
+            title: "示例书名",
+            author: "示例作者",
+            description: "云山深处，自有一卷新章。",
+            cover: "https://example.test/cover.png",
+            platform: "qidian",
+            category: "仙侠",
+            status: "已完结",
+            word_count: 3243000
+        },
+        [
+            { chapter_id: "v1", title: "第一卷", type: "volume" },
+            { chapter_id: "c1", title: "第1章 入山", text: "第1章 入山\n山门在云海之后。" }
+        ],
+        {
+            epub: {
+                styleId: "style4",
+                includeColophon: true,
+                colophonTitle: "制作说明",
+                colophonText: "本书由 PO18 Reader 自动排版。",
+                introTitle: "简介"
+            }
+        }
+    );
+
+    const names = new Set(files.map((file) => file.name));
+    assert.ok(names.has("OEBPS/Text/cover.xhtml"));
+    assert.ok(names.has("OEBPS/Text/colophon.xhtml"));
+    assert.ok(names.has("OEBPS/Text/book-info.xhtml"));
+    assert.ok(names.has("OEBPS/Text/intro.xhtml"));
+    assert.ok(names.has("OEBPS/Text/volume_0001.xhtml"));
+    assert.ok(names.has("OEBPS/Text/chapter_0001.xhtml"));
+    assert.ok(names.has("OEBPS/Images/style4-colophon.jpg"));
+    assert.ok(names.has("OEBPS/Images/style4-info.jpg"));
+    assert.ok(names.has("OEBPS/Images/style4-intro.png"));
+    assert.ok(names.has("OEBPS/Images/style4-volume.jpg"));
+    assert.ok(names.has("OEBPS/Fonts/style4-cc.ttf"));
+    assert.ok(names.has("OEBPS/Fonts/style4-llf.ttf"));
+    assert.ok(![...names].some((name) => /logo\.png|style4-chapter/i.test(name)));
+
+    const css = contentOf(files, "OEBPS/Styles/main.css");
+    const colophon = contentOf(files, "OEBPS/Text/colophon.xhtml");
+    const info = contentOf(files, "OEBPS/Text/book-info.xhtml");
+    const intro = contentOf(files, "OEBPS/Text/intro.xhtml");
+    const volume = contentOf(files, "OEBPS/Text/volume_0001.xhtml");
+    const chapter = contentOf(files, "OEBPS/Text/chapter_0001.xhtml");
+    const packageFile = contentOf(files, "OEBPS/content.opf");
+    const toc = contentOf(files, "OEBPS/toc.ncx");
+
+    assert.match(css, /body\.bg\{[^}]*style4-colophon\.jpg/s);
+    assert.match(css, /\.sjxx\{[^}]*style4-info\.jpg/s);
+    assert.match(css, /\.biaotibody1\{[^}]*style4-volume\.jpg/s);
+    assert.doesNotMatch(css, /logo\.png|guigui4|style4-chapter/);
+    assert.match(colophon, /<body class="bg"><div class="ff">/);
+    assert.match(colophon, /<p class="cc-pot"><b>示例书名<\/b><\/p>/);
+    assert.match(info, /<body class="sjxx">/);
+    assert.match(info, /<img alt="cover" class="cover" src="..\/Images\/cover\.png"/);
+    assert.match(info, /<td class="p1">1章<\/td><td class="p1">324\.3万字<\/td>/);
+    assert.match(intro, /class="tupianA" src="..\/Images\/style4-intro\.png"/);
+    assert.match(volume, /<body class="biaotibody1"><h1 class="biaoti1">第<br\/>一<br\/>卷<br\/><\/h1><\/body>/);
+    assert.match(chapter, /<h2 class="heav3">第1章<br\/><b>入山<\/b><\/h2>/);
+    assert.doesNotMatch(chapter, /<img|logo|guigui4/);
+    assert.match(chapter, /<p>山门在云海之后。<\/p>/);
+    assert.match(packageFile, /po18-epub-style" content="style4"/);
+    assert.match(packageFile, /idref="cover-page" properties="duokan-page-fullscreen"/);
+    assert.match(packageFile, /<itemref idref="colophon-page"\/><itemref idref="book-info-page"\/><itemref idref="intro-page"\/>/);
+    assert.doesNotMatch(packageFile, /logo\.png|style4-chapter/);
+    assert.match(toc, /<text>封面<\/text>/);
+    assert.match(toc, /<text>制作说明<\/text>.*<text>书籍信息<\/text>.*<text>简介<\/text>/s);
+    assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 入山<\/text>/);
+    assert.equal(listEpubStyles().find((style) => style.id === "style4")?.name, "丹青云卷");
 });
 
 test("style2 EPUB does not add a volume page when chapter data has no volume row", async () => {

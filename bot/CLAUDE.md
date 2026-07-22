@@ -10,13 +10,13 @@ Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgB
 `account-handlers.js`: 账户交互层，提供注册保障、start/menu/help/reg/me/sign 处理，并消费私聊导出续接而不持有任务状态机。
 `automatic-push-unpin.js`: 识别置顶服务消息中的频道自动转发与根级系统标记，并用精确消息 ID 容错取消置顶，拒绝触碰人工消息。
 `commands/`: 按账户、搜索、导出、社交和外部集成拆分的命令注册器；命令名需与 `command-catalog.js` 同步。
-`epub-styles/`: EPUB 视觉插件与资源契约；生成器注册四种样式，Telegram 只暴露前三种直选按钮。
+`epub-styles/`: EPUB 视觉插件与资源契约；生成器注册五种样式（含兼容样式），Telegram 暴露四种直选按钮。
 `account-formatters.js`: 把账户、签到、帮助及主/PO18 宫格面板转换为 Telegram HTML/inline keyboard，隔离展示规则与请求逻辑。
 `bot-session.js`: 提供有界搜索查询缓存、按聊天与用户隔离且携带稳定发布键的短期书评草稿、管理员广播草稿及帮助文本，避免重试重复结算或群聊输入串线。
 `broadcast-handlers.js`: 管理员全员通知交互与批量投递器，执行身份复核、草稿确认、收件人分页、限速发送和失败统计。
 `command-catalog.js`: 命令名称、分组、帮助、别名、管理员与 Telegram 系统菜单显隐标记的单一元数据源，驱动后台配置、帮助和精简命令投影。
 `command-registry.js`: 注册、别名解析、启停配置和显式白名单 Telegram command list 的运行时注册表，不实现具体业务。
-`epub-builder.js`: 组装 EPUB 2 容器、原始/长屏封面、全屏 spine、XHTML、目录、资源与样式插件，是所有 EPUB 外壳逻辑的唯一实现。
+`epub-builder.js`: 组装 EPUB 2 容器、原始/长屏封面、可选书籍信息页、全屏 spine、XHTML、目录、资源与样式插件，是所有 EPUB 外壳逻辑的唯一实现。
 `epub-style-picker.js`: 定义 Telegram EPUB 直选样式白名单和 inline keyboard 回调协议，刻意不暴露兼容样式 `crane`。
 `economy-handlers.js`: 用户经济交互层，转换 CDK、管理员发币、排行榜、流水和红包命令，并以 Telegram chat/message 生成稳定红包创建键；余额事务仍由 server API 裁决。
 `export-builder.js`: 从 server API 拉取缓存/已购章节并流式生成 TXT 或调用 EPUB 生成器，管理任务临时文件边界。
@@ -61,7 +61,7 @@ Telegram update
 
 - `command-catalog.js` 管声明，`commands/` 管注册，领域 handler 管行为；三者不可互相复制命令分支。
 - `job-queue.js` 只管理单进程并发，跨重启/跨实例正确性由 `task-runtime.js` 与服务端 lease/fencing token 保证；恢复任务不得在 `onQueued` 阶段回写数据库状态。
-- EPUB 样式只扩展 `epub-styles/` 插件契约，ZIP、长屏封面、清单、全屏 spine 和转义始终由 `epub-builder.js` 统一。
+- EPUB 样式只扩展 `epub-styles/` 插件契约，ZIP、长屏封面、前置页、清单、全屏 spine 和转义始终由 `epub-builder.js` 统一。
 - 自动取消置顶只消费 `pinned_message.is_automatic_forward` 且携带根级系统标记的消息，并始终传入精确 `message_id`；普通群消息和未标记频道帖不受影响。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

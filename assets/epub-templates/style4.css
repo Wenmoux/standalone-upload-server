@@ -1,0 +1,43 @@
+@charset "UTF-8";
+/*
+ * [INPUT]: 依赖丹青云卷参考 EPUB 的有效页面类名、两种原始字体，以及制作说明/书籍信息/简介/分卷四张资源图
+ * [OUTPUT]: 提供与参考 EPUB 同值的前置页、竖排分卷、居中双色章题和正文排版规则，正文不引用头图
+ * [POS]: assets/epub-templates 的 Style4 规范 CSS，由 Bot 导出与 Admin 同构预览共同消费
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+@font-face{font-family:"llf";src:url("../Fonts/style4-llf.ttf");}
+@font-face{font-family:"cc";src:url("../Fonts/style4-cc.ttf");}
+@font-face{font-family:"zw";src:local("宋体"),local("明体"),local("明朝"),local("Songti"),local("Songti SC"),local("Songti TC"),local("Song S"),local("Song T"),local("STBShusong"),local("TBMincho"),local("HYMyeongJo"),local("DK-SONGTI");}
+body{padding:0;margin-top:0;margin-bottom:0;margin-left:1%;margin-right:1%;line-height:130%;text-align:justify;font-family:"DK-SONGTI","st","宋体","zw",sans-serif;}
+p{text-align:justify;text-indent:2em;line-height:130%;margin-right:1%;margin-left:1%;font-family:"DK-SONGTI","st","宋体","zw",sans-serif;}
+div{margin:0;padding:0;line-height:130%;text-align:center;font-family:"zw";}
+.nick{background:#fff;padding:3% 10% 5%;margin:3% auto 0;text-indent:0;line-height:1.5em;font-size:.9em;color:#666;}
+.line{border-style:dotted;border-color:#ccc;border-top:.5px;margin:5% -5%;}
+div.tupianA{text-align:left;text-indent:0;margin:0;duokan-text-indent:0;}
+img.tupianA{width:100%;}
+h2.mm{font-family:"cc","DK-XIAOBIAOSONG";font-size:1.1em;width:1em;color:#a52a2a;margin:-2em 4% 2em auto;border-right:1px solid #2f4f4f;border-left:1px solid #2f4f4f;padding:6px 3px;}
+.biaotibody1{background:#fff url("../Images/style4-volume.jpg") no-repeat center;background-size:cover;background-position:bottom center;background-attachment:fixed;}
+h1.biaoti1{font-family:"llf";font-weight:900;font-size:1.5em;margin:12% 0 0 1em;padding:0;text-align:left;text-indent:0;color:#172339;duokan-text-indent:0;line-height:140%;}
+div.ff{margin:-5% 35% 0 1%;padding:1em;background-color:rgba(240,248,255,.9);border:1px solid rgba(0,0,0,.8);border-radius:28px;box-shadow:0 0 2px rgba(25,25,112,.1);}
+body.bg{background:#fff no-repeat center;background-size:cover;background-attachment:fixed;background-repeat:no-repeat;background-position:bottom center;background-image:url("../Images/style4-colophon.jpg");}
+.xx{border-top-style:solid;border-color:#903e55;border-width:1px;margin:1em 0 .5em auto;}
+h2.ff-title{margin:1em auto;padding:0 4px;font-family:"cc","微软雅黑","黑体","DK-HEITI",sans-serif;font-size:65%;color:#903e55;text-align:center;}
+p.cc-pot{font-family:"cc","黑体","ht",sans-serif;text-indent:0;duokan-text-indent:0;text-align:left;color:#800;font-size:70%;}
+p.ff-pot{font-family:"cc","细黑体","xihei",sans-serif;color:#008b8b;font-size:70%;text-align:left;text-indent:0;duokan-text-indent:0;}
+p.ff-text{margin-top:1em;font-family:"cc","细黑体","xihei",sans-serif;font-size:65%;color:#413245;text-indent:0;duokan-text-indent:0;}
+.sjxx{background:#fff no-repeat center;background-size:cover;background-attachment:fixed;background-repeat:no-repeat;background-position:bottom center;background-image:url("../Images/style4-info.jpg");}
+div.sjxx1{padding:.5em 15px 15px;margin:-2em 5px 1em;border-top:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:15px 15px 0 0;}
+div.sjxx2{padding:2.5em 10px 1em;margin:-3em 5px auto;border-bottom:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;border-radius:0 0 15px 15px;}
+table.block{margin-bottom:.5em;width:100%;text-align:center;}
+h3.sm{margin:.7em auto .4em;font-family:"cc","DK-XIAOBIAOSONG",serif;font-size:1em;text-indent:0;text-align:center;color:#8b0000;line-height:100%;font-weight:bold;}
+p.zz{margin:.5em 0;color:#2f4f4f;font-size:.9em;text-align:center;font-family:"cc","kt","楷体","zw",serif;}
+.p1{font-family:"cc",sans-serif;font-size:120%;font-weight:bold;text-align:center;color:#8b0000;}
+.p2{font-family:"cc",sans-serif;font-size:67%;text-align:center;text-indent:0;color:#2f4f4f;}
+.XD{border-top-style:solid;border-color:#000;border-width:1px;margin:1em 0 .5em auto;}
+.RP{margin:.5em 0;text-indent:2em;duokan-text-indent:2em;font-family:"cc",sans-serif;font-size:100%;font-weight:bold;color:#2f4f4f;}
+.PL{font-family:"cc",sans-serif;font-size:90%;color:#8b0000;}
+div.cover{text-align:center;margin:0 auto;padding-top:1em;text-indent:0;duokan-text-indent:0;}
+img.cover{margin:0;width:80px;border:1px solid #fff;box-shadow:4px 5px 5px #a49d9d;}
+h2.heav3{font-family:"llf";text-align:center;font-weight:900;font-size:.9em;margin:0 1em 1em 0;color:#5b453e;line-height:130%;}
+h2.heav3 b{font-family:"llf";font-size:1.1em;border-radius:5px;font-weight:900;padding:5px;color:#d43d23;}
+a{color:#000;}

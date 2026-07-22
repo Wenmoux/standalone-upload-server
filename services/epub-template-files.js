@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 Node fs/path 与 assets/epub-templates 中按样式拆分的 CSS/XHTML 文件
+ * [INPUT]: 依赖 Node fs/path 与 assets/epub-templates 中按 style1-style4 拆分的 CSS/XHTML 文件
  * [OUTPUT]: 对外提供缓存读取模板与受控占位符替换能力
  * [POS]: services 的 EPUB 文件模板边界，让样式实现消费独立文件而非在 JavaScript 中内嵌大段页面源码
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 
 const TEMPLATE_DIR = path.resolve(__dirname, "../assets/epub-templates");
-const TEMPLATE_NAME_PATTERN = /^style[123](?:-[a-z]+)?\.(?:css|xhtml)$/;
+const TEMPLATE_NAME_PATTERN = /^style[1234](?:-[a-z]+)?\.(?:css|xhtml)$/;
 const cache = new Map();
 
 function templatePath(name) {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Node 文件与压缩能力、按需加载的 Resvg 长屏封面渲染、epub-styles 插件注册表，以及调用方注入的文本清洗、卷章识别和资源读取能力
- * [OUTPUT]: 对外提供将书籍元数据、章节和样式配置组装为含长屏封面、全屏页语义、目录与资源的 EPUB 2 文件集合及 ZIP 字节流生成器
- * [POS]: bot 导出域的 EPUB 唯一组合器，统一掌管容器、manifest、spine 全屏扩展、目录、XHTML、资源与样式插件生命周期
+ * [OUTPUT]: 对外提供将书籍元数据、章节和样式配置组装为含长屏封面、可选书籍信息页、全屏页语义、目录与资源的 EPUB 2 文件集合及 ZIP 字节流生成器
+ * [POS]: bot 导出域的 EPUB 唯一组合器，统一掌管容器、manifest、spine 全屏扩展、前置页、目录、XHTML、资源与样式插件生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs");
@@ -164,6 +164,16 @@ function createEpubBuilder(deps = {}) {
                 pageTitle: config.colophonTitle,
                 navTitle: config.colophonTitle,
                 body: style.renderColophon(pageContext)
+            });
+        }
+
+        if (typeof style.renderBookInfo === "function") {
+            addPage({
+                id: "book-info-page",
+                href: "Text/book-info.xhtml",
+                pageTitle: style.bookInfoPageNavTitle || "书籍信息",
+                navTitle: style.bookInfoPageNavTitle || "书籍信息",
+                body: style.renderBookInfo(pageContext)
             });
         }
 

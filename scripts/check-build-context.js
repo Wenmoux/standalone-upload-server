@@ -20,9 +20,15 @@ const REQUIRED_CONTEXT_FILES = Object.freeze([
     "assets/epub-templates/style1.css",
     "assets/epub-templates/style2.css",
     "assets/epub-templates/style3.css",
+    "assets/epub-templates/style4.css",
     "assets/epub-templates/style1-colophon.xhtml",
     "assets/epub-templates/style2-colophon.xhtml",
     "assets/epub-templates/style3-colophon.xhtml",
+    "assets/epub-templates/style4-colophon.xhtml",
+    "assets/epub-templates/style4-info.xhtml",
+    "assets/epub-templates/style4-intro.xhtml",
+    "assets/epub-templates/style4-volume.xhtml",
+    "assets/epub-templates/style4-chapter.xhtml",
     "bot/epub-styles/assets/jianghu-top.png",
     "bot/epub-styles/assets/style1-asheng.ttf",
     "bot/epub-styles/assets/style1-fzlanting.ttf",
@@ -30,7 +36,13 @@ const REQUIRED_CONTEXT_FILES = Object.freeze([
     "bot/epub-styles/assets/style1-stkaiti.ttf",
     "bot/epub-styles/assets/style3-reader-mark.png",
     "bot/epub-styles/assets/style3-stkaiti.ttf",
-    "bot/epub-styles/assets/style3-stsongti-bold.ttf"
+    "bot/epub-styles/assets/style3-stsongti-bold.ttf",
+    "bot/epub-styles/assets/style4-cc.ttf",
+    "bot/epub-styles/assets/style4-llf.ttf",
+    "bot/epub-styles/assets/style4-colophon.jpg",
+    "bot/epub-styles/assets/style4-info.jpg",
+    "bot/epub-styles/assets/style4-intro.png",
+    "bot/epub-styles/assets/style4-volume.jpg"
 ]);
 
 function posix(relativePath) {
