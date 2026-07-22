@@ -28,14 +28,9 @@ const REQUIRED_CONTEXT_FILES = Object.freeze([
     "bot/epub-styles/assets/style1-fzlanting.ttf",
     "bot/epub-styles/assets/style1-source-han-serif-bold.otf",
     "bot/epub-styles/assets/style1-stkaiti.ttf",
-    "bot/epub-styles/assets/style3-plum-shadow.svg",
     "bot/epub-styles/assets/style3-reader-mark.png",
-    "bot/epub-styles/assets/style3-roboto-medium-numbers.ttf",
     "bot/epub-styles/assets/style3-stkaiti.ttf",
-    "bot/epub-styles/assets/style3-stsongti-bold.ttf",
-    "bot/epub-styles/assets/style3-volume-1.jpg",
-    "bot/epub-styles/assets/style3-volume-2.jpg",
-    "bot/epub-styles/assets/style3-volume-3.jpg"
+    "bot/epub-styles/assets/style3-stsongti-bold.ttf"
 ]);
 
 function posix(relativePath) {

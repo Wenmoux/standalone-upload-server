@@ -1,27 +1,29 @@
 @charset "UTF-8";
 /*
- * [INPUT]: 依赖疏影横斜参考 EPUB 的 XHTML 类名、三种原始分部底图和随样式打包的楷体、宋体粗体及数字字体
- * [OUTPUT]: 提供与参考 EPUB 同值的说明框、简介、全屏分部页和数字章题排版规则
+ * [INPUT]: 依赖空门夜雨参考 EPUB 的 XHTML 类名，以及随样式打包的完整楷体与宋体粗体
+ * [OUTPUT]: 提供与参考 EPUB 同值的正文、引用、脚注、轻灰说明框、下划线分卷标题和居中章题排版规则
  * [POS]: assets/epub-templates 的 Style3 规范 CSS，由 Bot 导出与 Admin 同构预览共同消费
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 @font-face{font-family:"DFKaiShuStd-W5";src:url("../Fonts/style3-stkaiti.ttf");}
 @font-face{font-family:"STSongti-TC-Bold";src:url("../Fonts/style3-stsongti-bold.ttf");}
-@font-face{font-family:"roboto_medium_numbers";src:url("../Fonts/style3-roboto-medium-numbers.ttf");}
+@font-face{font-family:"st";src:local("st"),local("ST"),local("SongTi"),local("FZShuSong-Z01"),local("正文"),local("宋体"),local("明体"),local("明朝"),local("方正书宋_GBK"),local("Songti"),local("Songti SC"),local("Songti TC"),local("STSongti"),local("STSong"),local("細明體"),local("新細明體"),local("Apple LiSung Light"),local("蘋果儷細宋"),local("PMingLiU"),local("MingLiU"),local("Song S"),local("STBShusong"),local("TBMincho"),local("HYMyeongJo"),local("DK-SONGTI");}
+@font-face{font-family:"xht";src:local("yt"),local("STYuanti"),local("STYuan"),local("Yuanti TC"),local("Yuanti"),local("Yuanti SC"),local("DK-XIHEITI");}
 body{margin-top:0;margin-left:0;margin-bottom:0;margin-right:0;padding-top:0;padding-left:0;padding-bottom:0;padding-right:0;text-align:justify;font-family:"DK-SONGTI","st","宋体","SimSun","STSong",serif;}
 p{margin-left:0;margin-right:0;line-height:130%;text-align:justify;text-justify:inter-ideograph;text-indent:2em;duokan-text-indent:2em;}
 div{margin-top:0;margin-left:0;margin-bottom:0;margin-right:0;padding-top:0;padding-left:0;padding-bottom:0;padding-right:0;line-height:130%;text-align:justify;}
+blockquote{margin-left:0;margin-right:0;padding:14px;color:#222;border:1px dashed rgba(20,20,20,.1);border-radius:6px;font-size:14px;background-color:rgba(246,246,246,.3);}
 img{margin:0;padding:0;}
-h1.preface-title{margin-top:2em;margin-left:12%;margin-bottom:2em;margin-right:12%;font-family:"STSongti-TC-Bold";text-align:center;font-size:1em;color:#000;}
-p.author{margin-top:-.5em;margin-left:12%;margin-bottom:1.5em;margin-right:12%;font-family:"DFKaiShuStd-W5";text-align:center;font-size:1em;color:#000;text-indent:0;duokan-text-indent:0;}
-h1{margin-top:2.5em;margin-left:auto;margin-bottom:2.5em;margin-right:auto;font-family:"STSongti-TC-Bold";text-align:center;font-size:1em;color:#000;}
-h2{margin-top:2.5em;margin-left:auto;margin-bottom:2.5em;margin-right:auto;font-family:"roboto_medium_numbers";text-align:center;font-size:1.2em;color:#000;}
-img.height-1em{height:1em;vertical-align:middle;}
-p.gfont,span.gfont{font-family:sans-serif;font-weight:700;}
-p.seikuro{font-family:sans-serif;font-weight:700;color:#274a78;}
-p.ktr{margin-left:2em;font-family:"DFKaiShuStd-W5";text-align:right;text-indent:0;duokan-text-indent:0;}
-p.text-right{text-align:right;}
-p.asterisk{margin-top:2em;margin-bottom:2em;text-align:center;text-indent:0;duokan-text-indent:0;}
+h1{margin-top:40%;margin-left:auto;margin-bottom:1em;margin-right:auto;padding-bottom:14px;font-family:"STSongti-TC-Bold";text-align:left;font-size:1.3em;color:#000;border-bottom:1px solid #000;}
+h2{margin-top:3em;margin-left:auto;margin-bottom:3em;margin-right:auto;font-family:"STSongti-TC-Bold";text-align:center;font-size:1.1em;color:#000;}
+h3{margin-top:2em;margin-left:auto;margin-bottom:2em;margin-right:auto;font-family:"STSongti-TC-Bold";text-align:center;font-size:1em;color:#000;}
+p.no-indent{font-family:"STSongti-TC-Bold";font-size:14px;color:#000;text-indent:0;duokan-text-indent:0;}
+span.notosans{font-family:sans-serif;font-weight:700;}
+p.kai{line-height:150%;font-family:"DFKaiShuStd-W5";}
+p.text-right{text-align:right;text-indent:0;duokan-text-indent:0;}
+p.ktr{margin-left:12%;font-family:"DFKaiShuStd-W5";text-align:right;text-indent:0;duokan-text-indent:0;}
+p.ktc{font-family:"DFKaiShuStd-W5";text-align:center;text-indent:0;duokan-text-indent:0;}
+p.asterisk{margin-top:2em;margin-bottom:2em;font-family:"STSongti-TC-Bold";text-align:center;text-indent:0;duokan-text-indent:0;}
 a{text-decoration:none;color:#151515;}
 a:hover{background-color:rgba(0,0,0,.05);}
 a:active{background-color:gold;}
@@ -30,13 +32,9 @@ ol.hr{margin:2em 0 0 1em;padding:0;height:2px;width:50%;background-color:#252525
 ol.duokan-footnote-content{margin-bottom:1em;padding:0 auto;}
 li.duokan-footnote-item{margin:.5em 0;font-family:"DFKaiShuStd-W5";text-align:left;font-size:14px;line-height:130%;clear:both;list-style-type:cjk-ideographic;}
 p.duokan-footnote{text-indent:0;duokan-text-indent:0;}
-div.copyright-box,div.design-box{margin-top:20%;margin-left:3%;margin-bottom:auto;margin-right:3%;padding-top:1em;padding-left:1em;padding-bottom:1em;padding-right:1em;border-style:solid;border-width:4px;border-color:#fafafa;border-radius:14px;background-color:#fcfcfc;}
+div.copyright-box,div.design-box{margin-top:20%;margin-left:3%;margin-bottom:auto;margin-right:3%;padding-top:1em;padding-left:1em;padding-bottom:1em;padding-right:1em;border-style:solid;border-width:1px;border-radius:25px;border-color:rgba(246,246,246,.3);background-color:rgba(246,246,246,.3);box-shadow:1px 1px 3px rgba(0,0,0,.1);}
 p.copyright-title{font-family:"STSongti-TC-Bold";font-size:70%;font-weight:bold;color:#808080;text-indent:0;duokan-text-indent:0;}
 p.copyright-text,p.design-content{font-family:"DK-XIHEITI","Microsoft YaHei","PingFang TC","STYuan","xht",sans-serif;color:#808080;font-size:60%;text-indent:0;duokan-text-indent:0;}
 p.design-content{margin-top:1em;}
 hr.design-line{border-style:dashed;border-width:1px 0 0;border-color:rgba(200,200,193,.15);}
 img.design-icon-dk{margin-top:0;margin-left:0;margin-bottom:1px;margin-right:1px;padding:0;width:10px;height:10px;vertical-align:middle;vertical-align:duokan-middle-line;}
-.style3-semantic-title{display:none;}
-.style3-volume-page{margin:0;padding:0;overflow:hidden;background:#fff;}
-.style3-volume-canvas{display:block;width:100%;height:100%;margin:0;padding:0;line-height:0;text-align:center;}
-.style3-volume-svg{display:block;width:100%;height:100%;margin:0;padding:0;}

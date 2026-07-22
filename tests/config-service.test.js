@@ -35,7 +35,7 @@ test("config helpers normalize labels and pricing", () => {
     assert.equal(pricing.epub.styleId, "style1");
     assert.equal(pricing.epubStyles.find((style) => style.id === "style1")?.name, "江湖纸卷");
     assert.equal(pricing.epubStyles.find((style) => style.id === "style2")?.name, "老二次元");
-    assert.equal(pricing.epubStyles.find((style) => style.id === "style3")?.name, "疏影横斜");
+    assert.equal(pricing.epubStyles.find((style) => style.id === "style3")?.name, "空门夜雨");
     assert.ok(pricing.epubStyles.some((style) => style.id === "crane"));
     const style2 = exportPricingPayload({
         epub: {

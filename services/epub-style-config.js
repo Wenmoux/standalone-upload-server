@@ -21,8 +21,8 @@ const EPUB_STYLE_OPTIONS = Object.freeze([
     },
     {
         id: "style3",
-        name: "疏影横斜",
-        description: "参考样例的原版字体、浅灰说明框、全屏留白分部底图与居中数字章题。"
+        name: "空门夜雨",
+        description: "参考样例的完整楷体与粗宋字体、轻灰说明框、下划线分卷标题和居中章题。"
     },
     {
         id: "crane",

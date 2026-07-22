@@ -117,7 +117,7 @@ TXT/EPUB 导出先从 `/reader-api/books/:bookId/chapters?includeContent=1` 分�
 
 群聊导出会先探测 Bot 是否能够私聊发文件。Telegram 返回 `Forbidden`、`chat not found`、`blocked` 或 `PEER_ID_INVALID` 都表示用户尚未建立可用私聊，不是 EPUB 构建失败；Bot 会在群里提供“打开私聊继续导出”按钮，用户发送 `/start` 后恢复所选书籍和 EPUB 样式。
 
-EPUB 导出按钮只提供“江湖纸卷”“老二次元”“疏影横斜”三种选择；`crane` 仍在生成器中注册，用于旧配置兼容，但不作为 Bot 直选按钮。样式结构与扩展契约见 [EPUB 内置样式](./epub-styles/README.md)。
+EPUB 导出按钮只提供“江湖纸卷”“老二次元”“空门夜雨”三种选择；`crane` 仍在生成器中注册，用于旧配置兼容，但不作为 Bot 直选按钮。样式结构与扩展契约见 [EPUB 内置样式](./epub-styles/README.md)。
 
 ## 维护边界
 

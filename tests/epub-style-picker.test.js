@@ -13,7 +13,7 @@ test("EPUB style picker offers all public styles before export", () => {
     assert.deepEqual(EPUB_EXPORT_STYLE_CHOICES.map((item) => item.id), ["style1", "style2", "style3"]);
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style1")?.label, "江湖纸卷");
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style2")?.label, "老二次元");
-    assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style3")?.label, "疏影横斜");
+    assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style3")?.label, "空门夜雨");
     assert.deepEqual(markup.inline_keyboard.map((row) => row[0].callback_data), [
         "epubstyle|style1|b1",
         "epubstyle|style2|b1",

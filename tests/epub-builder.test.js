@@ -30,21 +30,13 @@ test("style3 uses the standalone CSS template", () => {
     assert.equal(templateCss, styleThree.css.trim());
 });
 
-test("style3 volume keeps dynamic text and fullscreen canvas when the reference artwork is unavailable", () => {
+test("style3 volume renders dynamic text as a plain typographic page", () => {
     const page = styleThree.renderVolume({
         header: { number: "第二部", name: "卷名示例" },
-        rawHeader: { number: "第二部", name: "卷名示例" },
-        volumeNo: 2,
-        paragraphs: { escape: (value) => String(value) },
-        hasAsset: () => false
+        rawHeader: { number: "第二部", name: "卷名示例" }
     });
-    assert.match(page, /class="style3-volume-page"/);
-    assert.match(page, /class="style3-semantic-title">第二部　卷名示例/);
-    assert.match(page, /class="style3-volume-svg"/);
-    assert.doesNotMatch(page, /clipPath|clip-path/);
-    assert.match(page, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
-    assert.match(page, />Part II<\/text>/);
-    assert.doesNotMatch(page, /<image/);
+    assert.equal(page, '<body><h1>第二部　卷名示例</h1></body>');
+    assert.doesNotMatch(page, /svg|image|style3-volume|Part/);
 });
 
 test("style1 EPUB builds cover matter, intro, volume and chapter templates", async () => {
@@ -226,7 +218,7 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.equal(listEpubStyles().find((style) => style.id === "style2")?.name, "老二次元");
 });
 
-test("style3 EPUB builds literary cover matter, real volumes and nested chapters", async () => {
+test("style3 EPUB builds pure-type cover matter, real volumes and nested chapters", async () => {
     const coverBytes = Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=",
         "base64"
@@ -267,11 +259,10 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     assert.ok(files.some((file) => file.name === "OEBPS/Text/intro.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/volume_0001.xhtml"));
     assert.ok(files.some((file) => file.name === "OEBPS/Text/chapter_0001.xhtml"));
-    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-volume-1.jpg"));
-    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-volume-2.jpg"));
-    assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-volume-3.jpg"));
     assert.ok(files.some((file) => file.name === "OEBPS/Images/style3-reader-mark.png"));
+    assert.ok(files.some((file) => file.name === "OEBPS/Fonts/style3-stkaiti.ttf"));
     assert.ok(files.some((file) => file.name === "OEBPS/Fonts/style3-stsongti-bold.ttf"));
+    assert.ok(!files.some((file) => /style3-volume-|style3-roboto/.test(file.name)));
     assert.ok(files.some((file) => file.name === "META-INF/com.apple.ibooks.display-options.xml"));
 
     const css = contentOf(files, "OEBPS/Styles/main.css");
@@ -282,33 +273,29 @@ test("style3 EPUB builds literary cover matter, real volumes and nested chapters
     const packageFile = contentOf(files, "OEBPS/content.opf");
     const toc = contentOf(files, "OEBPS/toc.ncx");
 
-    assert.match(css, /@font-face\{font-family:"roboto_medium_numbers"/);
-    assert.match(css, /div\.design-box\{[^}]*margin-top:20%[^}]*border-width:4px[^}]*background-color:#fcfcfc/s);
+    assert.match(css, /h1\{[^}]*margin-top:40%[^}]*border-bottom:1px solid #000/s);
+    assert.match(css, /h2\{[^}]*margin-top:3em[^}]*font-family:"STSongti-TC-Bold"[^}]*text-align:center/s);
+    assert.match(css, /div\.copyright-box,div\.design-box\{[^}]*margin-top:20%[^}]*border-width:1px[^}]*border-radius:25px[^}]*box-shadow:1px 1px 3px/s);
+    assert.doesNotMatch(css, /roboto_medium_numbers|style3-volume/);
     assert.match(colophon, /class="design-box"/);
     assert.match(colophon, /class="design-content"/);
     assert.match(colophon, /class="design-icon-dk" src="..\/Images\/style3-reader-mark\.png"/);
-    assert.match(intro, /<h1>内容简介<\/h1>/);
-    assert.doesNotMatch(intro, /style3-intro|《示例书名》/);
-    assert.match(volume, /class="style3-semantic-title">第一部　卷名示例/);
-    assert.match(volume, /class="style3-volume-page"/);
-    assert.match(volume, /viewBox="0 0 1536 2048"/);
-    assert.match(volume, /<tspan x="150" dy="0">卷名示例<\/tspan>/);
-    assert.match(volume, />Part I<\/text>/);
-    assert.match(volume, /style3-volume-1\.jpg/);
-    assert.doesNotMatch(volume, /clipPath|clip-path|style3-volume-art-clip/);
-    assert.doesNotMatch(volume, /MILLIE|HER AND HER|SIGNIFICANT OTHER|米莉|她和她的他/);
+    assert.match(intro, /<div class="copyright-box"><p class="copyright-title">内容简介<\/p>/);
+    assert.match(intro, /<p class="copyright-text">门后藏着秘密。<\/p>/);
+    assert.match(volume, /<body><h1>第一部　卷名示例<\/h1><\/body>/);
+    assert.doesNotMatch(volume, /svg|image|style3-volume|Part/);
     assert.match(chapter, /<h2>第1章　新工作<\/h2>/);
     assert.doesNotMatch(chapter, /<p>第1章[\s　]*新工作<\/p>/);
     assert.match(chapter, /<p>门铃响了两次。<\/p>/);
     assert.match(packageFile, /po18-epub-style" content="style3"/);
     assert.match(packageFile, /idref="cover-page" properties="duokan-page-fullscreen"/);
-    assert.match(packageFile, /idref="volume-1" properties="duokan-page-fullscreen"/);
-    assert.match(packageFile, /href="Images\/style3-volume-1\.jpg" media-type="image\/jpeg"/);
+    assert.match(packageFile, /<itemref idref="volume-1"\/>/);
+    assert.doesNotMatch(packageFile, /Images\/style3-volume-|idref="volume-1" properties=/);
     assert.match(packageFile, /href="Fonts\/style3-stsongti-bold\.ttf" media-type="application\/x-font-ttf"/);
     assert.match(packageFile, /href="Images\/style3-reader-mark\.png" media-type="image\/png"/);
-    assert.match(toc, /<navLabel><text>书封<\/text><\/navLabel><content src="Text\/cover\.xhtml"\/>/);
+    assert.doesNotMatch(toc, /<text>书封<\/text>/);
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 新工作<\/text>/);
-    assert.equal(listEpubStyles().find((style) => style.id === "style3")?.name, "疏影横斜");
+    assert.equal(listEpubStyles().find((style) => style.id === "style3")?.name, "空门夜雨");
 });
 
 test("style2 EPUB does not add a volume page when chapter data has no volume row", async () => {

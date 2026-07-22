@@ -140,7 +140,7 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、独立 EPUB CSS/XHTML 模板、内置章头资产、Admin API 及父级传入的样式配置模型
+ * [INPUT]: 依赖 Vue、独立 EPUB CSS/XHTML 模板、内置字体/图标/章头资产、Admin API 及父级传入的样式配置模型
  * [OUTPUT]: 提供 EPUB 样式选择、完整 CSS/页面骨架查看、与导出同构的实时预览、参数编辑和精简资产替换界面
  * [POS]: admin-ui/src/components 的导出样式工作台，由 TelegramView 组合进导出配置流程并承担配置与最终 EPUB 视觉契约的一致性反馈
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -151,12 +151,9 @@ import style1AshengFont from "../../../bot/epub-styles/assets/style1-asheng.ttf"
 import style1FzLantingFont from "../../../bot/epub-styles/assets/style1-fzlanting.ttf";
 import style1SourceHanFont from "../../../bot/epub-styles/assets/style1-source-han-serif-bold.otf";
 import style1StKaitiFont from "../../../bot/epub-styles/assets/style1-stkaiti.ttf";
-import style3PlumShadow from "../../../bot/epub-styles/assets/style3-plum-shadow.svg";
-import style3RobotoNumbersFont from "../../../bot/epub-styles/assets/style3-roboto-medium-numbers.ttf";
 import style3ReaderMark from "../../../bot/epub-styles/assets/style3-reader-mark.png";
 import style3StKaitiFont from "../../../bot/epub-styles/assets/style3-stkaiti.ttf";
 import style3StSongtiFont from "../../../bot/epub-styles/assets/style3-stsongti-bold.ttf";
-import style3VolumeArt from "../../../bot/epub-styles/assets/style3-volume-1.jpg";
 import style1Css from "../../../assets/epub-templates/style1.css?raw";
 import style1ChapterTemplate from "../../../assets/epub-templates/style1-chapter.xhtml?raw";
 import style1ColophonTemplate from "../../../assets/epub-templates/style1-colophon.xhtml?raw";
@@ -253,12 +250,12 @@ const previewLabel = computed(() => previewPages.value.find((item) => item.id ==
 const previewTitle = computed(() => {
     if (isStyle1.value) return "江湖纸卷预览";
     if (isStyle2.value) return "老二次元预览";
-    return "疏影横斜预览";
+    return "空门夜雨预览";
 });
 const effectiveCssHint = computed(() =>
     isStyle2.value
         ? "只读预览；内置基础 CSS 与追加 CSS 已合并，保存后用于下一次 EPUB 导出。"
-        : `只读预览；内容与${isStyle3.value ? "疏影横斜" : "江湖纸卷"}内置样式包 CSS 保持一致。`
+        : `只读预览；内容与${isStyle3.value ? "空门夜雨" : "江湖纸卷"}内置样式包 CSS 保持一致。`
 );
 const effectiveTemplate = computed(
     () =>
@@ -356,16 +353,12 @@ const style2EffectiveCss = computed(() => resolveStyle2Css((slot) => style2EpubA
 const style2PreviewCss = computed(() => `${resolveStyle2Css(assetUrl)}\nhtml,body{min-height:100%;}`.replace(/<\/style/gi, "<\\/style"));
 const style3PreviewCss = `${style3Css
     .replace("../Fonts/style3-stkaiti.ttf", style3StKaitiFont)
-    .replace("../Fonts/style3-stsongti-bold.ttf", style3StSongtiFont)
-    .replace("../Fonts/style3-roboto-medium-numbers.ttf", style3RobotoNumbersFont)}
+    .replace("../Fonts/style3-stsongti-bold.ttf", style3StSongtiFont)}
 html,body{height:100%;min-height:100%;}
-body.style3-cover-preview{box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:1.5em;background:#f2efe9;}
-.style3-cover-card{position:relative;box-sizing:border-box;width:100%;min-height:90%;overflow:hidden;padding:3em 1.5em 2em;border:1px solid #d9d4cd;background:#fcfbf7;text-align:left;box-shadow:0 14px 30px rgba(71,66,60,.12);}
-.style3-cover-branch{width:112%;max-width:none;margin:-2em -18% 2.2em 5%;opacity:.72;}
-.style3-cover-kicker{margin:0;color:#8c8780;font:500 .66em/1.4 "PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:.26em;text-indent:0;duokan-text-indent:0;text-align:left;}
-.style3-cover-card h1{max-width:8em;margin:.9em 0 .65em;color:#252321;font-size:1.72em;font-weight:600;line-height:1.52;letter-spacing:.1em;text-align:left;}
-.style3-cover-author{margin:0;color:#6f6962;font-size:.82em;letter-spacing:.08em;text-indent:0;duokan-text-indent:0;text-align:left;}
-.style3-cover-note{position:absolute;right:1.7em;bottom:1.8em;color:#99938b;font-size:.66em;line-height:1.5;text-align:right;}
+body.style3-cover-preview{box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:1.5em;background:#f4f4f4;}
+.style3-cover-card{box-sizing:border-box;display:flex;width:76%;min-height:88%;flex-direction:column;justify-content:flex-end;padding:2.2em 1.6em;border:1px solid #171717;background:#fff;box-shadow:0 12px 28px rgba(0,0,0,.12);}
+.style3-cover-card h1{margin:0 0 .8em;padding:0 0 .65em;border-bottom:1px solid #000;color:#000;font-family:"STSongti-TC-Bold",serif;font-size:1.7em;line-height:1.5;text-align:left;}
+.style3-cover-author{margin:0;color:#555;font-size:.82em;text-indent:0;duokan-text-indent:0;text-align:right;}
 `.replace(/<\/style/gi, "<\\/style");
 const effectiveCss = computed(() => {
     if (isStyle1.value) return style1Css.trim();
@@ -473,9 +466,8 @@ const style2PreviewBody = computed(() => {
 const style3PreviewBody = computed(() => {
     const title = "示例书名";
     const author = "示例作者";
-    const branch = (className) => `<img alt="" class="style3-art ${className}" src="${style3PlumShadow}"/>`;
     if (previewPage.value === "title") {
-        return `<body class="style3-cover-preview"><div class="style3-cover-card">${branch("style3-cover-branch")}<p class="style3-cover-kicker">PO18 READER</p><h1>${title}</h1><p class="style3-cover-author">${author} · 著</p><small class="style3-cover-note">正式导出时<br/>使用当前书籍封面</small></div></body>`;
+        return `<body class="style3-cover-preview"><div class="style3-cover-card"><h1>${title}</h1><p class="style3-cover-author">${author} · 著</p></div></body>`;
     }
     if (previewPage.value === "colophon") {
         if (!model.value.includeColophon) {
@@ -493,17 +485,15 @@ const style3PreviewBody = computed(() => {
     if (previewPage.value === "intro") {
         return renderPreviewTemplate(style3IntroTemplate, {
             TITLE: escapeHtml(model.value.introTitle),
-            CONTENT: previewParagraphs("这里展示导出时写入的作品简介内容。\n\n段落、缩进和字体会使用当前样式的完整 CSS。")
+            CONTENT: previewParagraphs(
+                "这里展示导出时写入的作品简介内容。\n\n段落、缩进和字体会使用当前样式的完整 CSS。",
+                "copyright-text"
+            )
         });
     }
     if (previewPage.value === "volume") {
         return renderPreviewTemplate(style3VolumeTemplate, {
-            NUMBER: "第一部",
-            TITLE: "少年游",
-            TITLE_LINES: '<tspan x="150" dy="0">少年游</tspan>',
-            PART_Y: "730",
-            PART: "I",
-            ART: `<image width="1536" height="2048" xlink:href="${style3VolumeArt}"/>`
+            HEADING: "第一辑　少年游"
         });
     }
     return renderPreviewTemplate(style3ChapterTemplate, {
