@@ -12,12 +12,15 @@ test("committed schema snapshot exactly matches the forward migration chain", ()
     const result = checkSchemaDrift();
     assert.deepEqual(result.errors, []);
     assert.equal(result.ok, true);
-    assert.equal(result.actual.latest, "024_chapter_order_uniqueness");
-    assert.equal(result.actual.migration_count, 23);
+    assert.equal(result.actual.latest, "025_reader_daily_chapter_quota");
+    assert.equal(result.actual.migration_count, 24);
     assert.equal(result.actual.aggregate_sha256.length, 64);
 });
 
 test("runtime source contains no application schema DDL outside migrations", () => {
     assert.deepEqual(unexpectedRuntimeDdl(), []);
-    assert.equal(migrationSnapshot().migrations.every((row) => row.sha256.length === 64), true);
+    assert.equal(
+        migrationSnapshot().migrations.every((row) => row.sha256.length === 64),
+        true
+    );
 });

@@ -167,6 +167,101 @@ test("reader bot admin grants are owner-only, explicit and reasoned", async () =
     );
 });
 
+test("admin users expose and update daily chapter reading limits", async () => {
+    const calls = [];
+    let currentLimit = 20;
+    const router = createAdminContentRoutes(
+        baseDeps({
+            publicAdminReaderUser: (user) => user,
+            query: async (sql, params = []) => {
+                calls.push({ sql, params });
+                if (/SELECT u\.id, u\.username/.test(sql)) {
+                    return { rows: [{ id: 42, username: "reader", daily_chapter_limit: currentLimit, chapters_read_today: 7 }] };
+                }
+                if (/INSERT INTO reader_users/.test(sql)) {
+                    currentLimit = params[8];
+                    return { rows: [{ id: 43, username: params[0], nickname: params[3], daily_chapter_limit: currentLimit }] };
+                }
+                if (/SELECT id, telegram_id, copper_coins/.test(sql)) {
+                    return {
+                        rows: [
+                            {
+                                id: 42,
+                                telegram_id: "100",
+                                copper_coins: 0,
+                                silver_coins: 0,
+                                scholar_exp: 0,
+                                daily_chapter_limit: currentLimit
+                            }
+                        ]
+                    };
+                }
+                if (/UPDATE reader_users SET nickname=/.test(sql)) {
+                    currentLimit = params[6];
+                    return { rows: [{ id: 42, username: "reader", daily_chapter_limit: params[6] }] };
+                }
+                throw new Error(`unexpected SQL: ${sql}`);
+            }
+        })
+    );
+
+    await withApp(router, async (base) => {
+        const listed = await fetch(`${base}/admin-api/users`, { headers: { "X-Test-Admin": "1" } });
+        assert.equal(listed.status, 200);
+        assert.equal((await listed.json()).rows[0].chapters_read_today, 7);
+
+        const updated = await fetch(`${base}/admin-api/users/42`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({
+                nickname: "reader",
+                avatar_url: "",
+                library_access: true,
+                copper_coins: 0,
+                silver_coins: 0,
+                scholar_exp: 0,
+                daily_chapter_limit: 35
+            })
+        });
+        assert.equal(updated.status, 200);
+        assert.equal((await updated.json()).user.daily_chapter_limit, 35);
+
+        const preserved = await fetch(`${base}/admin-api/users/42`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({
+                nickname: "reader",
+                avatar_url: "",
+                library_access: true,
+                copper_coins: 0,
+                silver_coins: 0,
+                scholar_exp: 0
+            })
+        });
+        assert.equal(preserved.status, 200);
+        assert.equal((await preserved.json()).user.daily_chapter_limit, 35);
+
+        const created = await fetch(`${base}/admin-api/users`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ username: "reader2", password: "secret1", nickname: "reader2" })
+        });
+        assert.equal(created.status, 200);
+        assert.equal((await created.json()).user.daily_chapter_limit, 500);
+    });
+
+    const listQuery = calls.find((call) => /FROM reader_chapter_usage/.test(call.sql));
+    assert.ok(listQuery);
+    assert.deepEqual(listQuery.params, ["2026-06-05"]);
+    const updates = calls.filter((call) => /UPDATE reader_users SET nickname=/.test(call.sql));
+    assert.deepEqual(
+        updates.map((call) => call.params[6]),
+        [35, 35]
+    );
+    const insert = calls.find((call) => /INSERT INTO reader_users/.test(call.sql));
+    assert.equal(insert.params[8], 500);
+});
+
 test("admin content routes protect and expose cdks, transactions and crowd data", async () => {
     const router = createAdminContentRoutes(
         baseDeps({

@@ -133,16 +133,6 @@ export default {
         contentNode = h('span', { class: 'content-text', ...dataAttrs }, this.paragraphText(a))
       }
 
-      const children = [contentNode]
-      if (a.tsukkomi_num > 0) {
-        children.push(
-          h('span', { class: 'tssukomi', onClick: () => this.$emit('showTsu', i, a.tsukkomi_num) }, [
-            String(a.tsukkomi_num),
-            h('i', [h('cite')])
-          ])
-        )
-      }
-
       return h(
         'p',
         {
@@ -155,7 +145,7 @@ export default {
           style: paragraphStyle,
           ...dataAttrs
         },
-        children
+        [contentNode]
       )
     })
 

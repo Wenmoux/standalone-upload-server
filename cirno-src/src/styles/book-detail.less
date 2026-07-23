@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 BookDetail.vue 的详情、目录、书评语义类名与 Reader 主题 CSS 变量
- * [OUTPUT]: 对外提供书籍详情页的桌面、窄屏和交互状态视觉规则
+ * [INPUT]: 依赖 BookDetail.vue 的详情、目录、书评及举报表单语义类名与 Reader 主题 CSS 变量
+ * [OUTPUT]: 对外提供书籍详情页、非阻塞举报表单的桌面、窄屏和交互状态视觉规则
  * [POS]: Reader styles 的单书详情视觉边界，不参与目录、书架或书评业务状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -646,6 +646,30 @@
     left: 50%;
     display: flex;
     justify-content: space-between;
+  }
+}
+
+.review-report-dialog {
+  display: grid;
+  gap: 10px;
+  label {
+    margin-top: 4px;
+    color: var(--reader-text-color, #20242a);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .review-report-count {
+    color: var(--reader-muted-color, #69727d);
+    font-size: 12px;
+    text-align: right;
+  }
+  .review-report-error {
+    padding: 9px 11px;
+    border: 1px solid #efc0bd;
+    border-radius: 6px;
+    color: #a33a32;
+    background: #fff3f2;
+    font-size: 13px;
   }
 }
 

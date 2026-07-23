@@ -43,6 +43,7 @@ test("API token service stores hashes and enforces scopes and source IP", async 
 test("Bot request scope separates admin currency from normal rewards", () => {
     assert.equal(botScopeForRequest({ method: "GET", path: "/bot-api/commands" }), "bot:read");
     assert.equal(botScopeForRequest({ method: "POST", path: "/bot-api/jobs" }), "bot:export");
+    assert.equal(botScopeForRequest({ method: "GET", path: "/bot-api/books/b1/chapters/export" }), "bot:export");
     assert.equal(botScopeForRequest({ method: "GET", path: "/bot-api/users/1/po18/credentials" }), "bot:po18");
     assert.equal(botScopeForRequest({ method: "PATCH", path: "/bot-api/users/1/currency", body: {} }), "bot:admin");
     assert.equal(botScopeForRequest({ method: "PATCH", path: "/bot-api/users/1/currency", body: { type: "po18_bookshelf_share_reward" } }), "bot:user");

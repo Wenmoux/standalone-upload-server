@@ -11,6 +11,15 @@ const { DEFAULT_STYLE2_CONFIG, STYLE2_BASE_CSS } = require("../services/epub-sty
 function createAdminConfigRoutes(options = {}) {
     const router = express.Router();
     const requireAdmin = options.requireAdmin || ((req, res, next) => next());
+    const requireOwner =
+        options.requireOwner ||
+        ((req, res, next) => {
+            const role = String(req.session?.adminUser?.role || "owner")
+                .trim()
+                .toLowerCase();
+            if (role !== "owner") return res.status(403).json({ error: "仅 owner 可以修改 Telegram 凭据" });
+            next();
+        });
     const configGet = options.configGet || (async () => "");
     const configSet = options.configSet || (async () => {});
     const telegramLoginBotIdFromToken = options.telegramLoginBotIdFromToken || (() => "");
@@ -44,7 +53,8 @@ function createAdminConfigRoutes(options = {}) {
             res.json({
                 enabled: pushConfig.enabled,
                 pushTypes: pushConfig.pushTypes,
-                botToken: storedToken,
+                botTokenConfigured: !!effectiveToken,
+                botTokenLast4: effectiveToken ? String(effectiveToken).slice(-4) : "",
                 chatId: await configGet("telegram_chat_id"),
                 dailyReportEnabled: reportConfig.enabled,
                 dailyReportTime: reportConfig.time,
@@ -62,14 +72,19 @@ function createAdminConfigRoutes(options = {}) {
         }
     });
 
-    router.put("/admin-api/config/telegram", requireAdmin, async (req, res, next) => {
+    router.put("/admin-api/config/telegram", requireAdmin, requireOwner, async (req, res, next) => {
         try {
             const selectedPushTypes = Object.prototype.hasOwnProperty.call(req.body || {}, "pushTypes")
                 ? parseTelegramPushTypes(req.body.pushTypes)
                 : (await telegramPushConfig()).pushTypes;
             await configSet("telegram_enabled", req.body.enabled ? "1" : "0");
             await configSet("telegram_push_types", JSON.stringify(selectedPushTypes));
-            await configSet("telegram_bot_token", req.body.botToken || "");
+            if (req.body?.clearBotToken === true) {
+                await configSet("telegram_bot_token", "");
+            } else if (Object.prototype.hasOwnProperty.call(req.body || {}, "botToken")) {
+                const nextToken = String(req.body.botToken || "").trim();
+                if (nextToken) await configSet("telegram_bot_token", nextToken);
+            }
             await configSet("telegram_chat_id", req.body.chatId || "");
             if ("dailyReportEnabled" in (req.body || {}))
                 await configSet("telegram_daily_report_enabled", req.body.dailyReportEnabled ? "1" : "0");

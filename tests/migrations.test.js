@@ -16,8 +16,20 @@ const {
     executeMigrationSql,
     listMigrationFiles,
     listRollbackFiles,
+    normalizeRollbackRequest,
     verifyMigrationChecksum
 } = require("../pg-store");
+
+test("rollback request rejects ambiguous step counts before opening a database transaction", () => {
+    assert.deepEqual(normalizeRollbackRequest({ steps: 2 }), { safeSteps: 2, targetVersion: "" });
+    assert.deepEqual(normalizeRollbackRequest({ steps: "not-used", toVersion: "024_chapter_order_uniqueness" }), {
+        safeSteps: 0,
+        targetVersion: "024_chapter_order_uniqueness"
+    });
+    for (const value of [NaN, Infinity, 0, -1, 1.5, 51, "abc"]) {
+        assert.throws(() => normalizeRollbackRequest({ steps: value }), /integer between 1 and 50/);
+    }
+});
 
 test("migration files use sortable versioned names", async () => {
     const files = await listMigrationFiles();
@@ -84,17 +96,19 @@ test("legacy migration history adopts the consolidated baseline without executin
             queries.push({ sql, params });
             if (/to_regclass/.test(sql)) {
                 return {
-                    rows: [{
-                        table_0: true,
-                        table_1: true,
-                        table_2: true,
-                        table_3: true,
-                        table_4: true,
-                        table_5: true,
-                        table_6: true,
-                        table_7: true,
-                        table_8: true
-                    }]
+                    rows: [
+                        {
+                            table_0: true,
+                            table_1: true,
+                            table_2: true,
+                            table_3: true,
+                            table_4: true,
+                            table_5: true,
+                            table_6: true,
+                            table_7: true,
+                            table_8: true
+                        }
+                    ]
                 };
             }
             return { rows: [] };
@@ -232,6 +246,14 @@ test("chapter order uniqueness migration repairs duplicates by chapter id before
     assert.match(sql, /CREATE UNIQUE INDEX idx_pg_chapter_cache_book_order_unique/);
     assert.match(sql, /WHERE chapter_order > 0/);
     assert.doesNotMatch(sql, /NOT IN \('qidian'/);
+});
+
+test("reader daily chapter quota migration stores per-user limits and deduplicated daily reads", async () => {
+    const sql = await fs.readFile(path.join(__dirname, "..", "db", "migrations", "025_reader_daily_chapter_quota.sql"), "utf8");
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS daily_chapter_limit INTEGER NOT NULL DEFAULT 500/);
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS reader_chapter_usage/);
+    assert.match(sql, /PRIMARY KEY \(user_id, read_date, book_id, chapter_id\)/);
+    assert.match(sql, /REFERENCES reader_users\(id\) ON DELETE CASCADE/);
 });
 
 test("book manifest migration adds validated checksums without changing identity keys", async () => {

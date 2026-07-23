@@ -2,7 +2,7 @@
 
 > 文档状态：历史评估与实施复核快照。第 1–18 节保留 2026-07-11 评估当时的风险、评分与建议，第 0 节记录 2026-07-12 的一次实施复核；两者都不会随代码自动更新，不能代替当前运行文档。
 >
-> 当前事实优先级：代码/测试 → 运行时 `/openapi.json` → [README](README.md)、[Docker 手册](DOCKER.md) 与 [docs/](docs/README.md) → [API 说明](API.md) 与 [迁移手册](db/MIGRATIONS.md) → [优化进度快照](V2_OPTIMIZATION_PROGRESS.md) 与本报告。阶段变化见 [更新记录](PROJECT_UPDATE_LOG.md)。
+> 当前事实优先级：代码/测试 → 运行时 `/openapi.json` → [README](README.md)、[Docker 手册](DOCKER.md) 与 [docs/](docs/README.md) → [API 说明](API.md) 与 [迁移手册](db/MIGRATIONS.md) → [2026-07-23 综合审计报告](PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md) → [优化进度快照](V2_OPTIMIZATION_PROGRESS.md) 与本报告。阶段变化见 [更新记录](PROJECT_UPDATE_LOG.md)。
 >
 > 评估日期：2026-07-11
 > 评估对象：单镜像部署、PostgreSQL 后端、Reader、Admin/Setup、Telegram Bot、PO18 Crawler、Legado 书源及运维工具

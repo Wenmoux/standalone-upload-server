@@ -62,6 +62,7 @@ rate-limit.js: 进程内限流原语，按请求身份维护时间窗并生成�
 reader-rum.js: Reader RUM 服务，清洗前端性能事件、批量落库并输出路由与指标聚合。
 reader-account.js: Reader 账户生命周期服务，以事务锁定 CDK、处理密码/Telegram 身份唯一键竞争，并原子结算 Bot 注册赠送、邀请计数与强类型批量导入。
 reader-check-in.js: Reader 签到用例服务，在用户行锁事务内统一结算签到周期、余额、学者经验和全部奖励流水。
+reader-chapter-quota.js: Reader 正文配额服务，以用户行锁串行同账号请求，并用“日期+书籍+章节”唯一账本保证重复读取不扣次数、批量越限不部分提交。
 remote-backups.js: WebDAV/S3/R2 远端备份适配器，负责签名上传、加密文件选择、状态和保留策略。
 red-packets.js: 红包聚合根，以稳定操作键、红包/用户有序行锁和单事务维护创建、定向结算、重复领取恢复及过期退款。
 review-governance.js: 书评治理领域服务，处理举报阈值、隐藏状态、申诉和审核决议事务。

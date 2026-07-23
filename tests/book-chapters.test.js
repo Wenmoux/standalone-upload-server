@@ -77,6 +77,35 @@ function makeService(overrides = {}) {
     return { service, calls };
 }
 
+test("book chapter service keeps content export paged and derives stable text", async () => {
+    const calls = [];
+    const { service } = makeService({
+        query: async (sql, params = []) => {
+            calls.push({ sql, params });
+            return {
+                rows: [
+                    { chapter_id: "c2", html: "<p>two</p>", text: "" },
+                    { chapter_id: "c3", html: "<p>three</p>", text: "" },
+                    { chapter_id: "c4", html: "<p>four</p>", text: "" }
+                ]
+            };
+        }
+    });
+
+    const payload = await service.listChapters("b1", { includeContent: true, limit: 2, offset: 1 });
+    assert.deepEqual(
+        payload.rows.map((row) => ({ id: row.chapter_id, text: row.text })),
+        [
+            { id: "c2", text: "two" },
+            { id: "c3", text: "three" }
+        ]
+    );
+    assert.equal(payload.has_more, true);
+    assert.equal(payload.next_offset, 3);
+    assert.match(calls[0].sql, /LIMIT \$2 OFFSET \$3/);
+    assert.deepEqual(calls[0].params, ["b1", 3, 1]);
+});
+
 test("book chapter service upserts book metadata and records event", async () => {
     const { service, calls } = makeService({
         bookColumns: [

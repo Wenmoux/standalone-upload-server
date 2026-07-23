@@ -28,6 +28,8 @@ SOURCE_FONT = REMIX_ROOT / "remixicon.woff2"
 def used_classes():
     names = set()
     for path in SOURCE_ROOT.rglob("*"):
+        if OUTPUT_ROOT in path.parents:
+            continue
         if path.suffix.lower() not in {".vue", ".js", ".css", ".less"}:
             continue
         names.update(re.findall(r"\bri-[a-z0-9-]+", path.read_text(encoding="utf-8")))

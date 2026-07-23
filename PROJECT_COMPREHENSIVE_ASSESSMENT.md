@@ -2,7 +2,7 @@
 
 > 文档状态：已归档。本报告生成于 2026-06-06，只用于追溯当时架构、风险判断与决策，正文中的版本、行数、测试数、功能缺口和建议均不是当前状态。
 >
-> 当前事实优先级：代码/测试 → 运行时 `/openapi.json` → [README](README.md)、[Docker 手册](DOCKER.md) 与 [docs/](docs/README.md) → [API 说明](API.md) 与 [迁移手册](db/MIGRATIONS.md)。后续评估过程见 [2026-07-11 综合报告](PROJECT_COMPREHENSIVE_IMPROVEMENT_REPORT_2026-07-11.md)、[v2.0 优化快照](V2_OPTIMIZATION_PROGRESS.md) 与 [更新记录](PROJECT_UPDATE_LOG.md)。
+> 当前事实优先级：代码/测试 → 运行时 `/openapi.json` → [README](README.md)、[Docker 手册](DOCKER.md) 与 [docs/](docs/README.md) → [API 说明](API.md) 与 [迁移手册](db/MIGRATIONS.md)。后续评估过程见 [2026-07-23 综合审计报告](PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md)、[2026-07-11 综合报告](PROJECT_COMPREHENSIVE_IMPROVEMENT_REPORT_2026-07-11.md)、[v2.0 优化快照](V2_OPTIMIZATION_PROGRESS.md) 与 [更新记录](PROJECT_UPDATE_LOG.md)。
 
 生成日期：2026-06-06
 

@@ -42,6 +42,8 @@ test("admin navigation is grouped and mobile shell exposes current page semantic
 test("admin tables and dialogs preserve keyboard and screen-reader contracts", () => {
     const table = source("components/DataTable.vue");
     const formModal = source("components/FormModal.vue");
+    assert.match(formModal, /:min="field\.min"/);
+    assert.match(formModal, /:max="field\.max"/);
     const confirmDialog = source("components/ConfirmDialog.vue");
     const focus = source("utils/dialogFocus.js");
     assert.match(table, /scope="col"/);

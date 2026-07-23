@@ -89,6 +89,12 @@
                         ><br />
                         <small>额外次数 {{ number(row.export_extra_quota || 0) }}</small>
                     </template>
+                    <template #cell-reading="{ row }">
+                        今日 {{ number(row.chapters_read_today || 0) }} 章<br />
+                        <small
+                            >上限 {{ number(row.daily_chapter_limit || 0) > 0 ? `${number(row.daily_chapter_limit)} 章` : "不限" }}</small
+                        >
+                    </template>
                     <template #cell-sign="{ row }"
                         >第 {{ number(row.sign_cycle_day) }} 天<br /><small>{{ dateOnly(row.last_sign_date) }}</small></template
                     >
@@ -133,8 +139,8 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、DataTable/FormModal、用户 Admin API、当前后台角色、格式化工具与全局确认/输入/提示服务
- * [OUTPUT]: 提供 Reader 用户筛选、账号/权限/会员/余额维护、owner 管理员切换和带原因删除页面
- * [POS]: admin-ui/src/views 的用户生命周期管理视图，会员与 Reader/Bot 管理员授权均由服务端最终裁决
+ * [OUTPUT]: 提供 Reader 用户筛选、账号/权限/会员/余额/每日阅读上限维护、owner 管理员切换和带原因删除页面
+ * [POS]: admin-ui/src/views 的用户生命周期与正文配额管理视图，会员、阅读上限和 Reader/Bot 管理员授权均由服务端最终裁决
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { inject, onMounted, reactive, ref } from "vue";
@@ -160,6 +166,7 @@ const columns = [
     { key: "library", label: "书库" },
     { key: "coins", label: "货币" },
     { key: "scholar", label: "等级/免费" },
+    { key: "reading", label: "阅读配额" },
     { key: "sign", label: "签到" },
     { key: "time", label: "时间" },
     { key: "actions", label: "操作" }
@@ -170,7 +177,8 @@ const baseFields = [
     { key: "avatar_url", label: "头像URL" },
     { key: "copper_coins", label: "铜币", type: "number" },
     { key: "silver_coins", label: "银币", type: "number" },
-    { key: "scholar_exp", label: "书卷经验", type: "number" }
+    { key: "scholar_exp", label: "书卷经验", type: "number" },
+    { key: "daily_chapter_limit", label: "每日阅读章节上限（0 为不限）", type: "number", min: 0, max: 100000 }
 ];
 const checks = [{ key: "library_access", label: "允许访问书库" }];
 const userFields = ref(baseFields);
@@ -226,6 +234,7 @@ function openEditor(row = null) {
         copper_coins: row?.copper_coins || 0,
         silver_coins: row?.silver_coins || 0,
         scholar_exp: row?.scholar_exp || 0,
+        daily_chapter_limit: row ? row.daily_chapter_limit || 0 : 500,
         reason: "",
         library_access: row?.library_access !== false
     };
@@ -242,6 +251,7 @@ async function save(form) {
         copper_coins: Number(form.copper_coins || 0),
         silver_coins: Number(form.silver_coins || 0),
         scholar_exp: Number(form.scholar_exp || 0),
+        daily_chapter_limit: Number(form.daily_chapter_limit || 0),
         library_access: form.library_access !== false
     };
     if (!modal.id) {

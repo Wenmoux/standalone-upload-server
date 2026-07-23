@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Fetch/URLSearchParams、server-pg 的 Bot/Reader/Upload HTTP 契约和环境中的服务地址与 Bot Token
- * [OUTPUT]: 对外提供 PgBotClient 统一 HTTP 客户端、动态平台读取、管理员广播任务/收件人分页，以及 Telegram 用户显示名和邀请参数解析工具
+ * [OUTPUT]: 对外提供 PgBotClient 统一 HTTP 客户端、动态平台读取、Bot 鉴权正文分页、管理员广播任务/收件人分页，以及 Telegram 用户显示名和邀请参数解析工具
  * [POS]: bot 到 server-pg 的唯一业务数据访问层，封装鉴权、超时、缓存、幂等键与分页聚合，禁止直连 PostgreSQL
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -342,8 +342,8 @@ class PgBotClient {
         let offset = 0;
         while (rows.length < maxRows) {
             const limit = Math.min(this.exportPageSize, maxRows - rows.length);
-            const query = new URLSearchParams({ includeContent: "1", limit: String(limit), offset: String(offset) });
-            const page = await this.request(`/reader-api/books/${encodedBookId}/chapters?${query.toString()}`);
+            const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+            const page = await this.request(`/bot-api/books/${encodedBookId}/chapters/export?${query.toString()}`);
             const pageRows = Array.isArray(page.rows) ? page.rows : [];
             rows.push(...pageRows.slice(0, limit));
             if (!pageRows.length || !page.has_more || pageRows.length < limit) break;

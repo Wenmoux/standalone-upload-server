@@ -46,10 +46,8 @@ export default {
     },
     windowSizeHandler() {
       if (!this.contentDiv) return
-      const windowWidth = window.innerWidth
       const contentWidth = this.contentDiv.clientWidth
       this.controlBarLeftMargin = -(contentWidth / 2 + 96)
-      this.tsukkomiRight = (windowWidth - contentWidth) / 2
     },
     markReadingStart() {
       this.readingStartedAt = Date.now()
@@ -72,16 +70,10 @@ export default {
     toChapterTop() {
       this.$refs.book.scrollTo(0, 0)
     },
-    toTsukkomiTop() {
-      this.$refs.tsukkomi.scrollTo(0, 0)
-    },
     switchChapter(cid) {
-      this.showTsukkomi = false
       this.loading = 0
       this.toChapterTop()
-      this.toTsukkomiTop()
       if (this.containerScroll) this.containerScroll.destroy()
-      if (this.tsukkomiScroll) this.tsukkomiScroll.destroy()
       this.getContent(cid)
       this.$router.replace({ query: { bid: this.bid, cid } })
     },
@@ -98,10 +90,8 @@ export default {
     jumpChapter(cid) {
       const targetChapter = this.book_chapters.find(chapter => String(chapter.chapter_id) === String(cid))
       if (this.isVolumeChapter(targetChapter)) return
-      this.showTsukkomi = false
       this.loading = 0
       this.toChapterTop()
-      this.toTsukkomiTop()
       if (this.containerScroll) this.containerScroll.destroy()
       this.getContent(cid)
       this.$router.replace({ query: { bid: this.bid, cid } })

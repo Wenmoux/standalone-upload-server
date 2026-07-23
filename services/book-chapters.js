@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 chapter-title-cleaner 的标题规范化规则和注入的 PostgreSQL query/事务能力
- * [OUTPUT]: 对外提供书籍与章节写入、保留来源缺口的全平台唯一顺序移动、可选时间规范化、查询、排序及正文派生能力的领域服务工厂
+ * [OUTPUT]: 对外提供书籍与章节写入、受控分页读取、保留来源缺口的全平台唯一顺序移动、可选时间规范化、排序及正文派生能力的领域服务工厂
  * [POS]: services 的书库持久化核心，为 Upload、Reader、Admin 与 Bot 统一字段类型，并隔离保留显式顺序语义的 order-only 与正文写入路径
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -151,6 +151,40 @@ function createBookChapterService(options = {}) {
         const htmlLines = htmlText.split(/\n/).filter((line) => line.trim()).length;
         if (htmlParagraphs > 1 && storedLines <= 1 && htmlLines > 1) return htmlText;
         return storedText;
+    }
+
+    async function listChapters(bookId, options = {}) {
+        const normalizedBookId = String(bookId || "").trim();
+        if (!normalizedBookId) throw Object.assign(new Error("book id is required"), { status: 400, code: "BOOK_ID_REQUIRED" });
+        const includeContent = options.includeContent === true;
+        const requestedLimit = Number(options.limit);
+        const paged = Number.isFinite(requestedLimit) && requestedLimit > 0;
+        const limit = paged ? Math.min(500, Math.max(1, Math.floor(requestedLimit))) : 0;
+        const requestedOffset = Number(options.offset);
+        const offset = paged && Number.isFinite(requestedOffset) && requestedOffset > 0 ? Math.floor(requestedOffset) : 0;
+        const fetchLimit = paged ? limit + 1 : 0;
+        const result = await query(
+            `SELECT id, book_id, chapter_id, title, chapter_order, uploader, "uploaderId",
+                    platform, COALESCE(is_volume, FALSE) AS is_volume,
+                    created_at, updated_at, LENGTH(COALESCE(html, ''))::int html_length
+                    ${includeContent ? ", html, text" : ""}
+             FROM chapter_cache
+             WHERE book_id = $1
+             ORDER BY ${chapterListOrderSql()}
+             ${paged ? "LIMIT $2 OFFSET $3" : ""}`,
+            paged ? [normalizedBookId, fetchLimit, offset] : [normalizedBookId]
+        );
+        const hasMore = paged && result.rows.length > limit;
+        const visibleRows = hasMore ? result.rows.slice(0, limit) : result.rows;
+        if (includeContent) {
+            for (const row of visibleRows) row.text = chapterText(row);
+        }
+        const payload = { rows: visibleRows, total: visibleRows.length };
+        if (paged) {
+            payload.has_more = hasMore;
+            payload.next_offset = hasMore ? offset + visibleRows.length : null;
+        }
+        return payload;
     }
 
     function safeTxtFilename(value = "book") {
@@ -545,6 +579,7 @@ function createBookChapterService(options = {}) {
         chapterText,
         cleanPatch,
         isCacheCountSort,
+        listChapters,
         safeTxtFilename,
         saveChapter,
         textFromHtml,

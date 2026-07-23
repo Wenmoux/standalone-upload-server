@@ -1,6 +1,6 @@
 <!--
  * [INPUT]: 依赖 book-detail.less、HTTP 适配器、平台/主题/session 工具、VirtualList、书籍目录与书评 API
- * [OUTPUT]: 对外提供 BookDetail 详情、目录、书架、书评及进入阅读页面
+ * [OUTPUT]: 对外提供 BookDetail 详情、目录、书架、书评浏览与非阻塞举报表单及进入阅读页面
  * [POS]: Reader views 的单书组合页，协调公开元数据和受会话保护的个人操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  -->
@@ -147,7 +147,7 @@
               <div>
                 <div class="section-title">书评</div>
                 <div class="section-subtitle">
-                  共 {{ reviewTotal }} 条，发布入口在 Telegram Bot：/review {{ bid }} 内容
+                  共 {{ reviewTotal }} 条；发布书评请在 Telegram Bot 的书籍卡片中点击“写书评”。
                 </div>
               </div>
               <button class="icon-action" :disabled="reviewLoading" @click="loadReviews(true)" title="刷新书评">
@@ -215,6 +215,38 @@
         <i :class="controlsCollapsed ? 'ri-more-2-fill control-button' : 'ri-arrow-right-s-line control-button'"></i>
       </div>
     </div>
+    <a-modal
+      v-model:open="reportDialogOpen"
+      title="举报书评"
+      ok-text="提交举报"
+      cancel-text="取消"
+      :confirm-loading="!!reportingReviewId"
+      :closable="!reportingReviewId"
+      :mask-closable="!reportingReviewId"
+      :ok-button-props="{ disabled: !reportForm.reason || !!reportingReviewId }"
+      :cancel-button-props="{ disabled: !!reportingReviewId }"
+      @ok="submitReviewReport"
+      @cancel="closeReviewReport"
+    >
+      <div class="review-report-dialog">
+        <label for="review-report-reason">举报原因</label>
+        <a-select id="review-report-reason" v-model:value="reportForm.reason" style="width: 100%">
+          <a-select-option v-for="option in reportReasonOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </a-select-option>
+        </a-select>
+        <label for="review-report-details">补充说明（可选）</label>
+        <a-textarea
+          id="review-report-details"
+          v-model:value="reportForm.details"
+          :rows="5"
+          :maxlength="2000"
+          placeholder="请说明具体问题，避免填写账号、密码等隐私信息"
+        />
+        <div class="review-report-count">{{ Array.from(reportForm.details || '').length }}/2000</div>
+        <div v-if="reportSubmitError" class="review-report-error" role="alert">{{ reportSubmitError }}</div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -250,6 +282,17 @@ export default {
       reviewLoaded: false,
       reviewError: '',
       reportingReviewId: null,
+      reportDialogOpen: false,
+      reportTargetReview: null,
+      reportSubmitError: '',
+      reportForm: { reason: 'other', details: '' },
+      reportReasonOptions: [
+        { value: 'spam', label: '垃圾广告' },
+        { value: 'abuse', label: '辱骂或骚扰' },
+        { value: 'spoiler', label: '恶意剧透' },
+        { value: 'illegal', label: '违法违规内容' },
+        { value: 'other', label: '其他问题' }
+      ],
       collapsedVolumes: {},
       controlsCollapsed: true,
       detailScroll: null,
@@ -501,22 +544,34 @@ export default {
       if (review.author_telegram_username) return `@${review.author_telegram_username}`
       return review.author_nickname || review.nickname || review.author_username || 'reader'
     },
-    async reportReview(review) {
+    reportReview(review) {
       if (!review || this.reportingReviewId) return
-      const rawReason = window.prompt(
-        '举报原因：spam（垃圾）、abuse（辱骂）、spoiler（剧透）、illegal（违法）、other（其他）',
-        'other'
-      )
-      if (rawReason === null) return
-      const reason = String(rawReason || '')
+      this.reportTargetReview = review
+      this.reportForm = { reason: 'other', details: '' }
+      this.reportSubmitError = ''
+      this.reportDialogOpen = true
+    },
+    closeReviewReport() {
+      if (this.reportingReviewId) return
+      this.reportDialogOpen = false
+      this.reportTargetReview = null
+      this.reportSubmitError = ''
+      this.reportForm = { reason: 'other', details: '' }
+    },
+    async submitReviewReport() {
+      const review = this.reportTargetReview
+      if (!review || this.reportingReviewId) return
+      const reason = String(this.reportForm.reason || '')
         .trim()
         .toLowerCase()
       if (!['spam', 'abuse', 'spoiler', 'illegal', 'other'].includes(reason)) {
-        this.$message.warn('举报原因无效')
+        this.reportSubmitError = '请选择有效的举报原因'
         return
       }
-      const details = window.prompt('补充说明（可选）', '')
-      if (details === null) return
+      const details = Array.from(String(this.reportForm.details || '').trim())
+        .slice(0, 2000)
+        .join('')
+      this.reportSubmitError = ''
       this.reportingReviewId = review.id
       try {
         const response = await fetch(`/reader-api/book-reviews/${encodeURIComponent(review.id)}/report`, {
@@ -528,9 +583,12 @@ export default {
         const data = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
         this.$message.success('举报已提交，感谢协助维护书评区')
+        this.reportDialogOpen = false
+        this.reportTargetReview = null
+        this.reportForm = { reason: 'other', details: '' }
         if (data.review_status === 'under_review') await this.loadReviews(true)
       } catch (error) {
-        this.$message.error(error && error.message ? error.message : '举报提交失败')
+        this.reportSubmitError = error && error.message ? error.message : '举报提交失败，请稍后重试'
       } finally {
         this.reportingReviewId = null
       }

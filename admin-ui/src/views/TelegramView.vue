@@ -132,12 +132,36 @@
                     <label class="check-row"><input v-model="form.pushReview" type="checkbox" /><span>书评</span></label>
                 </div>
                 <div class="split">
-                    <label class="field"><span>Bot Token</span><input v-model.trim="form.botToken" placeholder="123456:ABC..." /></label>
+                    <label class="field">
+                        <span>Bot Token</span>
+                        <input
+                            v-model.trim="form.botToken"
+                            type="password"
+                            autocomplete="new-password"
+                            :placeholder="status.botTokenConfigured ? '已配置，留空保持不变' : '输入 BotFather Token'"
+                        />
+                        <small v-if="status.botTokenConfigured">
+                            已配置<span v-if="status.botTokenLast4">，末四位 {{ status.botTokenLast4 }}</span>；后台不会回显完整 Token。
+                        </small>
+                    </label>
                     <label class="field"><span>Chat ID / Channel ID</span><input v-model.trim="form.chatId" placeholder="-100xxxxxxxxxx 或 @channel" /></label>
                 </div>
                 <div class="button-row" style="margin-top: 14px">
-                    <button type="button" @click="saveTelegram">保存</button>
-                    <button class="secondary" type="button" @click="testTelegram">测试</button>
+                    <button type="button" :disabled="!telegramLoaded || telegramSaving" @click="saveTelegram">
+                        {{ telegramSaving ? "保存中…" : "保存" }}
+                    </button>
+                    <button class="secondary" type="button" :disabled="!telegramLoaded || telegramSaving || telegramTesting" @click="testTelegram">
+                        {{ telegramTesting ? "测试中…" : "测试" }}
+                    </button>
+                    <button
+                        v-if="status.loginTokenSource === 'admin_config'"
+                        class="danger ghost"
+                        type="button"
+                        :disabled="!telegramLoaded || telegramSaving || telegramTokenClearing"
+                        @click="clearTelegramToken"
+                    >
+                        {{ telegramTokenClearing ? "清除中…" : "清除 Token" }}
+                    </button>
                 </div>
             </div>
         </section>
@@ -310,6 +334,11 @@ const botCommands = ref([]);
 const broadcastMessage = ref("");
 const broadcastSending = ref(false);
 const commandSaving = ref(false);
+const telegramLoaded = ref(false);
+const telegramLoading = ref(false);
+const telegramSaving = ref(false);
+const telegramTesting = ref(false);
+const telegramTokenClearing = ref(false);
 const form = reactive({
     enabled: false,
     pushMetadata: false,
@@ -423,22 +452,29 @@ async function saveBotCommands() {
 }
 
 async function loadTelegram() {
-    const data = await api("/admin-api/config/telegram");
-    const pushTypes = Array.isArray(data.pushTypes) ? data.pushTypes : data.enabled ? ["chapter"] : [];
-    status.value = data;
-    form.enabled = !!data.enabled;
-    form.pushMetadata = pushTypes.includes("metadata");
-    form.pushChapter = pushTypes.includes("chapter");
-    form.pushDaily = pushTypes.includes("daily");
-    form.pushReview = pushTypes.includes("review");
-    form.botToken = data.botToken || "";
-    form.chatId = data.chatId || "";
-    form.dailyReportEnabled = data.dailyReportEnabled !== false;
-    form.dailyReportTime = data.dailyReportTime || "22:00";
-    form.dailyReportAdminIds = data.dailyReportAdminIds || "";
+    telegramLoading.value = true;
+    try {
+        const data = await api("/admin-api/config/telegram");
+        const pushTypes = Array.isArray(data.pushTypes) ? data.pushTypes : data.enabled ? ["chapter"] : [];
+        status.value = data;
+        form.enabled = !!data.enabled;
+        form.pushMetadata = pushTypes.includes("metadata");
+        form.pushChapter = pushTypes.includes("chapter");
+        form.pushDaily = pushTypes.includes("daily");
+        form.pushReview = pushTypes.includes("review");
+        form.botToken = "";
+        form.chatId = data.chatId || "";
+        form.dailyReportEnabled = data.dailyReportEnabled !== false;
+        form.dailyReportTime = data.dailyReportTime || "22:00";
+        form.dailyReportAdminIds = data.dailyReportAdminIds || "";
+        telegramLoaded.value = true;
+    } finally {
+        telegramLoading.value = false;
+    }
 }
 
 async function saveTelegram() {
+    if (!telegramLoaded.value || telegramSaving.value) return;
     const pushTypes = [
         ["metadata", form.pushMetadata],
         ["chapter", form.pushChapter],
@@ -447,20 +483,25 @@ async function saveTelegram() {
     ]
         .filter(([, enabled]) => enabled)
         .map(([type]) => type);
-    await api("/admin-api/config/telegram", {
-        method: "PUT",
-        body: JSON.stringify({
+    const payload = {
             enabled: form.enabled,
             pushTypes,
-            botToken: form.botToken,
             chatId: form.chatId,
             dailyReportEnabled: form.dailyReportEnabled,
             dailyReportTime: form.dailyReportTime || "22:00",
             dailyReportAdminIds: form.dailyReportAdminIds
-        })
-    });
-    await loadTelegram();
-    toast("Telegram 配置已保存");
+        };
+    if (form.botToken) payload.botToken = form.botToken;
+    telegramSaving.value = true;
+    try {
+        await api("/admin-api/config/telegram", { method: "PUT", body: JSON.stringify(payload) });
+        await loadTelegram();
+        toast("Telegram 配置已保存");
+    } catch (err) {
+        toast(err.message || String(err), "error");
+    } finally {
+        telegramSaving.value = false;
+    }
 }
 
 async function loadPricing() {
@@ -497,8 +538,56 @@ async function savePricing() {
 }
 
 async function testTelegram() {
-    await api("/admin-api/config/telegram/test", { method: "POST" });
-    toast("测试消息已发送");
+    if (!telegramLoaded.value || telegramTesting.value) return;
+    telegramTesting.value = true;
+    try {
+        await api("/admin-api/config/telegram/test", { method: "POST" });
+        toast("测试消息已发送");
+    } catch (err) {
+        toast(err.message || String(err), "error");
+    } finally {
+        telegramTesting.value = false;
+    }
+}
+
+async function clearTelegramToken() {
+    if (!telegramLoaded.value || telegramTokenClearing.value || status.value.loginTokenSource !== "admin_config") return;
+    const confirmation = await confirmAction({
+        title: "确认清除 Bot Token",
+        message: "清除后，依赖后台 Token 的频道推送和 Telegram 网页登录会立即不可用。环境变量中的 Token 不受影响。",
+        confirmLabel: "确认清除",
+        requireReason: false,
+        phrase: "CLEAR"
+    });
+    if (!confirmation.confirmed) return;
+    telegramTokenClearing.value = true;
+    try {
+        await api("/admin-api/config/telegram", {
+            method: "PUT",
+            body: JSON.stringify({
+                enabled: form.enabled,
+                pushTypes: [
+                    ["metadata", form.pushMetadata],
+                    ["chapter", form.pushChapter],
+                    ["daily", form.pushDaily],
+                    ["review", form.pushReview]
+                ]
+                    .filter(([, enabled]) => enabled)
+                    .map(([type]) => type),
+                chatId: form.chatId,
+                dailyReportEnabled: form.dailyReportEnabled,
+                dailyReportTime: form.dailyReportTime || "22:00",
+                dailyReportAdminIds: form.dailyReportAdminIds,
+                clearBotToken: true
+            })
+        });
+        await loadTelegram();
+        toast("Bot Token 已清除");
+    } catch (err) {
+        toast(err.message || String(err), "error");
+    } finally {
+        telegramTokenClearing.value = false;
+    }
 }
 
 async function testDailyReport() {

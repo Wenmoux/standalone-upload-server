@@ -13,7 +13,7 @@ PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平�
 | Docker 镜像            | `wenmoux/reader:v2.0`                   |
 | Node.js                | 20                                      |
 | 默认并持续验证的数据库 | PostgreSQL 16                           |
-| 最新迁移               | `023_taxonomy_conflict_deduplication`   |
+| 最新迁移               | `025_reader_daily_chapter_quota`        |
 | 后台/API               | `3100`                                  |
 | Reader                 | `3200`                                  |
 | Bot 健康检查           | `3300`，建议仅容器内部或 localhost 使用 |
@@ -27,13 +27,14 @@ PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平�
 - 读者注册、CDK 激活、账号登录和 Telegram 登录。
 - 书库搜索、书籍详情、书架、阅读历史和继续阅读。
 - 长目录虚拟列表、章节进度、主题、简繁转换、正文纠错和多种 TTS。
+- 支持按用户设置每日阅读章节上限，默认 500 章、手动设为 `0` 时不限；北京时间当天重复读取同一章节不重复计数，超限后次日自动恢复。
 - PWA 静态壳、按读者账号隔离的离线章节与离线进度补传。
 - 书评浏览、投票、举报和申诉入口。
 
 ### Admin 与 Setup
 
 - Setup 向导负责数据库测试、初始管理员、安全 Token、Bot 和 WebDAV 配置。
-- Admin 覆盖书库、章节、用户、交易、CDK、反馈、纠错、平台映射、榜单和数据质量。
+- Admin 覆盖书库、章节、用户、每日阅读配额、交易、CDK、反馈、纠错、平台映射、榜单和数据质量。
 - Admin 采用分组导航与任务优先总览；系统、TG Bot、反馈按工作区分栏，移动端使用抽屉导航，长任务运行时自动刷新。
 - 支持 owner/operator/moderator/viewer RBAC、追加式操作审计和内部 API Token 管理。
 - 任务中心统一展示备份、恢复、排行榜、Bot 导出、书架同步、Crawler 和维护任务。
@@ -59,7 +60,7 @@ PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平�
 ## 架构与运行模式
 
 ```text
-Browser / Userscript / Telegram
+Browser / Userscript / Telegram Bot
               │
               ▼
 ┌──────────────────────────────────────────────────────────┐
@@ -68,13 +69,10 @@ Browser / Userscript / Telegram
 │ OpenAPI · Ranking · Jobs · Backup · Migration            │
 └──────────────────────────┬───────────────────────────────┘
                            │
-              ┌────────────┴────────────┐
-              ▼                         ▼
-     Reader server :3200       Telegram Bot :3300
-              │                         │
-              └────────────┬────────────┘
                            ▼
                      PostgreSQL 16
+
+Reader server :3200 只提供静态阅读器与 Reader Auth/API 代理；Telegram Bot 通过 `server-pg:3100` 的 Bot API 工作，`3300` 仅是 Bot 健康端口。
 ```
 
 支持两种形态：
@@ -264,6 +262,8 @@ npm run lint
 - [数据库迁移](db/MIGRATIONS.md)
 - [Bot 命令与运行方式](bot/README.md)
 - [阶段更新记录](PROJECT_UPDATE_LOG.md)
+- [2026-07-23 综合审计报告](PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md)
+- [可优化完善与功能路线图](PROJECT_OPTIMIZATION_FEATURE_ROADMAP_2026-07-23.md)
 - [Agent 协作规则](AGENTS.md) 与 [L1 项目地图](CLAUDE.md)；各核心目录的 `CLAUDE.md` 是对应 L2 模块地图，源码头部是 L3 契约。
 
 ## 数据、隐私与免责声明

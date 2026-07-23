@@ -329,6 +329,15 @@ async function executeMigrationSql(client, sql) {
     return migrationQuery(client, sql);
 }
 
+function normalizeRollbackRequest({ steps = 1, toVersion = "" } = {}) {
+    const targetVersion = String(toVersion || "").trim();
+    const parsedSteps = Number(steps);
+    if (!targetVersion && (!Number.isSafeInteger(parsedSteps) || parsedSteps < 1 || parsedSteps > 50)) {
+        throw new Error("rollback steps must be an integer between 1 and 50");
+    }
+    return { safeSteps: targetVersion ? 0 : parsedSteps, targetVersion };
+}
+
 async function runMigrationRollback({ steps = 1, toVersion = "", confirm = "" } = {}) {
     if (process.env.PO18_ALLOW_SCHEMA_ROLLBACK !== "1") {
         throw new Error("schema rollback is disabled; set PO18_ALLOW_SCHEMA_ROLLBACK=1 to continue");
@@ -337,8 +346,7 @@ async function runMigrationRollback({ steps = 1, toVersion = "", confirm = "" } 
         throw new Error("schema rollback requires confirm=ROLLBACK");
     }
 
-    const safeSteps = Math.max(1, Math.min(50, Number(steps || 1)));
-    const targetVersion = String(toVersion || "").trim();
+    const { safeSteps, targetVersion } = normalizeRollbackRequest({ steps, toVersion });
     const client = await pool.connect();
     try {
         await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
@@ -348,6 +356,10 @@ async function runMigrationRollback({ steps = 1, toVersion = "", confirm = "" } 
         const rollbackByVersion = new Map(rollbackFiles.map((file) => [file.version, file]));
         const targets = [];
 
+        if (targetVersion && !(appliedResult.rows || []).some((row) => row.version === targetVersion)) {
+            throw new Error(`rollback target version is not applied: ${targetVersion}`);
+        }
+
         for (const row of appliedResult.rows || []) {
             if (targetVersion && row.version <= targetVersion) break;
             if (!targetVersion && targets.length >= safeSteps) break;
@@ -356,11 +368,16 @@ async function runMigrationRollback({ steps = 1, toVersion = "", confirm = "" } 
 
         if (!targets.length) return [];
 
-        const rolledBack = [];
+        const plans = [];
         for (const row of targets) {
             const rollback = rollbackByVersion.get(row.version);
             if (!rollback) throw new Error(`missing rollback file for ${row.version}`);
             const sql = await fs.readFile(rollback.path, "utf8");
+            plans.push({ row, rollback, sql });
+        }
+
+        const rolledBack = [];
+        for (const { row, rollback, sql } of plans) {
             const started = Date.now();
             await client.query("BEGIN");
             try {
@@ -398,6 +415,7 @@ module.exports = {
     initPg,
     runMigrations,
     runMigrationRollback,
+    normalizeRollbackRequest,
     listMigrationFiles,
     listRollbackFiles,
     checksumSql,

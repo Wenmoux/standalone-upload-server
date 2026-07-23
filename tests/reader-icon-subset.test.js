@@ -33,7 +33,7 @@ test("Reader icon subset contains every icon class used by the source", () => {
     const css = fs.readFileSync(generatedCssPath, "utf8");
     const generated = [...css.matchAll(/\.(ri-[a-z0-9-]+):before/g)].map((match) => match[1]).sort();
     assert.deepEqual(generated, used, "run cirno-src/scripts/build-icon-subset.py after changing icon classes");
-    assert.equal(used.length, 33);
+    assert.equal(used.length, 30);
 });
 
 test("Reader icon assets stay within the subset budget", () => {

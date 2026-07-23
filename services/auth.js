@@ -38,9 +38,12 @@ function adminRoleAllows(roleValue, req) {
     const path = String(req.path || req.url || "").split("?")[0];
     if (["GET", "HEAD", "OPTIONS"].includes(method)) {
         if (/\/admin-api\/auth\/admins(?:\/|$)/.test(path)) return false;
+        if (/\/admin-api\/config(?:\/|$)/.test(path)) return false;
+        if (/\/admin-api\/backup\/(?:download|config)(?:\/|$)/.test(path)) return false;
+        if (/\/admin-api\/cdks(?:\/|$)/.test(path)) return false;
+        if (/\/admin-api\/system\/api-tokens(?:\/|$)/.test(path)) return false;
         if (/\/admin-api\/review-moderation(?:\/|$)/.test(path)) return role === "moderator";
-        if (role === "viewer" && /\/admin-api\/(config|backup\/download|backup\/config|backup\/diagnostics|system\/api-tokens)/.test(path))
-            return false;
+        if (role === "viewer" && /\/admin-api\/backup\/diagnostics(?:\/|$)/.test(path)) return false;
         return true;
     }
     if (path === "/admin-api/auth/logout") return true;
@@ -122,6 +125,7 @@ function createAuthService(options = {}) {
             inviter_telegram_id: user.inviter_telegram_id || "",
             export_unlocked_at: user.export_unlocked_at || null,
             export_extra_quota: Number(user.export_extra_quota || 0),
+            daily_chapter_limit: Number(user.daily_chapter_limit || 0),
             scholar_exp: scholar.exp,
             scholar,
             scholar_level: scholar.level,
@@ -136,7 +140,8 @@ function createAuthService(options = {}) {
             ...u,
             created_at: user.created_at,
             last_login_at: user.last_login_at,
-            free_exports_today: Number(user.free_exports_today || 0)
+            free_exports_today: Number(user.free_exports_today || 0),
+            chapters_read_today: Number(user.chapters_read_today || 0)
         };
     }
 
@@ -162,7 +167,8 @@ function createAuthService(options = {}) {
         const found = await query(
             `SELECT id, username, nickname, avatar_url, membership_expires_at, membership_permanent, library_access,
                     copper_coins, silver_coins, sign_cycle_day, last_sign_date, telegram_id, telegram_username,
-                    is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, export_extra_quota, scholar_exp
+                    is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, export_extra_quota,
+                    daily_chapter_limit, scholar_exp
              FROM reader_users WHERE id = $1`,
             [req.session.readerUser.id]
         );
@@ -217,7 +223,12 @@ function createAuthService(options = {}) {
     }
 
     async function requireUploadApi(req, res, next) {
-        if (req.session?.adminUser) return next();
+        if (req.session?.adminUser) {
+            if (normalizeAdminRole(req.session.adminUser.role) !== "owner") {
+                return res.status(403).json({ error: "仅 owner 可以通过管理员会话调用 Upload API" });
+            }
+            return next();
+        }
         const provided = req.get("X-Upload-Token") || req.get("X-PO18-Upload-Token") || "";
         if (typeof uploadTokenAuthenticator === "function") {
             try {
@@ -256,7 +267,8 @@ function createAuthService(options = {}) {
     function botUserSelect() {
         return `id, username, nickname, avatar_url, membership_expires_at, membership_permanent, library_access,
                 copper_coins, silver_coins, sign_cycle_day, last_sign_date, created_at, last_login_at,
-                telegram_id, telegram_username, is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, export_extra_quota, scholar_exp`;
+                telegram_id, telegram_username, is_admin, is_banned, invite_count, inviter_telegram_id, export_unlocked_at, export_extra_quota,
+                daily_chapter_limit, scholar_exp`;
     }
 
     async function findBotUserByTelegramId(telegramId) {

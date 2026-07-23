@@ -83,6 +83,16 @@ test("auth service protects upload, bot and reader access", async () => {
     service.requireUploadApi(mockReq({ "X-Upload-Token": "bad" }), badUpload, () => {});
     assert.equal(badUpload.statusCode, 401);
 
+    const viewerUpload = mockRes();
+    await service.requireUploadApi(mockReq({}, { adminUser: { id: 8, role: "viewer" } }), viewerUpload, () => {});
+    assert.equal(viewerUpload.statusCode, 403);
+
+    nextCalled = false;
+    await service.requireUploadApi(mockReq({}, { adminUser: { id: 1, role: "owner" } }), mockRes(), () => {
+        nextCalled = true;
+    });
+    assert.equal(nextCalled, true);
+
     const noBotToken = mockRes();
     createAuthService({ botApiTokenProvider: () => "" }).requireBotApi(mockReq(), noBotToken, () => {});
     assert.equal(noBotToken.statusCode, 503);
@@ -154,10 +164,15 @@ test("admin roles enforce the documented access matrix", () => {
     assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/books")), true);
     assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/backup")), true);
     assert.equal(adminRoleAllows("operator", request("POST", "/admin-api/backup/restore")), false);
+    assert.equal(adminRoleAllows("operator", request("GET", "/admin-api/backup/download")), false);
+    assert.equal(adminRoleAllows("operator", request("GET", "/admin-api/backup/config")), false);
+    assert.equal(adminRoleAllows("operator", request("GET", "/admin-api/config/telegram")), false);
+    assert.equal(adminRoleAllows("operator", request("GET", "/admin-api/cdks")), false);
     assert.equal(adminRoleAllows("operator", request("PUT", "/admin-api/config/telegram")), false);
     assert.equal(adminRoleAllows("operator", request("PATCH", "/admin-api/users/42/admin")), false);
 
     assert.equal(adminRoleAllows("moderator", request("GET", "/admin-api/corrections")), true);
+    assert.equal(adminRoleAllows("moderator", request("GET", "/admin-api/config/telegram")), false);
     assert.equal(adminRoleAllows("moderator", request("POST", "/admin-api/corrections/1/approve")), true);
     assert.equal(adminRoleAllows("moderator", request("DELETE", "/admin-api/books/1")), false);
 

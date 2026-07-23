@@ -28,6 +28,7 @@
 - `022_review_governance.sql`：建立书评举报、审核、申诉和有限改票治理模型。
 - `023_taxonomy_conflict_deduplication.sql`：将 taxonomy 同步函数改为先按规范值去重再写入，阻止重复标签触发单语句冲突。
 - `024_chapter_order_uniqueness.sql`：按 `chapter_order → chapter_id → id` 修复历史重复顺序，并将同书正数顺序唯一约束扩展到全部平台。
+- `025_reader_daily_chapter_quota.sql`：为 Reader 用户增加默认 500、`0` 表示不限的每日章节上限，并建立按用户、北京时间日期、书籍和章节唯一的阅读用量账本。
 
 ## 演进规则
 

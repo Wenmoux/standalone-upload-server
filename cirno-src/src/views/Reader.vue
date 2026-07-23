@@ -1,11 +1,11 @@
 <!--
- * [INPUT]: 依赖 正文/设置组件、reader.less、章节/纠错/导航/阅读设置/间贴/TTS mixins、净化工具与 Reader API
+ * [INPUT]: 依赖 正文/设置组件、reader.less、章节/纠错/导航/阅读设置/TTS mixins、净化工具与 Reader API
  * [OUTPUT]: 对外提供 Reader 正文阅读组合页面
- * [POS]: Reader views 的阅读组合根，只编排页面布局与局部组件，把章节事实、互动和阅读能力下沉到领域 mixin
+ * [POS]: Reader views 的阅读组合根，只编排当前后端真实支持的页面布局、纠错与阅读能力，不暴露旧上游的间贴、票券或站点购买假入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  -->
 <template>
-  <div class="book-page" ref="book" :class="{ 'book-page-tsu': showTsukkomi }" :style="readerThemeStyle">
+  <div class="book-page" ref="book" :style="readerThemeStyle">
     <div
       class="content-container"
       ref="contentContainer"
@@ -56,85 +56,11 @@
           :fontWeight="readerSettings.fontWeight"
           :pagePadding="readerSettings.pagePadding"
           :activeTtsIndex="activeTtsParagraphIndex"
-          @showTsu="showTsu"
           @showPic="showPic"
         ></paragraph>
-        <div class="buy-container" v-show="!auth">
-          <div class="title">本章是 VIP 章节，购买后才能阅读</div>
-          <div class="subtitle">
-            本章节需 {{ chapterAmount }} 币，当前剩余 {{ prop_info.rest_hlb }} 币，共 {{ buyAmount }} 人购买
-          </div>
-          <div class="buy-chapter-button" @click="buyChapter">购买本章</div>
-        </div>
-        <div class="book-footer" v-show="auth">
+        <div class="book-footer">
           <div class="chapter-nav-button prev-chapter-button" @click="prevChapter">上一章</div>
           <div class="chapter-nav-button next-chapter-button" @click="nextChapter">下一章</div>
-        </div>
-      </div>
-      <div v-show="loading === 1 && showTsukkomi" class="tsukkomi-container" :style="{ right: tsukkomiRight + 'px' }">
-        <div v-if="tsukkomiLoading" class="tsukkomi-state">
-          <a-skeleton active />
-        </div>
-        <div v-else-if="tsukkomiError" class="tsukkomi-state tsukkomi-error-state">
-          <span>{{ tsukkomiError }}</span>
-          <button type="button" @click="refreshTsukkomi">重试</button>
-        </div>
-        <div v-else-if="tsukkomi_list.length === 0" class="tsukkomi-state">暂无间贴</div>
-        <div v-else>
-          <div class="title-container">
-            <div class="title-text" @click="toTsukkomiTop">共 {{ tsukkomi_num }} 条帖子</div>
-            <div class="title-button" @click="closeTsu"><i class="ri-close-line"></i></div>
-          </div>
-          <div class="tsukkomis" ref="tsukkomi">
-            <div class="tsukkomi" v-for="tsukkomi in tsukkomi_list" :key="tsukkomi.tsukkomi_id">
-              <div class="tsukkomi-info">
-                <div class="avatar">
-                  <img
-                    :src="
-                      tsukkomi.reader_info.avatar_thumb_url.length !== 0
-                        ? tsukkomi.reader_info.avatar_thumb_url
-                        : tempAvatar
-                    "
-                  />
-                </div>
-                <div class="tsukkomi-info-text">
-                  <div class="user-name">{{ tsukkomi.reader_info.reader_name }}</div>
-                  <div class="time">{{ tsukkomi.ctime }}</div>
-                </div>
-              </div>
-              <div class="tsukkomi-content">
-                {{ tsukkomi.tsukkomi_content }}
-              </div>
-              <div class="tsukkomi-options">
-                <div
-                  class="option-button"
-                  :class="{ 'like-selected': tsukkomi.is_like + '' !== '0' }"
-                  @click="tsukkomiOperate(0, tsukkomi.tsukkomi_id)"
-                >
-                  <i class="ri-thumb-up-line"></i>
-                  <div class="num">{{ tsukkomi.like_amount }}</div>
-                </div>
-                <div
-                  class="option-button"
-                  :class="{ 'unlike-selected': tsukkomi.is_unlike + '' !== '0' }"
-                  @click="tsukkomiOperate(1, tsukkomi.tsukkomi_id)"
-                >
-                  <i class="ri-thumb-down-line"></i>
-                  <div class="num">{{ tsukkomi.unlike_amount }}</div>
-                </div>
-              </div>
-            </div>
-            <div class="pagination-container">
-              <a-pagination
-                size="small"
-                @change="changeTsukkomiPage"
-                v-model:current="tsukkomiPage"
-                :total="tsukkomi_num"
-                :defaultPageSize="20"
-                :hideOnSinglePage="true"
-              />
-            </div>
-          </div>
         </div>
       </div>
       <div v-show="loading === 0" class="skeleton-container">
@@ -174,9 +100,6 @@
         <div class="control-button-container" title="保存当前章离线阅读" @click="pinCurrentChapterOffline">
           <i class="ri-download-cloud-2-line control-button"></i>
         </div>
-        <div class="control-button-container" @click="giveTickets">
-          <i class="ri-coupon-3-line control-button"></i>
-        </div>
         <div class="control-button-container" title="纠错" @click="openCorrectionFromToolbar">
           <i class="ri-edit-2-line control-button"></i>
         </div>
@@ -186,15 +109,6 @@
       </div>
       <div class="control-button-container collapse-toggle" @click="controlsCollapsed = !controlsCollapsed">
         <i :class="controlsCollapsed ? 'ri-more-2-fill control-button' : 'ri-arrow-right-s-line control-button'"></i>
-      </div>
-    </div>
-    <div
-      class="control-bar-container tsukkomi-bar"
-      :class="{ 'tsukkomi-bar-show': showTsukkomi }"
-      :style="{ 'margin-right': controlBarLeftMargin + 'px' }"
-    >
-      <div class="control-button-container" @click="newTsukkomi">
-        <i class="ri-edit-circle-line control-button"></i>
       </div>
     </div>
     <button
@@ -256,59 +170,41 @@
     <catalog
       :info="book_info"
       :currentChapter="chapterIndex"
-      :marginLeft="tsukkomiRight"
+      :marginLeft="Math.max(0, -controlBarLeftMargin - 96)"
       :chapters="book_chapters"
       @getContent="jumpChapter"
       ref="catalog"
     ></catalog>
     <Picture ref="picture" />
-    <Tsukkomi ref="tsukkomiWriter" @refreshTsukkomi="refreshTsukkomi" @refreshPara="refreshPara" />
-    <Tickets ref="tickets" />
   </div>
 </template>
 
 <script>
-import defaultAvatarImage from '@/assets/d_avatar.jpg'
-import { mapState } from 'vuex'
 import 'perfect-scrollbar/css/perfect-scrollbar.css'
 import Paragraph from '../components/paragraph.vue'
 import Catalog from '../components/catalog.vue'
 import ReaderSettingsPanel from '../components/reader-settings-panel.vue'
 import Picture from '../components/picture.vue'
-import Tsukkomi from '../components/tsukkomi.vue'
-import Tickets from '../components/tickets.vue'
 import readerChapterMixin from '../mixins/reader-chapter'
 import readerCorrectionMixin from '../mixins/reader-correction'
 import readerNavigationMixin from '../mixins/reader-navigation'
 import readerSettingsMixin from '../mixins/reader-settings'
-import readerTsukkomiMixin from '../mixins/reader-tsukkomi'
 import readerTtsMixin from '../mixins/reader-tts'
-import { sanitizeHtml } from '../utils/sanitize-html'
 
 export default {
   name: 'Reader',
-  mixins: [
-    readerChapterMixin,
-    readerCorrectionMixin,
-    readerNavigationMixin,
-    readerSettingsMixin,
-    readerTsukkomiMixin,
-    readerTtsMixin
-  ],
+  mixins: [readerChapterMixin, readerCorrectionMixin, readerNavigationMixin, readerSettingsMixin, readerTtsMixin],
   components: {
     Paragraph,
     Catalog,
     ReaderSettingsPanel,
-    Picture,
-    Tsukkomi,
-    Tickets
+    Picture
   },
   data() {
     return {
       contentDiv: null,
       controlBarLeftMargin: 0,
       containerScroll: null,
-      tempAvatar: defaultAvatarImage,
       controlsCollapsed: true,
       ttsUtterance: null,
       ttsAudio: null,
@@ -347,18 +243,12 @@ export default {
     this.flushReadingTime()
     if (this.containerScroll) this.containerScroll.destroy()
   },
-  computed: {
-    ...mapState(['prop_info', 'reader_info'])
-  },
   methods: {
     showCatalog() {
       this.$refs.catalog.showCatalog()
     },
     showPic(url) {
       this.$refs.picture.showPic(url)
-    },
-    giveTickets() {
-      this.$refs.tickets.show(this.bid)
     },
     handleReaderTtsAction(action) {
       const handlers = {

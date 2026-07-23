@@ -1,7 +1,7 @@
 ﻿/**
- * [INPUT]: 依赖 Express/crypto、Admin/owner 权限、用户经济/CDK/搜索需求服务、PostgreSQL 与 CSV 输出
- * [OUTPUT]: 对外提供 Reader/Bot 用户、管理员授权、余额流水、CDK、搜索需求与管理导出路由
- * [POS]: routes 的后台用户经济与授权协议边界，精确隔离 owner 管理员切换并依赖事务型 service 结算账本
+ * [INPUT]: 依赖 Express/crypto、Admin/owner 权限、用户经济/CDK/搜索需求服务、Reader 每日章节用量、PostgreSQL 与 CSV 输出
+ * [OUTPUT]: 对外提供 Reader/Bot 用户、每日阅读上限、管理员授权、余额流水、CDK、搜索需求与管理导出路由
+ * [POS]: routes 的后台用户经济与授权协议边界，统一维护账号配额并精确隔离 owner 管理员切换和事务型账本
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const crypto = require("crypto");
@@ -98,7 +98,9 @@ function createAdminUsersRoutes(deps = {}) {
                 `SELECT u.id, u.username, u.nickname, u.avatar_url, u.membership_expires_at, u.membership_permanent, u.library_access,
                         u.copper_coins, u.silver_coins, u.sign_cycle_day, u.last_sign_date, u.telegram_id, u.telegram_username,
                         u.created_at, u.last_login_at, u.is_admin, u.is_banned, u.invite_count, u.inviter_telegram_id,
-                        u.export_unlocked_at, u.export_extra_quota, u.scholar_exp, COALESCE(e.free_exports_today, 0)::int free_exports_today
+                        u.export_unlocked_at, u.export_extra_quota, u.scholar_exp, u.daily_chapter_limit,
+                        COALESCE(e.free_exports_today, 0)::int free_exports_today,
+                        COALESCE(r.chapters_read_today, 0)::int chapters_read_today
                  FROM reader_users u
                  LEFT JOIN (
                     SELECT user_id, COUNT(DISTINCT book_id)::int free_exports_today
@@ -106,6 +108,12 @@ function createAdminUsersRoutes(deps = {}) {
                     WHERE export_date = $1::date AND charge_type = 'free_quota'
                     GROUP BY user_id
                  ) e ON e.user_id = u.id
+                 LEFT JOIN (
+                    SELECT user_id, COUNT(*)::int chapters_read_today
+                    FROM reader_chapter_usage
+                    WHERE read_date = $1::date
+                    GROUP BY user_id
+                 ) r ON r.user_id = u.id
                  ${whereSql}
                  ORDER BY u.id DESC LIMIT 500`,
                 params
@@ -152,7 +160,9 @@ function createAdminUsersRoutes(deps = {}) {
                 `SELECT u.id, u.username, u.nickname, u.library_access, u.membership_expires_at, u.membership_permanent,
                         u.copper_coins, u.silver_coins, u.scholar_exp, u.sign_cycle_day, u.last_sign_date,
                         u.telegram_id, u.telegram_username, u.is_admin, u.is_banned, u.invite_count, u.inviter_telegram_id,
-                        u.export_unlocked_at, u.export_extra_quota, COALESCE(e.free_exports_today, 0)::int free_exports_today,
+                        u.export_unlocked_at, u.export_extra_quota, u.daily_chapter_limit,
+                        COALESCE(e.free_exports_today, 0)::int free_exports_today,
+                        COALESCE(r.chapters_read_today, 0)::int chapters_read_today,
                         u.created_at, u.last_login_at
                  FROM reader_users u
                  LEFT JOIN (
@@ -161,6 +171,12 @@ function createAdminUsersRoutes(deps = {}) {
                     WHERE export_date = $1::date AND charge_type = 'free_quota'
                     GROUP BY user_id
                  ) e ON e.user_id = u.id
+                 LEFT JOIN (
+                    SELECT user_id, COUNT(*)::int chapters_read_today
+                    FROM reader_chapter_usage
+                    WHERE read_date = $1::date
+                    GROUP BY user_id
+                 ) r ON r.user_id = u.id
                  ${whereSql}
                  ORDER BY u.id DESC
                  LIMIT 20000`,
@@ -191,6 +207,8 @@ function createAdminUsersRoutes(deps = {}) {
                     "export_unlocked_at",
                     "export_extra_quota",
                     "free_exports_today",
+                    "daily_chapter_limit",
+                    "chapters_read_today",
                     "created_at",
                     "last_login_at"
                 ].map((key) => ({ key, label: key }))
@@ -429,9 +447,11 @@ function createAdminUsersRoutes(deps = {}) {
             if (password.length < 6) return res.status(400).json({ error: "密码至少 6 位" });
             const { salt, hash } = hashPassword(password);
             const scholarExp = nonNegativeInt(req.body?.scholar_exp ?? req.body?.scholarExp, 0);
+            const dailyChapterLimit = Math.min(100000, nonNegativeInt(req.body?.daily_chapter_limit ?? req.body?.dailyChapterLimit, 500));
             const created = await query(
-                `INSERT INTO reader_users(username, password_hash, salt, nickname, library_access, copper_coins, silver_coins, scholar_exp)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                `INSERT INTO reader_users(username, password_hash, salt, nickname, library_access, copper_coins, silver_coins, scholar_exp,
+                                          daily_chapter_limit)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
                  RETURNING ${botUserSelect()}`,
                 [
                     username,
@@ -441,7 +461,8 @@ function createAdminUsersRoutes(deps = {}) {
                     req.body?.library_access !== false,
                     Number(req.body?.copper_coins || 0),
                     Number(req.body?.silver_coins || 0),
-                    scholarExp
+                    scholarExp,
+                    dailyChapterLimit
                 ]
             );
             if (created.rows[0].copper_coins)
@@ -491,9 +512,10 @@ function createAdminUsersRoutes(deps = {}) {
             ) {
                 return res.status(400).json({ error: "管理员权限必须通过专用授权接口修改" });
             }
-            const before = await query("SELECT id, telegram_id, copper_coins, silver_coins, scholar_exp FROM reader_users WHERE id=$1", [
-                req.params.id
-            ]);
+            const before = await query(
+                "SELECT id, telegram_id, copper_coins, silver_coins, scholar_exp, daily_chapter_limit FROM reader_users WHERE id=$1",
+                [req.params.id]
+            );
             if (!before.rows[0]) return res.status(404).json({ error: "用户不存在" });
             const patch = {
                 nickname: String(req.body?.nickname || "").trim(),
@@ -501,7 +523,14 @@ function createAdminUsersRoutes(deps = {}) {
                 library_access: req.body?.library_access !== false,
                 copper_coins: Number(req.body?.copper_coins || 0),
                 silver_coins: Number(req.body?.silver_coins || 0),
-                scholar_exp: nonNegativeInt(req.body?.scholar_exp ?? req.body?.scholarExp, 0)
+                scholar_exp: nonNegativeInt(req.body?.scholar_exp ?? req.body?.scholarExp, 0),
+                daily_chapter_limit: Math.min(
+                    100000,
+                    nonNegativeInt(
+                        req.body?.daily_chapter_limit ?? req.body?.dailyChapterLimit,
+                        Number(before.rows[0].daily_chapter_limit ?? 500)
+                    )
+                )
             };
             if (!patch.nickname) return res.status(400).json({ error: "昵称不能为空" });
             const copperDelta = Number(patch.copper_coins || 0) - Number(before.rows[0].copper_coins || 0);
@@ -511,8 +540,9 @@ function createAdminUsersRoutes(deps = {}) {
             if ((copperDelta || silverDelta || expDelta) && reason.length < 2)
                 return res.status(400).json({ error: "修改铜币、银币或经验必须填写原因" });
             const updated = await query(
-                `UPDATE reader_users SET nickname=$1, avatar_url=$2, library_access=$3, copper_coins=$4, silver_coins=$5, scholar_exp=$6
-                 WHERE id=$7 RETURNING ${botUserSelect()}`,
+                `UPDATE reader_users SET nickname=$1, avatar_url=$2, library_access=$3, copper_coins=$4, silver_coins=$5, scholar_exp=$6,
+                                         daily_chapter_limit=$7
+                 WHERE id=$8 RETURNING ${botUserSelect()}`,
                 [
                     patch.nickname,
                     patch.avatar_url,
@@ -520,6 +550,7 @@ function createAdminUsersRoutes(deps = {}) {
                     patch.copper_coins,
                     patch.silver_coins,
                     patch.scholar_exp,
+                    patch.daily_chapter_limit,
                     req.params.id
                 ]
             );

@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "latest": "024_chapter_order_uniqueness",
-  "migration_count": 23,
-  "aggregate_sha256": "25a5b9992764bd0a800ba66d0c678a423bc50e10baebad5eb454d7d6e6499c62",
+  "latest": "025_reader_daily_chapter_quota",
+  "migration_count": 24,
+  "aggregate_sha256": "91f8d1e2d2bc0d39701551f7a547cda70d220626cedb5134a337222fc14ee109",
   "migrations": [
     { "file": "001_baseline.sql", "sha256": "9035245dd6ed6a8dbb79ebb334c2848811f35a1cef2a229e7eb7c1d9145d1af4" },
     { "file": "004_trgm_indexes.sql", "sha256": "600118e5c01e46e2d974e4a3600242db19c81812618cfc43fa56dedac4b0238c" },
@@ -26,6 +26,7 @@
     { "file": "021_book_manifest_checksums.sql", "sha256": "b95c314cb1a1376980138c49f059b069a1fa2ddc4cbe0c003481b5a9ccd93db5" },
     { "file": "022_review_governance.sql", "sha256": "b96e3dd542e8df2c3b06e4c87158523b9f16bd5ac1e759bc6cb9fb6e136f1feb" },
     { "file": "023_taxonomy_conflict_deduplication.sql", "sha256": "ee8a86eb90b8c5312845c574a431be26d6bf7029997250948798fe74c42cc694" },
-    { "file": "024_chapter_order_uniqueness.sql", "sha256": "15c2d342e45e427b4e52f5f27976253c4141f363cc96c5f4983ec526310fdbf0" }
+    { "file": "024_chapter_order_uniqueness.sql", "sha256": "15c2d342e45e427b4e52f5f27976253c4141f363cc96c5f4983ec526310fdbf0" },
+    { "file": "025_reader_daily_chapter_quota.sql", "sha256": "f29c7b732940404edd35b579f2b54a966867f0e0e9add79cfd1ca71970872364" }
   ]
 }

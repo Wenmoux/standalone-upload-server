@@ -38,6 +38,7 @@ const { createDataQualityService } = require("./services/data-quality");
 const { createBookManifestService } = require("./services/book-manifest");
 const { createAdminOverviewService } = require("./services/admin-overview");
 const { createReaderRumService } = require("./services/reader-rum");
+const { createReaderChapterQuotaService } = require("./services/reader-chapter-quota");
 const { createUserCurrencyService } = require("./services/user-currency");
 const { createReaderAccountService } = require("./services/reader-account");
 const { createReaderCheckInService } = require("./services/reader-check-in");
@@ -353,6 +354,7 @@ const telegramPushService = createTelegramPushService({
     logger: console
 });
 const readerRumService = createReaderRumService({ query });
+const readerChapterQuotaService = createReaderChapterQuotaService({ pool, todayDateKey });
 const userCurrencyService = createUserCurrencyService({
     query,
     pool,
@@ -644,6 +646,7 @@ const botApiRoutes = createBotApiRoutes({
     voteBookReview,
     pushBookReviewToChannel,
     ...botLibraryService,
+    listChapters: bookChapterService.listChapters,
     getHotKeywords,
     addHotKeyword,
     addHotKeywords,
@@ -683,8 +686,9 @@ const readerApiRoutes = createReaderApiRoutes({
     bookOrder: bookChapterService.bookOrder,
     logSlowSearch,
     slowSearchContext,
-    chapterListOrderSql: bookChapterService.chapterListOrderSql,
     chapterText: bookChapterService.chapterText,
+    listChapters: bookChapterService.listChapters,
+    consumeReaderChapters: readerChapterQuotaService.consumeReaderChapters,
     textFromHtml: bookChapterService.textFromHtml,
     edgeTtsFallbackVoices: EDGE_TTS_FALLBACK_VOICES,
     edgeTtsVoices,

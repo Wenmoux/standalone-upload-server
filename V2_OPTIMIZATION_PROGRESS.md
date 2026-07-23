@@ -4,6 +4,15 @@
 
 更新时间：2026-07-12
 
+## 后续复核（2026-07-23）
+
+- 新增 [2026-07-23 综合审计报告](PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md)，作为当前代码、逻辑、UI、安全、测试和文档完整度的最新风险排序。
+- 本地 Node `v24.18.0` 验证：`npm test` 482 项、481 通过、1 项真实 PG 测试因未配置 `PO18_TEST_PG_URL` 跳过；覆盖率总行 81.16%、分支 54.96%。
+- Admin/Reader 生产构建、Docker 上下文、lint、格式、UTF-8、schema 和 GEB 文档检查均通过；Docker 上下文估算 456 文件、11.35 MiB。
+- Reader 整本正文 `includeContent=1` 已收紧为 Reader 正文权限；Bot 导出改用内部 `/bot-api/books/:bookId/chapters/export` 鉴权分页端点。
+- 旧报告中“公开正文兼容面”和 023/024 最新迁移等表述已过期；当前最新迁移为 `025_reader_daily_chapter_quota`，Reader 正文已增加用户级每日去重章节配额。
+- `book_key` 统一身份迁移仍按用户边界未实施，继续列为开放 P0。
+
 ## 后续修正（2026-07-16）
 
 - `main` 发布链已收口为只向 Docker Hub 更新 `wenmoux/reader:v2.0`；源码指纹只保留在本地候选构建、镜像元数据、发布证据和 registry digest 中，不再创建新的 `sha-*` 或 semver 镜像标签。历史快照中关于“更新源码指纹标签”的表述以此修正为准。

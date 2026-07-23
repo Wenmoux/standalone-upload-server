@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、fs/path 与 Reader 首页、书库、详情视图及其独立 Less 源码
- * [OUTPUT]: 提供页面规模、样式归属、L3 契约和核心选择器的自动化回归断言
+ * [OUTPUT]: 提供页面规模、样式归属、L3 契约、非阻塞举报表单和核心选择器的自动化回归断言
  * [POS]: tests 的 Reader 页面结构守卫，阻止业务组合页重新吸收大段视觉规则或突破 800 行阈值
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -51,5 +51,20 @@ test("Reader page roots keep business orchestration separate from private styles
             assert.match(view, new RegExp(`\\${marker}`));
             assert.match(style, new RegExp(`\\${marker}`));
         }
+    }
+});
+
+test("Reader review reporting uses a bounded non-blocking dialog", () => {
+    const view = source("cirno-src/src/views/BookDetail.vue");
+    const style = source("cirno-src/src/styles/book-detail.less");
+
+    assert.doesNotMatch(view, /window\.prompt/);
+    assert.match(view, /v-model:open="reportDialogOpen"/);
+    assert.match(view, /:maxlength="2000"/);
+    assert.match(view, /submitReviewReport/);
+    assert.match(view, /写书评/);
+    assert.match(style, /\.review-report-dialog\s*\{/);
+    for (const reason of ["spam", "abuse", "spoiler", "illegal", "other"]) {
+        assert.match(view, new RegExp(`value: ['"]${reason}['"]`));
     }
 });

@@ -15,7 +15,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `components/DataTable.vue`: 声明式表格外壳，通过列定义和插槽统一键盘排序、加载/空状态、单元格与行操作渲染。
 `components/EpubStyleEditor.vue`: EPUB 导出样式配置与资产预览工作台，按最终 XHTML 同构预览四套内置 CSS/图片及可选书籍信息页，并经 Admin API 管理自定义模板资产。
 `components/epub-style-editor.css`: EPUB 样式工作台局部样式，隔离预览设备、配置栏和图片资源列表的响应式布局。
-`components/FormModal.vue`: 通用表单弹窗容器，统一关闭门禁、提交状态和错误提示槽位。
+`components/FormModal.vue`: 通用表单弹窗容器，统一数值边界、关闭门禁、提交状态和错误提示槽位。
 `components/InputDialog.vue`: 应用级单值输入器，以非阻塞弹窗统一文本、长文本与枚举选择任务。
 `components/StatCard.vue`: 仪表盘数值卡片，以标签、数值、提示或插槽呈现单一指标。
 `components/StatusBadge.vue`: 状态语义标签，以 tone 类名承接父视图的状态映射。
@@ -44,7 +44,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `views/system-config.js`: 系统页稳定声明与纯展示规则，集中工作区、日志筛选、状态、性能、备份、版本和 RUM 映射。
 `views/TelegramView.vue`: 按需加载的分区 Telegram 运营中心，按运行、消息、导出、命令组织全员通知、频道日报、EPUB 样式和连接测试。
 `views/TransactionsView.vue`: 货币流水查询页，按用户、币种和类型分页检索交易记录。
-`views/UsersView.vue`: Reader 用户管理页，维护账号、会员与余额，并让 owner 通过专用审计动作设置或取消 Reader/Bot 管理员。
+`views/UsersView.vue`: Reader 用户管理页，展示今日阅读章节用量，维护账号、会员、余额与每日章节上限，并让 owner 通过专用审计动作设置或取消 Reader/Bot 管理员。
 
 ## 边界约束
 

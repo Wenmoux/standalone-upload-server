@@ -41,9 +41,9 @@
 | --- | --- | --- |
 | `PO18_UPLOAD_HOST` | `0.0.0.0` | server 监听地址 |
 | `PO18_UPLOAD_PORT` | `3100` | Admin/API/Setup |
-| `PO18_READER_HOST` | `0.0.0.0` | Reader server 监听地址 |
+| `PO18_READER_HOST` | 源码默认 `127.0.0.1`；Docker 覆盖 `0.0.0.0` | Reader server 监听地址 |
 | `PO18_READER_PORT` | `3200` | Reader 端口 |
-| `BOT_HEALTH_HOST` | `0.0.0.0` | Bot 健康监听地址 |
+| `BOT_HEALTH_HOST` | 源码默认 `127.0.0.1`；Docker 覆盖 `0.0.0.0` | Bot 健康监听地址 |
 | `BOT_HEALTH_PORT` | `3300` | 不应公开到公网 |
 | `PO18_API_BASE` | 单容器 `http://127.0.0.1:3100` | Reader 代理目标 |
 | `PO18_SERVER_URL` | 单容器 `http://127.0.0.1:3100` | Bot 主 API 地址 |
@@ -79,6 +79,8 @@
 `PO18_TRUST_PROXY` 会改变限流和来源 IP 的可信输入。没有明确代理层时保持 `0`；开启后必须由防火墙保证客户端不能绕过代理直连应用端口。
 
 ## 数据库与迁移
+
+完整服务运行时 `PO18_PG_URL` 是必填项；只有 Setup 向导的首次配置阶段可以暂缺数据库 URL。
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |

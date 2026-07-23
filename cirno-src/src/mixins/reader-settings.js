@@ -316,7 +316,6 @@ export default {
     updateReaderLayout() {
       if (this.contentDiv) this.windowSizeHandler()
       if (this.containerScroll && this.containerScroll.update) this.containerScroll.update()
-      if (this.tsukkomiScroll && this.tsukkomiScroll.update) this.tsukkomiScroll.update()
     },
     openReaderSettings() {
       this.readerSettingsVisible = true

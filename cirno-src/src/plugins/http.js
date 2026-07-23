@@ -344,12 +344,6 @@ async function get(obj = {}) {
           return ok({ chapter_info: { ...cached.chapter, auth_access: 1, offline: true } })
         }
       }
-      case '/chapter/get_tsukkomi_num': {
-        return ok({ tsukkomi_num_info: [] })
-      }
-      case '/chapter/get_paragraph_tsukkomi_list_new': {
-        return ok({ tsukkomi_list: [] })
-      }
       case '/bookshelf/set_last_read_chapter': {
         try {
           await localApi('/reader-api/me/history', {
@@ -374,11 +368,6 @@ async function get(obj = {}) {
           })
           return ok({ offline: true })
         }
-      }
-      case '/chapter_buy':
-      case '/chapter/like_tsukkomi':
-      case '/chapter/unlike_tsukkomi': {
-        return ok({ prop_info: {}, reader_info: {} })
       }
       case '/meta/get_meta_data': {
         return ok({ meta_data: { local: true } })

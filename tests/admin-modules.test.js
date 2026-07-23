@@ -420,6 +420,10 @@ test("admin config routes read and update telegram, platform and export settings
         assert.equal(telegramBody.loginBotId, "123456");
         assert.equal(telegramBody.dailyReportRecipients, 3);
         assert.equal(telegramBody.broadcastRecipients, 8);
+        assert.equal(telegramBody.botTokenConfigured, true);
+        assert.equal(telegramBody.botTokenLast4, "oken");
+        assert.equal(Object.prototype.hasOwnProperty.call(telegramBody, "botToken"), false);
+        assert.equal(JSON.stringify(telegramBody).includes("123456:token"), false);
 
         const updateTelegram = await fetch(`${base}/admin-api/config/telegram`, {
             method: "PUT",
@@ -427,6 +431,14 @@ test("admin config routes read and update telegram, platform and export settings
             body: JSON.stringify({ enabled: true, pushTypes: ["daily"], botToken: "next", chatId: "chat-2", dailyReportTime: "21:30" })
         });
         assert.equal(updateTelegram.status, 200);
+
+        const preserveTelegramToken = await fetch(`${base}/admin-api/config/telegram`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ enabled: true, pushTypes: ["daily"], botToken: "", chatId: "chat-2" })
+        });
+        assert.equal(preserveTelegramToken.status, 200);
+        assert.equal(stored.telegram_bot_token, "next");
 
         const testTelegram = await fetch(`${base}/admin-api/config/telegram/test`, {
             method: "POST",
@@ -502,6 +514,14 @@ test("admin config routes read and update telegram, platform and export settings
         const broadcastBody = await broadcast.json();
         assert.equal(broadcastBody.job.id, 99);
         assert.equal(broadcastBody.recipients, 8);
+
+        const clearTelegramToken = await fetch(`${base}/admin-api/config/telegram`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ enabled: false, pushTypes: [], clearBotToken: true, chatId: "chat-2" })
+        });
+        assert.equal(clearTelegramToken.status, 200);
+        assert.equal(stored.telegram_bot_token, "");
     });
 
     assert.ok(writes.some((item) => item.key === "telegram_push_types" && item.value === '["daily"]'));

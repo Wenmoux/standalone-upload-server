@@ -15,11 +15,11 @@ test("bot client fetches large export content in bounded pages", async () => {
         baseUrl: "http://bot.test",
         botToken: "test-token",
         exportPageSize: 20,
-        fetchImpl: async (url) => {
+        fetchImpl: async (url, options) => {
             const parsed = new URL(url);
             const offset = Number(parsed.searchParams.get("offset") || 0);
             const limit = Number(parsed.searchParams.get("limit") || 0);
-            calls.push({ offset, limit, url });
+            calls.push({ offset, limit, url, options });
             const rows = chapters.slice(offset, offset + limit).map((chapter_id) => ({ chapter_id, html: chapter_id }));
             return {
                 ok: true,
@@ -48,7 +48,8 @@ test("bot client fetches large export content in bounded pages", async () => {
             { offset: 40, limit: 5 }
         ]
     );
-    assert.ok(calls.every((call) => call.url.includes("includeContent=1")));
+    assert.ok(calls.every((call) => call.url.includes("/bot-api/books/book-1/chapters/export?")));
+    assert.ok(calls.every((call) => call.options.headers["X-Bot-Token"] === "test-token"));
 });
 
 test("bot client forwards the stable book review operation key", async () => {

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 node:test、assert、fs/path 与 Reader 组合根、章节及间贴 mixin 源码
- * [OUTPUT]: 提供章节/间贴职责下沉、死状态清理、章节失败反馈及跨段落/章节迟到响应隔离的自动化回归断言
- * [POS]: tests 的 Reader 组合边界守卫，以结构与异步行为回归防止领域状态重新泄漏到页面根
+ * [INPUT]: 依赖 node:test、assert、fs/path 与 Reader 组合根及章节 mixin 源码
+ * [OUTPUT]: 提供章节职责下沉、死状态清理、加载失败反馈及跨章节迟到响应隔离的自动化回归断言
+ * [POS]: tests 的 Reader 章节组合边界守卫，确保只展示后端真实支持的阅读交互且领域状态不回流页面根
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -13,21 +13,6 @@ const ROOT = path.resolve(__dirname, "..");
 
 function source(relativePath) {
     return fs.readFileSync(path.join(ROOT, relativePath), "utf8");
-}
-
-function deferred() {
-    let resolve;
-    const promise = new Promise((done) => {
-        resolve = done;
-    });
-    return { promise, resolve };
-}
-
-function loadTsukkomiMixin(PerfectScrollbar = class {}) {
-    const transformed = source("cirno-src/src/mixins/reader-tsukkomi.js")
-        .replace(/^import PerfectScrollbar[^\n]*\n/m, "")
-        .replace("export default", "return");
-    return Function("PerfectScrollbar", transformed)(PerfectScrollbar);
 }
 
 function loadChapterMixin(overrides = {}) {
@@ -58,21 +43,20 @@ function bindMixin(mixin, overrides = {}) {
     return Object.assign(context, overrides);
 }
 
-test("Reader delegates chapter and tsukkomi state without keeping dead data", () => {
+test("Reader delegates chapter state and removes unsupported legacy interactions", () => {
     const reader = source("cirno-src/src/views/Reader.vue");
     const readerScript = reader.match(/<script>([\s\S]*?)<\/script>/)?.[1] || "";
     const chapter = source("cirno-src/src/mixins/reader-chapter.js");
-    const tsukkomi = source("cirno-src/src/mixins/reader-tsukkomi.js");
 
     assert.match(reader, /import readerChapterMixin from ['"]\.\.\/mixins\/reader-chapter['"]/);
-    assert.match(reader, /import readerTsukkomiMixin from ['"]\.\.\/mixins\/reader-tsukkomi['"]/);
-    assert.match(reader, /mixins:\s*\[[^\]]*readerChapterMixin[^\]]*readerTsukkomiMixin[^\]]*\]/s);
-    assert.doesNotMatch(reader, /\b(?:getContent|pinCurrentChapterOffline|getTsukkomiList|showTsu)\s*\([^)]*\)\s*\{/);
+    assert.match(reader, /mixins:\s*\[[^\]]*readerChapterMixin[^\]]*readerTtsMixin[^\]]*\]/s);
+    assert.doesNotMatch(reader, /\b(?:getContent|pinCurrentChapterOffline)\s*\([^)]*\)\s*\{/);
+    assert.doesNotMatch(reader, /(?:Tsukkomi|Tickets|showTsukkomi|giveTickets|buyChapter)/);
     assert.doesNotMatch(readerScript, /\b(?:chapterCache|cataMarginLeft|contentWidth):/);
     assert.match(chapter, /async created\(\)\s*\{/);
     assert.match(chapter, /async getContent\(cid\)\s*\{/);
     assert.match(chapter, /async pinCurrentChapterOffline\(\)\s*\{/);
-    assert.match(tsukkomi, /tsukkomiRequestId:\s*0/);
+    assert.doesNotMatch(chapter, /chapter_buy|refreshTsukkomi|auth:\s*true/);
     assert.doesNotMatch(chapter, /book_chapterids/);
 });
 
@@ -98,7 +82,6 @@ test("chapter loading exposes decode failures and cancels queued rendering after
         markReadingStart() {},
         windowSizeHandler() {},
         applyReaderTheme() {},
-        refreshTsukkomiNums: async () => {},
         $refs: { book: {} },
         $nextTick: (callback) => queuedTicks.push(callback)
     };
@@ -127,66 +110,4 @@ test("chapter loading exposes decode failures and cancels queued rendering after
     chapterMixin.beforeUnmount.call(ready);
     queuedTicks[0]();
     assert.equal(scrollbarCreations, 0);
-});
-
-test("tsukkomi list ignores an older response after the user switches paragraphs", async () => {
-    const pending = [deferred(), deferred()];
-    let call = 0;
-    const mixin = loadTsukkomiMixin();
-    const context = {
-        ...mixin.data(),
-        cid: "chapter",
-        showTsukkomi: true,
-        $refs: { tsukkomi: {} },
-        $get: () => pending[call++].promise,
-        $nextTick: (callback) => callback()
-    };
-    for (const [name, method] of Object.entries(mixin.methods)) context[name] = method.bind(context);
-
-    context.tsukkomiIndex = 1;
-    const older = context.getTsukkomiList(1);
-    context.tsukkomiIndex = 2;
-    const newer = context.getTsukkomiList(2);
-    pending[1].resolve({ data: { tsukkomi_list: ["new"] } });
-    await newer;
-    pending[0].resolve({ data: { tsukkomi_list: ["old"] } });
-    await older;
-
-    assert.deepEqual(context.tsukkomi_list, ["new"]);
-    assert.equal(context.tsukkomiLoading, false);
-});
-
-test("tsukkomi invalidation closes stale chapter work and exposes current request failures", async () => {
-    const pending = deferred();
-    let destroyed = 0;
-    const mixin = loadTsukkomiMixin();
-    const context = bindMixin(mixin, {
-        cid: "chapter-1",
-        showTsukkomi: true,
-        tsukkomiIndex: 0,
-        tsukkomi_list: ["existing"],
-        tsukkomiScroll: { destroy: () => (destroyed += 1) },
-        $refs: { tsukkomi: {} },
-        $get: () => pending.promise,
-        $nextTick: (callback) => callback()
-    });
-
-    const stale = context.getTsukkomiList(0);
-    context.cid = "chapter-2";
-    context.invalidateTsukkomiList({ close: true, clear: true });
-    pending.resolve({ data: { tsukkomi_list: ["old chapter"] } });
-    await stale;
-    assert.deepEqual(context.tsukkomi_list, []);
-    assert.equal(context.tsukkomiLoading, false);
-    assert.equal(context.showTsukkomi, false);
-    assert.equal(destroyed, 1);
-
-    context.showTsukkomi = true;
-    context.tsukkomiIndex = 0;
-    context.$get = async () => {
-        throw new Error("间贴网络失败");
-    };
-    await context.getTsukkomiList(0);
-    assert.equal(context.tsukkomiLoading, false);
-    assert.equal(context.tsukkomiError, "间贴网络失败");
 });

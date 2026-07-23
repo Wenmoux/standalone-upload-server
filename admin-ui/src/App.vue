@@ -29,7 +29,7 @@
         </button>
         <div class="chip version-chip" :title="versionTitle"><span>{{ versionBadge }}</span></div>
         <div class="chip"><span class="dot"></span><span>{{ user.username }} · {{ roleLabel }}</span></div>
-        <button v-if="['owner', 'operator'].includes(user.role || 'owner')" class="secondary" type="button" :disabled="backupBusy" @click="backup">
+        <button v-if="user.role === 'owner'" class="secondary" type="button" :disabled="backupBusy" @click="backup">
           {{ backupBusy ? "备份中..." : "备份" }}
         </button>
         <button class="secondary" type="button" @click="logout">退出</button>
@@ -338,7 +338,7 @@ async function boot() {
     ]);
     const data = me.status === "fulfilled" ? me.value : {};
     if (version.status === "fulfilled") versionInfo.value = version.value || versionInfo.value;
-    user.value = data.user ? { ...data.user, role: access.status === "fulfilled" ? access.value.role || "owner" : "owner" } : null;
+    user.value = data.user ? { ...data.user, role: access.status === "fulfilled" ? access.value.role || "viewer" : "viewer" } : null;
   } catch {
     user.value = null;
   } finally {
@@ -347,9 +347,9 @@ async function boot() {
 }
 
 async function handleLogin(nextUser) {
-  user.value = { role: "owner", ...nextUser };
-  const access = await api("/admin-api/auth/access").catch(() => ({ role: "owner" }));
-  user.value.role = access.role || "owner";
+  user.value = { role: "viewer", ...nextUser };
+  const access = await api("/admin-api/auth/access").catch(() => ({ role: "viewer" }));
+  user.value.role = access.role || "viewer";
   ensureAllowedRoute();
   toast("登录成功");
 }

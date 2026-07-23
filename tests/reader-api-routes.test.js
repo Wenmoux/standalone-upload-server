@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供Reader 查询、内容、会话和权限路由的自动化回归断言
- * [POS]: tests 的Reader 查询、内容、会话和权限路由守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供 Reader 查询、内容、会话、权限和每日正文配额路由的自动化回归断言
+ * [POS]: tests 的 Reader 查询、正文配额、会话和权限路由守卫，防止实现或部署契约静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -50,6 +50,8 @@ function baseDeps(overrides = {}) {
         slowSearchContext: () => ({}),
         chapterListOrderSql: () => "id ASC",
         chapterText: () => "",
+        listChapters: async () => ({ rows: [], total: 0 }),
+        consumeReaderChapters: async () => ({ allowed: true }),
         edgeTtsFallbackVoices: [{ name: "zh-CN-XiaoxiaoNeural", locale: "zh-CN", gender: "Female" }],
         edgeTtsVoices: async () => {
             throw new Error("offline");
@@ -243,31 +245,43 @@ test("reader bookshelf list applies paging to the optimized shelf query", async 
     assert.deepEqual(calls[0].params, [1, 20, 20]);
 });
 
-test("reader chapter content route supports optional export paging", async () => {
+test("reader chapter content paging requires Reader access", async () => {
     const calls = [];
+    const quotaCalls = [];
     const router = createReaderApiRoutes(
         baseDeps({
-            query: async (sql, params = []) => {
-                calls.push({ sql, params });
+            listChapters: async (bookId, options) => {
+                calls.push({ bookId, options });
                 return {
                     rows: [
-                        { chapter_id: "c2", html: "two", text: "" },
-                        { chapter_id: "c3", html: "three", text: "" },
-                        { chapter_id: "c4", html: "four", text: "" }
-                    ]
+                        { book_id: "b1", chapter_id: "c2", html: "two", text: "" },
+                        { book_id: "b1", chapter_id: "c3", html: "three", text: "" }
+                    ],
+                    total: 2,
+                    has_more: true,
+                    next_offset: 3
                 };
             },
-            chapterText: (row) => row.text || row.html
+            consumeReaderChapters: async (input) => {
+                quotaCalls.push(input);
+                return { allowed: true };
+            }
         })
     );
 
     await withApp(router, async (base) => {
-        const response = await fetch(`${base}/reader-api/books/b1/chapters?includeContent=1&limit=2&offset=1`);
+        const blocked = await fetch(`${base}/reader-api/books/b1/chapters?includeContent=1&limit=2&offset=1`);
+        assert.equal(blocked.status, 401);
+        assert.equal(calls.length, 0);
+
+        const response = await fetch(`${base}/reader-api/books/b1/chapters?includeContent=1&limit=2&offset=1`, {
+            headers: { "X-Test-Reader": "1" }
+        });
         assert.equal(response.status, 200);
         assert.deepEqual(await response.json(), {
             rows: [
-                { chapter_id: "c2", html: "two", text: "two" },
-                { chapter_id: "c3", html: "three", text: "three" }
+                { book_id: "b1", chapter_id: "c2", html: "two", text: "" },
+                { book_id: "b1", chapter_id: "c3", html: "three", text: "" }
             ],
             total: 2,
             has_more: true,
@@ -275,8 +289,49 @@ test("reader chapter content route supports optional export paging", async () =>
         });
     });
 
-    assert.match(calls[0].sql, /LIMIT \$2 OFFSET \$3/);
-    assert.deepEqual(calls[0].params, ["b1", 3, 1]);
+    assert.deepEqual(calls, [{ bookId: "b1", options: { includeContent: true, limit: "2", offset: "1" } }]);
+    assert.deepEqual(quotaCalls, [
+        {
+            userId: 1,
+            chapters: [
+                { book_id: "b1", chapter_id: "c2", html: "two", text: "" },
+                { book_id: "b1", chapter_id: "c3", html: "three", text: "" }
+            ]
+        }
+    ]);
+});
+
+test("reader chapter endpoint returns the daily quota error without exposing content", async () => {
+    const router = createReaderApiRoutes(
+        baseDeps({
+            query: async () => ({
+                rows: [{ book_id: "b1", chapter_id: "c2", title: "Two", html: "secret", text: "secret", is_volume: false }]
+            }),
+            consumeReaderChapters: async () => ({
+                allowed: false,
+                status: 429,
+                code: "DAILY_CHAPTER_LIMIT_EXCEEDED",
+                error: "今日阅读章节次数已超过上限，请等待明日刷新",
+                limit: 1,
+                used: 1,
+                remaining: 0,
+                read_date: "2026-07-23"
+            })
+        })
+    );
+
+    await withApp(router, async (base) => {
+        const response = await fetch(`${base}/reader-api/books/b1/chapters/c2`, { headers: { "X-Test-Reader": "1" } });
+        assert.equal(response.status, 429);
+        assert.deepEqual(await response.json(), {
+            error: "今日阅读章节次数已超过上限，请等待明日刷新",
+            code: "DAILY_CHAPTER_LIMIT_EXCEEDED",
+            limit: 1,
+            used: 1,
+            remaining: 0,
+            read_date: "2026-07-23"
+        });
+    });
 });
 
 test("reader routes keep tts endpoints protected and return edge voice fallback", async () => {

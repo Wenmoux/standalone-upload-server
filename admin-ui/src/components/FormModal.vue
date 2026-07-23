@@ -22,6 +22,9 @@
               v-model="draft[field.key]"
               :type="field.type || 'text'"
               :placeholder="field.placeholder || ''"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step"
               :disabled="field.disabled || busy"
             />
           </label>
@@ -47,8 +50,8 @@
 
 <script setup>
 /**
- * [INPUT]: 依赖 Vue、useDialogFocus、弹窗开关、字段模型、提交状态与全局确认上下文
- * [OUTPUT]: 提供脏数据关闭门禁、焦点闭环/恢复、提交锁定和内联错误呈现的表单弹窗
+ * [INPUT]: 依赖 Vue、useDialogFocus、弹窗开关、含数值边界的字段模型、提交状态与全局确认上下文
+ * [OUTPUT]: 提供数值约束透传、脏数据关闭门禁、焦点闭环/恢复、提交锁定和内联错误呈现的表单弹窗
  * [POS]: admin-ui/src/components 的表单容器，为书籍、用户和反馈编辑流程统一可访问交互协议
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */

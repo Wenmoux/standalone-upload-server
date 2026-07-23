@@ -6,6 +6,23 @@
 
 说明：本文件只保留阶段级更新，不再记录旧报告里的每条细碎构建流水。完整旧记录已备份到 `backups/docs-consolidation-20260605-204647`。
 
+## 2026-07-23：Reader 用户每日章节配额
+
+- 后台用户管理新增每日阅读章节上限，默认 500 章、`0` 表示不限；列表和 CSV 同时展示北京时间当日已计数章节数。
+- Reader 单章 JSON、单章 HTML 与 `includeContent=1` 批量正文共用同一配额账本；同一本书同一章节当天重复请求不扣次，分卷占位不计数。
+- 配额判定以用户行锁串行并发请求，批量越限整批回滚；超限返回 `429 DAILY_CHAPTER_LIMIT_EXCEEDED` 和“等待明日刷新”的明确提示。
+- 新增 `025_reader_daily_chapter_quota`、对应 rollback、Schema 快照、服务/路由/Admin 回归和文档回环。
+
+## 2026-07-23：综合审计、安全收紧与文档回环
+
+- 新增 [2026-07-23 综合审计报告](PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md)，覆盖逻辑、UI、权限、数据一致性、Bot/Reader/Admin、测试、发布和历史报告对账；旧报告保留为快照，不再承担当前风险排序。
+- Admin 敏感配置进一步 owner-only：非 owner 不再读取备份下载、`app.env`、CDK、API Token 等高风险数据；Telegram Bot Token 不再回显，清除 Token 必须显式确认。
+- Reader 整本正文 `includeContent=1` 收紧到 Reader 正文权限；Telegram Bot 改用 `/bot-api/books/:bookId/chapters/export` 内部鉴权分页端点导出缓存正文。
+- Reader 删除无后端事实源的票券、站点购买和间贴旧功能，书评举报改为非阻塞对话框。
+- Bot TXT/EPUB 导出在本地缓存不完整时会补抓 PO18 账号实际可读缺章，按章节 ID 合并，保留来源标题与合法 `chapter_order` 缺口。
+- README、API、Bot README、架构、配置、文档索引和 v2.0 进度文档已同步当时最新迁移 `024_chapter_order_uniqueness`、Bot 导出边界和验证结果。
+- 验证：`npm test` 482 项、481 通过、1 项真实 PG 跳过；覆盖率行 81.16%、分支 54.96%；Admin/Reader 生产构建、lint、格式、UTF-8、schema、GEB 文档和 Docker 上下文检查通过。
+
 ## 2026-07-23：Bot 标签与平台搜索口径统一
 
 - 新增共享平台语义事实源，集中 `qidian/qd`、`fanqie/fq/tomato`、米国度等历史别名；Reader 搜索和词云按别名数组查询，不修改历史元信息。

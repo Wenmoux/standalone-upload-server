@@ -1,6 +1,6 @@
 # PO18 旁路服务 API 文档
 
-> 当前事实（2026-07-15）：本文以 `server-pg.js` 实际挂载的路由、路由级鉴权中间件和运行时请求契约为准。历史客户端仍在使用的兼容字段会明确标注；旧报告或旧页面名不能作为当前入口依据。
+> 当前事实（2026-07-23）：本文以 `server-pg.js` 实际挂载的路由、路由级鉴权中间件和运行时请求契约为准。历史客户端仍在使用的兼容字段会明确标注；旧报告或旧页面名不能作为当前入口依据。
 
 基础地址：
 
@@ -91,8 +91,10 @@ Content-Type: application/json
 - `021_book_manifest_checksums`
 - `022_review_governance`
 - `023_taxonomy_conflict_deduplication`
+- `024_chapter_order_uniqueness`
+- `025_reader_daily_chapter_quota`
 
-治理迁移均未引入 `book_key`，也未更改原有平台无感 API 的请求/响应字段；taxonomy 去重属于不可逆的等价历史数据清理，失败回退应恢复备份而不是重新制造重复 token。
+治理迁移均未引入 `book_key`，也未更改原有平台无感 API 的请求/响应字段；taxonomy 去重属于不可逆的等价历史数据清理，失败回退应恢复备份而不是重新制造重复 token。`024` 只修复同书正数 `chapter_order` 重复并建立全平台唯一约束，不压缩合法缺口；`025` 增加用户每日章节上限和按日去重阅读账本。
 
 ## 5. v2.0 管理、安全和可观测性扩展
 
@@ -127,6 +129,15 @@ Content-Type: application/json
 - 此处修改的是 `reader_users.is_admin`，用于 Bot 发币、免开通导出和未指定日报接收人时的管理员收件人；它与后台 `admin_users` 的 owner/operator/moderator/viewer RBAC 是两套独立权限。
 - 接口仅 owner 可用；`is_admin` 必须是 JSON 布尔值，`reason` 必须为 2-500 字。普通 `PUT /admin-api/users/:id` 明确拒绝夹带 `is_admin`，避免资料编辑顺带提权。
 - 设置和取消都会进入追加式后台审计，记录后台 actor、目标用户路径、原因和新状态。Reader/Bot 管理员允许全部取消为零，后台最后一个 owner 的删除/降级保护不受影响。
+
+#### Reader 每日章节上限
+
+`POST /admin-api/users` 与 `PUT /admin-api/users/:id` 接受可选整数 `daily_chapter_limit`，范围为 `0-100000`，默认 `500`；`0` 表示不限次数。`GET /admin-api/users` 和用户 CSV 额外返回：
+
+- `daily_chapter_limit`：该用户的每日章节上限。
+- `chapters_read_today`：北京时间当日已计数的不同书籍章节数。
+
+后台用户页可直接编辑上限并查看今日用量。Reader/Bot 管理员身份不会自动绕过配额，是否限流只由该用户的 `daily_chapter_limit` 决定。
 
 ### 5.2 后台审计和内部 Token
 
@@ -293,7 +304,7 @@ Reader API 前缀为 `/reader-api`，当前权限不是“全部公开”，而�
 | Reader 会话  | `performance`、`corrections`、全部 `tts/*`、书评举报/申诉，以及个人历史/部分书架操作  | 必须已有 Reader session；账号受限时，部分写入还会返回 `403`    |
 | 有效书库权限 | 章节正文 JSON、章节 HTML，以及书架列表/加入书架                                       | 除登录外，还要求 `library_access` 有效且会员未过期或为永久会员 |
 
-历史兼容：`GET /reader-api/books/:bookId/chapters?includeContent=1` 最初为 Bot 整本导出保留，当前路由仍可在未登录状态返回目录中的 `html`/`text`。这是已有兼容面，不代表新的正文客户端应绕过受保护的单章正文接口；新接入应使用下文带书库权限校验的章节正文路由。
+`GET /reader-api/books/:bookId/chapters?includeContent=1` 会返回整本分页正文，当前与单章正文一样需要 Reader 登录和有效书库权限。Telegram Bot 不再走 Reader 会话正文接口，而是使用下文的内部 Bot 导出端点。
 
 以下小节先列出公开查询接口，再单独说明受保护接口。
 
@@ -438,13 +449,39 @@ GET /reader-api/books/545061/chapters
 }
 ```
 
+传入 `includeContent=1` 时响应会额外包含 `html` 与由 HTML 派生的 `text`，并要求 Reader 登录和有效书库权限；目录页不要传该参数。响应中的每个非分卷章节都进入下述每日阅读配额，批量请求若会越限则整批拒绝且不部分扣次。
+
+### 3.1 Bot 内部章节导出分页
+
+```http
+GET /bot-api/books/:bookId/chapters/export?limit=100&offset=0
+X-Bot-Token: <PO18_BOT_API_TOKEN>
+```
+
+该端点只供 Telegram Bot 使用，固定返回可导出的缓存正文分页。`limit` 默认 `100`，最大 `500`；响应与 Reader 章节列表分页一致，包含 `rows`、`total`、`has_more` 和 `next_offset`。Bot 会按页聚合正文，必要时再根据 PO18 账号实际可读内容补抓缺章。
+
 ### 4. 章节正文
 
 ```http
 GET /reader-api/books/:bookId/chapters/:chapterId
 ```
 
-需要 Reader 登录且拥有有效书库权限；未登录返回 `401`，会员过期或书库权限被关闭返回 `403`。
+需要 Reader 登录且拥有有效书库权限；未登录返回 `401`，会员过期或书库权限被关闭返回 `403`。每个“书籍 ID + 章节 ID”在北京时间同一天只计一次，JSON 与 HTML 两种入口共享同一计数；分卷占位不计数。
+
+达到后台为该用户设置的上限后，新章节返回 `429`：
+
+```json
+{
+    "error": "今日阅读章节次数已超过上限，请等待明日刷新",
+    "code": "DAILY_CHAPTER_LIMIT_EXCEEDED",
+    "limit": 20,
+    "used": 20,
+    "remaining": 0,
+    "read_date": "2026-07-23"
+}
+```
+
+重复请求当天已经计数的章节仍可读取，不会再次扣次；次日北京时间日期键变化后自动使用新的日配额。
 
 示例：
 
@@ -475,7 +512,7 @@ GET /reader-api/books/545061/chapters/1
 GET /reader-api/books/:bookId/chapters/:chapterId/html
 ```
 
-权限与章节正文 JSON 相同：需要 Reader 登录和有效书库权限。
+权限与章节正文 JSON 相同：需要 Reader 登录和有效书库权限，并共享同一份按日去重章节配额。
 
 示例：
 
@@ -855,7 +892,7 @@ POST /admin-api/jobs/:id/cancel
 - `/admin-api/jobs` 支持 `status`、`type`、`page`、`limit` 查询参数。
 - 备份、上传 dump、恢复数据库、榜单刷新、Bot 长任务、陈旧 PO18 批量清理和章节结构整理会写入 `system_jobs`，用于排查耗时任务、失败原因和结果文件。
 - `POST /admin-api/jobs/:id/retry` 仅允许重试 `failed` / `canceled` 任务；当前支持 `backup:*`、`rank_refresh`、`chapters_repair_order`，以及需要确认短语的 `restore:postgres`、`books_cleanup_stale`。
-- `POST /admin-api/jobs/:id/cancel` 仅允许取消仍处于 `queued` 的任务；已经 `running` 的任务不会强杀，避免导出、恢复、上传等任务留下半完成状态。
+- `POST /admin-api/jobs/:id/cancel` 对 `queued` 任务会立即转为 `canceled`；对 `running` 任务会记录协作式取消请求，Worker 在安全检查点停止。不会强杀进程，避免导出、恢复、上传等任务留下半完成状态。
 - 恢复/清理等破坏性任务重试请求体需携带确认短语：
 
 ```json
@@ -1099,7 +1136,7 @@ Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters/1" -We
 
 ### 2026-07-12
 
-`GET /reader-api/books/:bookId/chapters` 增加可选分页参数，供 Bot 分页拉取大书正文：
+`GET /reader-api/books/:bookId/chapters` 增加可选分页参数，用于目录或受权限保护的整本正文读取：
 
 | Param    | Type    | Default | Description                                                    |
 | -------- | ------- | ------- | -------------------------------------------------------------- |
@@ -1115,7 +1152,7 @@ Invoke-RestMethod "http://localhost:3100/reader-api/books/545061/chapters/1" -We
 }
 ```
 
-Bot 导出正文时默认每页请求 `100` 章，可通过 `PO18_BOT_EXPORT_PAGE_SIZE` 在 `20-500` 范围内调整。
+Telegram Bot 导出正文改用 `/bot-api/books/:bookId/chapters/export`，默认每页请求 `100` 章，可通过 `PO18_BOT_EXPORT_PAGE_SIZE` 在 `20-500` 范围内调整。
 
 新增 EPUB 老二次元（内部 ID：`style2`）后台接口：
 
@@ -1141,7 +1178,7 @@ DELETE /admin-api/config/export/style2-assets/:slot
 
 | Param            | Type                  | Default | Description                                                                                                                        |
 | ---------------- | --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `includeContent` | `0/1` or `true/false` | `0`     | 设置为 `1` 时，章节列表会同时返回 `html` 和由 HTML 派生出的 `text`。适合 Telegram Bot 或整本导出；阅读器目录页建议不传，保持轻量。 |
+| `includeContent` | `0/1` or `true/false` | `0`     | 设置为 `1` 时，章节列表会同时返回 `html` 和由 HTML 派生出的 `text`，需要 Reader 正文权限。Bot 使用 `/bot-api/books/:bookId/chapters/export`。 |
 
 示例：
 

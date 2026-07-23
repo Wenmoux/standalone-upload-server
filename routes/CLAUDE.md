@@ -16,7 +16,7 @@ admin-library.js: Admin 书库路由，负责书籍/章节 CRUD、筛选导出�
 admin-maintenance.js: Admin 数据维护路由，暴露陈旧书籍清理、全量分卷去重与保留合法缺口的重复顺序修复，并保留有限批次兼容接口和任务跟踪。
 admin-manifests.js: Admin Book Manifest 路由，提供单书导出、包验证和确认导入。
 admin-system.js: Admin 系统路由，聚合状态、诊断、日志、概览、任务与安全审计入口。
-admin-users.js: Admin 用户与经济管理路由，覆盖 owner 专属 Reader/Bot 管理员切换、用户、CDK、流水、搜索需求及 CSV 导出。
+admin-users.js: Admin 用户与经济管理路由，覆盖每日章节上限/用量、owner 专属 Reader/Bot 管理员切换、用户、CDK、流水、搜索需求及 CSV 导出。
 bot-api.js: Bot API 纯组合边界，在统一 Bot Token 下按固定顺序挂载系统、用户、红包、社交与书库子域。
 bot-api-library.js: Bot 书库协议路由，承接 PO18 凭据、书架、缺书请求、批量热词、词云与分享事实，只映射 HTTP 并把全部持久化委托给领域服务。
 bot-api-red-packets.js: Bot 红包协议路由，把兼容请求字段和过期/幂等状态映射到红包聚合根。
@@ -26,7 +26,7 @@ bot-api-users.js: Bot 内部用户路由，把 Telegram 身份、签到、任务
 health.js: 运维路由，提供 liveness/readiness/deep health、版本、Prometheus 文本和 Admin 指标摘要。
 openapi.js: OpenAPI 入口路由，按请求实时生成 Express 端点索引并提供轻量文档页。
 rank.js: 公共与 Admin 榜单路由，提供榜单读取、状态和显式刷新。
-reader-api.js: Reader 主 API 路由，组合账号/TTS并承接发现、书架、历史、正文、书评、纠错和性能上报。
+reader-api.js: Reader 主 API 路由，组合账号/TTS并承接发现、书架、历史、按用户自然日去重限流的正文、书评、纠错和性能上报。
 reader-auth.js: Reader 账号路由，把 CDK 注册、密码/Telegram 登录和签到委托给原子领域服务，并处理资料与 session 生命周期。
 reader-tts.js: Reader TTS 路由，在会话鉴权与 SSRF 校验后代理或调用受支持语音提供商。
 review-governance.js: 书评治理路由，分别暴露 Reader/Bot 举报申诉与 Admin 审核处理边界。

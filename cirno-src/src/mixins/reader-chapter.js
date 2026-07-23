@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Reader HTTP/路由/消息能力、章节导航/显示重建/间贴失效方法、PerfectScrollbar、Reader 会话和离线存储
- * [OUTPUT]: 默认导出书籍初始化、竞态安全的章节加载/解密/错误反馈、购买、最近阅读与离线固定状态机
- * [POS]: cirno-src/src/mixins 的章节数据切片，为 Reader 组合根及导航/设置/间贴 mixin 提供唯一章节事实
+ * [INPUT]: 依赖 Reader HTTP/路由/消息能力、章节导航/显示重建、PerfectScrollbar、Reader 会话和离线存储
+ * [OUTPUT]: 默认导出书籍初始化、竞态安全的章节加载/解密/错误反馈、最近阅读与离线固定状态机
+ * [POS]: cirno-src/src/mixins 的章节数据切片，为 Reader 组合根及导航/设置 mixin 提供唯一章节事实
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import PerfectScrollbar from 'perfect-scrollbar'
@@ -22,10 +22,7 @@ export default {
       chapter_info: {},
       chapterContentData: [],
       chapterDisplayContentData: [],
-      contentRequestId: 0,
-      auth: true,
-      chapterAmount: 0,
-      buyAmount: 0
+      contentRequestId: 0
     }
   },
   async created() {
@@ -146,9 +143,6 @@ export default {
         return this.getContent(readableCid)
       }
 
-      if (String(this.cid) !== cid && typeof this.invalidateTsukkomiList === 'function') {
-        this.invalidateTsukkomiList({ close: true, clear: true })
-      }
       this.cid = cid
       this.loading = 0
       this.loadError = ''
@@ -196,15 +190,8 @@ export default {
             chapter: chapterInfo
           }).catch(() => {})
         }
-        if (chapterInfo.auth_access == 1) {
-          this.auth = true
-          this.setLastRead()
-          this.markReadingStart()
-        } else {
-          this.auth = false
-        }
-        this.chapterAmount = chapterInfo.unit_hlb
-        this.buyAmount = chapterInfo.buy_amount
+        this.setLastRead()
+        this.markReadingStart()
         this.chapterTitle = chapterInfo.chapter_title
 
         let contentArray
@@ -215,10 +202,7 @@ export default {
           while (contentLines.length && contentLines[contentLines.length - 1].trim() === '') contentLines.pop()
           const authorSay = String(chapterInfo.author_say || '')
           const authorSayLines = authorSay ? authorSay.split(/\r?\n/) : []
-          contentArray = [...contentLines, ...authorSayLines].map(line => ({
-            text: this.normalizeParagraphLine(line),
-            tsukkomi_num: 0
-          }))
+          contentArray = [...contentLines, ...authorSayLines].map(line => ({ text: this.normalizeParagraphLine(line) }))
         }
         this.chapterContentData = contentArray
         await this.rebuildChapterDisplayContent()
@@ -235,7 +219,6 @@ export default {
             wheelPropagation: true,
             minScrollbarLength: 20
           })
-          Promise.resolve(this.refreshTsukkomiNums(cid, requestId)).catch(() => {})
         })
       } catch (error) {
         this.setChapterLoadError(error, requestId, cid)
@@ -252,15 +235,6 @@ export default {
       const encrypted = Uint8Array.from(atob(String(data)), char => char.charCodeAt(0))
       const decrypted = await webCrypto.decrypt({ name: 'AES-CBC', iv: new Uint8Array(16) }, aesKey, encrypted)
       return new TextDecoder().decode(decrypted).replace(/\0+$/g, '')
-    },
-    async buyChapter() {
-      const response = await this.$get({
-        url: '/chapter_buy',
-        urlParas: { chapter_id: this.cid }
-      })
-      this.$store.commit('setPropInfo', response.data.prop_info)
-      this.$store.commit('setReaderInfo', response.data.reader_info)
-      return this.getContent(this.cid)
     },
     retryCurrentChapter() {
       if (this.cid) this.getContent(this.cid)

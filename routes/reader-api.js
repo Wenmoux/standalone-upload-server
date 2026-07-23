@@ -1,7 +1,7 @@
 ﻿/**
- * [INPUT]: 依赖 Express、共享平台别名、Reader session/书库权限、书籍搜索/社交/RUM 服务及 reader-auth/tts 子路由
- * [OUTPUT]: 对外提供 Reader 发现、搜索、详情、目录/正文、书架、历史、书评、纠错和性能 API
- * [POS]: routes 的 Reader 主协议边界，按公开元数据、登录会话和有效书库权限分层暴露内容
+ * [INPUT]: 依赖 Express、共享平台别名、Reader session/书库权限、每日正文配额、书籍搜索/章节目录/社交/RUM 服务及 reader-auth/tts 子路由
+ * [OUTPUT]: 对外提供 Reader 发现、搜索、详情、受每日去重配额保护的目录/正文、书架、历史、书评、纠错和性能 API
+ * [POS]: routes 的 Reader 主协议边界，按公开元数据、登录会话、有效书库权限和用户级正文配额分层暴露内容
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -89,14 +89,33 @@ function createReaderApiRoutes(deps = {}) {
         bookOrder,
         logSlowSearch,
         slowSearchContext,
-        chapterListOrderSql,
         chapterText,
+        listChapters,
+        consumeReaderChapters,
         textFromHtml,
         listBookReviews,
         normalizeCorrectionText,
         correctionCharLength,
         readerRumService
     } = deps;
+
+    async function applyReaderChapterQuota(req, res, chapters) {
+        if (typeof consumeReaderChapters !== "function") throw new Error("reader chapter quota service unavailable");
+        const result = await consumeReaderChapters({
+            userId: req.readerUser?.id || req.session?.readerUser?.id,
+            chapters
+        });
+        if (result.allowed) return true;
+        res.status(result.status || 429).json({
+            error: result.error || "今日阅读章节次数已超过上限，请等待明日刷新",
+            code: result.code || "DAILY_CHAPTER_LIMIT_EXCEEDED",
+            limit: result.limit,
+            used: result.used,
+            remaining: result.remaining,
+            read_date: result.read_date
+        });
+        return false;
+    }
 
     router.use(createReaderAuthRoutes(deps));
     router.use(createReaderTtsRoutes(deps));
@@ -534,50 +553,27 @@ function createReaderApiRoutes(deps = {}) {
         }
     });
 
-    router.get("/reader-api/books/:bookId/chapters", async (req, res, next) => {
-        try {
-            const includeContent = ["1", "true", "yes"].includes(String(req.query.includeContent || "").toLowerCase());
-            const requestedLimit = Number(req.query.limit);
-            const paged = Number.isFinite(requestedLimit) && requestedLimit > 0;
-            const limit = paged ? positiveInteger(requestedLimit, 100, 500) : 0;
-            const offsetValue = Number(req.query.offset);
-            const offset = paged && Number.isFinite(offsetValue) && offsetValue > 0 ? Math.floor(offsetValue) : 0;
-            const fetchLimit = paged ? limit + 1 : 0;
-            const rows = await query(
-                `WITH book_platform AS (
-                    SELECT platform
-                    FROM book_metadata
-                    WHERE book_id = $1
-                    ORDER BY COALESCE(subscribed_chapters, 0) DESC, COALESCE(updated_at, created_at) DESC, id DESC
-                    LIMIT 1
-                 )
-                 SELECT id, book_id, chapter_id, title, chapter_order, uploader, "uploaderId",
-                        platform, COALESCE(is_volume, FALSE) AS is_volume,
-                        created_at, updated_at, LENGTH(COALESCE(html, ''))::int html_length
-                        ${includeContent ? ", html, text" : ""}
-                 FROM chapter_cache
-                 WHERE book_id = $1
-                 ORDER BY ${chapterListOrderSql("(SELECT platform FROM book_platform)")}
-                 ${paged ? "LIMIT $2 OFFSET $3" : ""}`,
-                paged ? [String(req.params.bookId), fetchLimit, offset] : [String(req.params.bookId)]
-            );
-            const hasMore = paged && rows.rows.length > limit;
-            const visibleRows = hasMore ? rows.rows.slice(0, limit) : rows.rows;
-            if (includeContent) {
-                for (const row of visibleRows) {
-                    row.text = chapterText(row);
-                }
+    router.get(
+        "/reader-api/books/:bookId/chapters",
+        (req, res, next) => {
+            if (!truthyQuery(req.query.includeContent)) return next();
+            return requireReaderContentAccess(req, res, next);
+        },
+        async (req, res, next) => {
+            try {
+                if (typeof listChapters !== "function") return res.status(503).json({ error: "chapter catalog service unavailable" });
+                const payload = await listChapters(req.params.bookId, {
+                    includeContent: truthyQuery(req.query.includeContent),
+                    limit: req.query.limit,
+                    offset: req.query.offset
+                });
+                if (truthyQuery(req.query.includeContent) && !(await applyReaderChapterQuota(req, res, payload.rows || []))) return;
+                res.json(payload);
+            } catch (err) {
+                next(err);
             }
-            const payload = { rows: visibleRows, total: visibleRows.length };
-            if (paged) {
-                payload.has_more = hasMore;
-                payload.next_offset = hasMore ? offset + visibleRows.length : null;
-            }
-            res.json(payload);
-        } catch (err) {
-            next(err);
         }
-    });
+    );
 
     router.get("/reader-api/books/:bookId/chapters/:chapterId", requireReaderContentAccess, async (req, res, next) => {
         try {
@@ -591,6 +587,7 @@ function createReaderApiRoutes(deps = {}) {
             );
             const chapter = result.rows[0];
             if (!chapter) return res.status(404).json({ error: "chapter not found" });
+            if (!(await applyReaderChapterQuota(req, res, [chapter]))) return;
             chapter.text = chapterText(chapter);
             res.json({ chapter });
         } catch (err) {
@@ -600,11 +597,15 @@ function createReaderApiRoutes(deps = {}) {
 
     router.get("/reader-api/books/:bookId/chapters/:chapterId/html", requireReaderContentAccess, async (req, res, next) => {
         try {
-            const result = await query("SELECT title, html FROM chapter_cache WHERE book_id = $1 AND chapter_id = $2 LIMIT 1", [
-                String(req.params.bookId),
-                String(req.params.chapterId)
-            ]);
+            const result = await query(
+                `SELECT book_id, chapter_id, title, html, COALESCE(is_volume, FALSE) AS is_volume
+                 FROM chapter_cache
+                 WHERE book_id = $1 AND chapter_id = $2
+                 LIMIT 1`,
+                [String(req.params.bookId), String(req.params.chapterId)]
+            );
             if (!result.rows[0]) return res.status(404).send("chapter not found");
+            if (!(await applyReaderChapterQuota(req, res, [result.rows[0]]))) return;
             res.type("html").send(result.rows[0].html || "");
         } catch (err) {
             next(err);

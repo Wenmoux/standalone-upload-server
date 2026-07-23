@@ -29,6 +29,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
 - `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、PEER_ID_INVALID 降级、发送后结算、权限与文案契约。
+- `bot-export-builder.test.js`: Bot 部分缓存与 PO18 已购正文合并、去重排序及 TXT 来源标题/合法缺口保持契约。
 - `bot-library.test.js`: Bot PO18 加密凭据、凭据变更会话失效、书架、缺书请求与分享事实持久化用例。
 - `bot-menu-handlers.test.js`: Telegram 精简系统命令、宫格面板与 callback 领域委托契约。
 - `bot-settings.test.js`: Bot 命令目录配置清洗、去重、合并与持久化语义。
@@ -76,7 +77,8 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `rank-routes.test.js`: 排行 HTTP 参数与响应契约。
 - `rank.test.js`: 排行聚合、窗口与并列规则。
 - `rate-limit.test.js`: 内存限流窗口和响应元数据。
-- `reader-api-routes.test.js`: Reader 查询、平台别名、未缓存元信息、内容、会话和权限路由。
+- `reader-api-routes.test.js`: Reader 查询、平台别名、未缓存元信息、每日正文配额、会话和权限路由。
+- `reader-chapter-quota.test.js`: Reader 每日章节限额、同章去重、分卷豁免和批量越限事务回滚语义。
 - `reader-account.test.js`: Reader CDK 注册、密码/Telegram 身份、Bot 注册奖励、邀请和批量导入事务。
 - `reader-check-in.test.js`: Reader/Bot 签到行锁、周期、奖励流水与回滚原子性。
 - `reader-icon-subset.test.js`: Reader 图标子集与产物约束。
@@ -86,7 +88,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `reader-proxy.test.js`: Reader 3200 到 3100 代理的公网 Host、协议与 CSRF 来源传递契约。
 - `reader-rum.test.js`: Reader 性能事件采样和写入。
 - `reader-settings-mixin.test.js`: Reader 阅读设置状态机下沉、设置面板事件、样式边界、组合根规模与职责隔离契约。
-- `reader-state-mixins.test.js`: Reader 章节与间贴状态机下沉、加载失败反馈、死状态清理及跨章节迟到响应隔离契约。
+- `reader-state-mixins.test.js`: Reader 章节状态机下沉、加载失败反馈、旧间贴/票券/购买入口移除及跨章节迟到响应隔离契约。
 - `reader-view-boundaries.test.js`: Reader 首页、书库和详情页的规模、独立样式归属与 L3 契约守卫。
 - `reader-virtual-list.test.js`: 虚拟章节列表窗口计算。
 - `red-packets.test.js`: 红包参数、创建幂等、定向结算、重复领取、过期退款与事务回滚。

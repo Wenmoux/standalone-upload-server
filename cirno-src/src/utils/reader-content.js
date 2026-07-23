@@ -66,8 +66,7 @@ export function parseIhuabenParagraph(node) {
           text: `<img src="${htmlAttr(src)}" alt='${htmlAttr(alt)}'>`,
           displayText: alt,
           imageSrc: src,
-          imageAlt: alt,
-          tsukkomi_num: 0
+          imageAlt: alt
         }
       : null
   }
@@ -82,13 +81,12 @@ export function parseIhuabenParagraph(node) {
       side: String(speakerNode.tagName || '').toLowerCase() === 'i' ? 'right' : 'left',
       speaker,
       text: content,
-      displayText: content,
-      tsukkomi_num: 0
+      displayText: content
     }
   }
 
   const text = nodeTextContent(node)
-  return text ? { type: 'ihuaben-narration', text, displayText: text, tsukkomi_num: 0 } : null
+  return text ? { type: 'ihuaben-narration', text, displayText: text } : null
 }
 
 export function parseIhuabenHtml(html = '') {

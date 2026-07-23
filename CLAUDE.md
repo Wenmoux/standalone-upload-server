@@ -35,6 +35,8 @@ README.md - 项目入口与最短上手
 DOCKER.md - Docker 部署、升级、备份和发布手册
 API.md - 人工维护的 API 语义与兼容示例；运行时索引为 /openapi.json
 AGENTS.md - GEB 回环、项目边界与必跑验证规则
+PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md - 当前综合审计报告，覆盖代码、逻辑、UI、安全、测试、文档与后续风险排序
+PROJECT_OPTIMIZATION_FEATURE_ROADMAP_2026-07-23.md - 当前可优化完善与可增加功能路线图，按优先级、价值和落点组织后续工作
 telegram-push-contract.js - server/Bot 跨进程共享的不可见系统推送标记协议，限定自动取消置顶的消息边界
 </config>
 
@@ -52,6 +54,7 @@ routes → services → pg-store → PostgreSQL
 - Reader server 只提供静态文件并代理 `/reader-auth`、`/reader-api`。
 - `db/migrations` 是 schema 唯一正向来源，`db/rollbacks` 只用于显式人工回滚。
 - `chapter_cache` 的正数 `chapter_order` 在同一本书内跨平台唯一；上传冲突通过事务内区间移动解决，历史重复由 024 按 `chapter_order → chapter_id → id` 稳定重排。
+- Reader 正文读取由 025 的默认 500 章用户级每日上限和唯一用量账本保护；`0` 表示不限，北京时间自然日内同一本书同一章节只计一次，批量请求以用户行锁保证全有或全无。
 - `/config` 是运行配置、日志与备份的持久边界；源代码不得依赖其中的私人数据。
 
 ## 全局法则

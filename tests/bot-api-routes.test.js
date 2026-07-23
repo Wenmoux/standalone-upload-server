@@ -81,6 +81,30 @@ test("bot api routes expose health behind bot middleware", async () => {
     });
 });
 
+test("bot chapter export uses an authenticated bounded page", async () => {
+    const calls = [];
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        listChapters: async (bookId, options) => {
+            calls.push({ bookId, options });
+            return { rows: [{ chapter_id: "c1", html: "content" }], total: 1, has_more: false, next_offset: null };
+        }
+    });
+
+    await withApp(router, async (base) => {
+        const blocked = await fetch(`${base}/bot-api/books/b1/chapters/export`);
+        assert.equal(blocked.status, 401);
+
+        const response = await fetch(`${base}/bot-api/books/b1/chapters/export?offset=10`, {
+            headers: { "X-Test-Bot": "1" }
+        });
+        assert.equal(response.status, 200);
+        assert.equal((await response.json()).rows[0].html, "content");
+    });
+
+    assert.deepEqual(calls, [{ bookId: "b1", options: { includeContent: true, limit: 100, offset: "10" } }]);
+});
+
 test("bot broadcast routes require a registered administrator and page eligible recipients", async () => {
     const jobs = [];
     const router = createBotApiRoutes({

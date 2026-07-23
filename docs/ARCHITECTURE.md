@@ -54,7 +54,7 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
 | 前缀 | 主要调用者 | 鉴权 |
 | --- | --- | --- |
 | `/reader-auth/*` | Reader | 登录/注册公开，其余按 Reader Session |
-| `/reader-api/*` | Reader、Bot | 搜索/元信息等公开；书架、正文、TTS、纠错、性能等按 Reader Session或具体路由策略 |
+| `/reader-api/*` | Reader、Bot 只读发现 | 搜索/元信息等公开；书架、正文、TTS、纠错、性能等按 Reader Session 或具体路由策略 |
 | `/bot-api/*` | Telegram Bot | `X-Bot-Token` 和 Scope/IP 策略 |
 | `/api/metadata/*`、`/api/parse/*` | Userscript、Bot 共享 | Admin Session 或 Upload Token |
 | `/admin-api/*` | Admin | Admin Session、RBAC、CSRF 和审计 |
@@ -62,14 +62,14 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
 | `/metrics` | Prometheus | Metrics Bearer Token |
 | `/openapi.json`、`/api-docs` | 开发/运维 | 机器可读端点与 Schema 索引 |
 
-Reader server 只代理 `/reader-auth` 和 `/reader-api` 到 `3100`。上传与 Bot API 应直接访问 server，不应把 `3200` 当成共享写 API 地址。
+Reader server 只代理 `/reader-auth` 和 `/reader-api` 到 `3100`。上传与 Bot API 应直接访问 server，不应把 `3200` 当成共享写 API 地址。整本正文导出走 `/bot-api/books/:bookId/chapters/export`，不复用 Reader 会话。
 
 ## 数据与任务
 
 主要领域包括：
 
 - 书籍元信息、章节缓存、标准化分类和标签。
-- Reader 用户、Session、书架、历史、性能样本和书评。
+- Reader 用户、Session、书架、历史、按用户/日期/书籍/章节唯一的正文用量、性能样本和书评。
 - Telegram 用户、交易、签到、CDK、红包、众筹和 PO18 凭据。
 - 系统任务、任务租约、幂等副作用账本、来源健康和审计。
 - Admin 配置、API Token、备份、Manifest 和数据质量。
@@ -128,7 +128,8 @@ Dockerfile 主要阶段：
 
 以下是当前真实边界，不等同于运行故障，但新功能应优先消减而不是继续放大：
 
-- `GET /reader-api/books/:bookId/chapters?includeContent=1` 是 Bot 历史导出的公开正文兼容面。新的正文客户端必须使用受书库权限保护的单章接口；彻底收紧前需要先给 Bot 提供内部鉴权导出接口和兼容期。
+- `GET /reader-api/books/:bookId/chapters?includeContent=1` 与单章正文一样需要 Reader 正文权限；Telegram Bot 使用内部鉴权分页端点导出整本缓存正文。
+- Reader 正文 JSON、HTML 和 `includeContent=1` 统一经过每日章节配额服务；用户行锁串行并发请求，唯一用量账本保证同日重复章节不扣次，批量越限不产生部分消费。
 - 书籍身份仍有平台无感的 `book_id` 路径；Manifest 已拒绝可见的跨平台同号冲突，但统一 `book_key` 尚未迁移完成。
 - 远端备份只负责上传、索引和保留删除，且没有自动创建 dump 的调度器；下载、解密和恢复仍需运维人员显式完成。
 - Reader 正文、详情、书库和首页已通过领域 mixin、局部组件与独立样式边界全部回落到 800 行以内，Admin `BooksView.vue` 与本地书库上传 UI 当前也低于阈值。仍需优先收缩的生产热点是本地书库上传 CLI、`docker/control-panel.js` 与 Reader 转换报告脚本；新增能力应进入现有 component/service/style/util，而不是继续扩大组合根。

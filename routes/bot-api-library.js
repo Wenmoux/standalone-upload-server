@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Express、Bot Token 鉴权、Bot 书库持久化服务、批量热词与词云查询
- * [OUTPUT]: 对外提供 Bot PO18 账户、书架、缺书请求、热词、词云和分享事实的 HTTP 路由工厂
+ * [INPUT]: 依赖 Express、Bot Token 鉴权、Bot 书库持久化服务、受控章节分页、批量热词与词云查询
+ * [OUTPUT]: 对外提供 Bot PO18 账户、书架、正文导出分页、缺书请求、热词、词云和分享事实的 HTTP 路由工厂
  * [POS]: routes 的 Bot 书库协议适配层，只映射参数、状态码与响应；SQL、凭据和事实写入由 services 承担
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -21,8 +21,24 @@ function createBotApiLibraryRoutes(deps = {}) {
         getHotKeywords,
         addHotKeyword,
         addHotKeywords,
-        wordCloudPayload
+        wordCloudPayload,
+        listChapters
     } = deps;
+
+    router.get("/bot-api/books/:bookId/chapters/export", requireBotApi, async (req, res, next) => {
+        try {
+            if (typeof listChapters !== "function") return res.status(503).json({ error: "chapter export service is not configured" });
+            res.json(
+                await listChapters(req.params.bookId, {
+                    includeContent: true,
+                    limit: req.query.limit || 100,
+                    offset: req.query.offset
+                })
+            );
+        } catch (error) {
+            next(error);
+        }
+    });
 
     router.get("/bot-api/users/:telegramId/po18", requireBotApi, async (req, res, next) => {
         try {

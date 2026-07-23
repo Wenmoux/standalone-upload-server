@@ -17,6 +17,8 @@
 | [Telegram Bot](../bot/README.md) | 当前命令、权限、导出和任务流程 |
 | [EPUB 样式](../bot/epub-styles/README.md) | 样式注册、预览、资源和兼容边界 |
 | [Reader](../cirno-src/README.md) | Reader 功能、独立开发和构建 |
+| [2026-07-23 综合审计报告](../PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md) | 当前代码、逻辑、UI、安全、测试和文档完整度评估 |
+| [可优化完善与功能路线图](../PROJECT_OPTIMIZATION_FEATURE_ROADMAP_2026-07-23.md) | 后续优化、可增加功能、用户价值和实施顺序 |
 
 ## Agent 与代码地图
 
@@ -35,6 +37,8 @@
 | --- | --- |
 | [阶段更新记录](../PROJECT_UPDATE_LOG.md) | 按阶段记录用户可感知变化和重要修复 |
 | [v2.0 优化进度](../V2_OPTIMIZATION_PROGRESS.md) | v2.0 实施清单与当时的验证快照；不作为当前验证结果 |
+| [2026-07-23 综合审计报告](../PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md) | 当前评估，取代旧报告中的测试数字和开放风险排序 |
+| [可优化完善与功能路线图](../PROJECT_OPTIMIZATION_FEATURE_ROADMAP_2026-07-23.md) | 当前建议路线，取代口头零散待办 |
 | [2026-07-11 综合改善报告](../PROJECT_COMPREHENSIVE_IMPROVEMENT_REPORT_2026-07-11.md) | 原始评估与 7 月 12 日复核快照，不是运行手册 |
 | [2026-06-06 综合评估](../PROJECT_COMPREHENSIVE_ASSESSMENT.md) | 已归档的早期评估 |
 | [繁简转换维护](../cirno-src/docs/chinese-conversion.md) | Reader 转换规则维护 |
