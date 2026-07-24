@@ -108,7 +108,7 @@ PO18 账号、验证码、已购书架同步和整架共享只能在 Bot 私聊�
 
 ## 导出与持久任务
 
-TXT/EPUB 导出先从 `/bot-api/books/:bookId/chapters/export` 按 Bot Token 分页读取本地缓存正文；当缓存不完整且用户已绑定有效 PO18 会话时，会根据元信息补抓账号实际可读的缺失章节。已有缓存章节不会重复请求 PO18，空正文缓存可由已购正文替换，TXT 保留来源标题和真实 `chapter_order` 缺口，不再重新压成连续章号。生成文件只存在于任务临时目录，发送完成后由运行时清理。
+TXT/EPUB 导出先从 `/bot-api/books/:bookId/chapters/export` 按 Bot Token 分页读取本地缓存正文；当缓存不完整且用户已绑定有效 PO18 会话时，会根据元信息补抓账号实际可读的缺失章节。已有缓存章节不会重复请求 PO18，空正文缓存可由已购正文替换。TXT 保留来源标题和真实 `chapter_order` 缺口；EPUB 只拆分来源标题本身已有的“第 X 章”，对“数字 + 章节名”等标题完整照录，不按数组位置补章号。生成文件只存在于任务临时目录，发送完成后由运行时清理。
 
 `bot_export_txt`、`bot_export_epub`、书架同步、共享上传和 `bot_registered_user_broadcast` 都会写入服务端 `system_jobs`：
 

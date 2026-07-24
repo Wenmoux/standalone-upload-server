@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node path、独立 Style2 CSS/XHTML 模板、样式配置、书籍元数据与章节/分卷内容
- * [OUTPUT]: 对外提供老二次元 EPUB 的精简资源槽、基础 CSS、配置默认值和标题页/简介/分卷/正文渲染器
+ * [OUTPUT]: 对外提供老二次元 EPUB 的精简资源槽、基础 CSS、配置默认值和保留源章节标题的页面渲染器
  * [POS]: services 的 Style2 模板内核，集中定义视觉结构并供 Bot 导出与 Admin 预览共享
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -177,7 +177,7 @@ function renderStyle2Chapter(context) {
         : "";
     return renderEpubTemplate("style2-chapter.xhtml", {
         IMAGE: image,
-        NUMBER: header.number,
+        NUMBER_LINE: header.number ? `<span class="num">${header.number}</span><br/>` : "",
         TITLE: header.name,
         CONTENT: bodyHtml
     });

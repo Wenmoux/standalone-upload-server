@@ -141,7 +141,7 @@
 <script setup>
 /**
  * [INPUT]: 依赖 Vue、四套独立 EPUB CSS/XHTML 模板、内置字体/图标/页面资产、Admin API 及父级传入的样式配置模型
- * [OUTPUT]: 提供 EPUB 样式选择、完整 CSS/页面骨架查看、与导出同构的实时预览、参数编辑和精简资产替换界面
+ * [OUTPUT]: 提供 EPUB 样式选择、保留源章节标题的同构预览、完整 CSS/页面骨架查看、参数编辑和精简资产替换界面
  * [POS]: admin-ui/src/components 的导出样式工作台，由 TelegramView 组合进导出配置流程并承担配置与最终 EPUB 视觉契约的一致性反馈
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -446,7 +446,7 @@ const style1PreviewBody = computed(() => {
     }
     return renderPreviewTemplate(style1ChapterTemplate, {
         ART: art,
-        NUMBER: "第1章",
+        NUMBER_LINE: '<span class="chapter-sequence-number">第1章</span><br/>',
         TITLE: "示例章节",
         CONTENT: previewParagraphs("这里展示导出后的正文排版效果。\n\n实际内容来自当前书籍章节。")
     });
@@ -498,7 +498,7 @@ const style2PreviewBody = computed(() => {
     }
     return renderPreviewTemplate(style2ChapterTemplate, {
         IMAGE: `<div class="logo"><img class="logo" alt="chapter" src="${assetUrl("chapter")}"/></div>`,
-        NUMBER: "第1章",
+        NUMBER_LINE: '<span class="num">第1章</span><br/>',
         TITLE: "示例章节",
         CONTENT: "<p>这里展示导出后的正文排版效果。</p>"
     });
@@ -582,7 +582,7 @@ const style4PreviewBody = computed(() => {
         return renderPreviewTemplate(style4VolumeTemplate, { TITLE: "第<br/>一<br/>卷" });
     }
     return renderPreviewTemplate(style4ChapterTemplate, {
-        NUMBER: "第1章",
+        NUMBER_LINE: "第1章<br/>",
         TITLE: "示例章节",
         CONTENT: previewParagraphs("这里展示导出后的正文排版效果。\n\n正文不包含任何固定头图。")
     });

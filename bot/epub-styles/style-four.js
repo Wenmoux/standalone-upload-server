@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node path、独立 Style4 CSS/XHTML 模板、参考 EPUB 拆出的两种字体与四张非正文资源，以及生成器安全文本上下文
- * [OUTPUT]: 对外提供 style4 丹青云卷的长屏封面、制作说明、书籍信息、简介、竖排分卷和无头图正文渲染器
+ * [OUTPUT]: 对外提供 style4 丹青云卷的长屏封面、前置页、竖排分卷和保留源标题的无头图正文渲染器
  * [POS]: epub-styles 的彩墨古风视觉插件，保留参考 EPUB 的前置页与目录层级，同时明确排除含固定文本的正文章头图
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -102,7 +102,7 @@ module.exports = {
     },
     renderChapter({ header, bodyHtml }) {
         return renderEpubTemplate("style4-chapter.xhtml", {
-            NUMBER: header.number,
+            NUMBER_LINE: header.number ? `${header.number}<br/>` : "",
             TITLE: header.name,
             CONTENT: bodyHtml
         });

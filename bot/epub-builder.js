@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Node 文件与压缩能力、按需加载的 Resvg 长屏封面渲染、epub-styles 插件注册表，以及调用方注入的文本清洗、卷章识别和资源读取能力
- * [OUTPUT]: 对外提供将书籍元数据、章节和样式配置组装为含长屏封面、可选书籍信息页、全屏页语义、目录与资源的 EPUB 2 文件集合及 ZIP 字节流生成器
- * [POS]: bot 导出域的 EPUB 唯一组合器，统一掌管容器、manifest、spine 全屏扩展、前置页、目录、XHTML、资源与样式插件生命周期
+ * [OUTPUT]: 对外提供保留源章节标题、不合成章号的 EPUB 2 文件集合及 ZIP 字节流生成器
+ * [POS]: bot 导出域的 EPUB 唯一组合器，统一掌管容器、manifest、spine、前置页、源标题拆分、目录、XHTML、资源与样式插件生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs");
@@ -206,9 +206,9 @@ function createEpubBuilder(deps = {}) {
                     documentOptions: style.volumeDocumentOptions || {}
                 });
             } else {
-                const rawChapterTitle = chapter.title || chapter.chapter_title || chapter.chapter_id || `第${index + 1}章`;
+                const rawChapterTitle = chapter.title || chapter.chapter_title || chapter.chapter_id || "未命名章节";
                 chapterNo += 1;
-                const header = escapedHeader(splitHeading(rawChapterTitle, chapterNo, CHAPTER_LABEL_REGEX, "章"));
+                const header = escapedHeader(splitHeading(rawChapterTitle, chapterNo, CHAPTER_LABEL_REGEX, "章", false));
                 const bodyText = stripDuplicateLeadingChapterTitle(chapterPlainText(chapter), rawChapterTitle);
                 addPage({
                     id: `chapter-${chapterNo}`,
@@ -346,10 +346,10 @@ function createEpubBuilder(deps = {}) {
     return { buildZip, listEpubStyles, makeEpubFiles, textToParagraphs };
 }
 
-function splitHeading(rawTitle = "", sequence = 1, regex = CHAPTER_LABEL_REGEX, unit = "章") {
+function splitHeading(rawTitle = "", sequence = 1, regex = CHAPTER_LABEL_REGEX, unit = "章", synthesizeLabel = true) {
     const title = String(rawTitle || "").trim();
     const match = title.match(regex);
-    const number = match ? match[0].replace(/\s+/g, "") : `第${sequence}${unit}`;
+    const number = match ? match[0].replace(/\s+/g, "") : synthesizeLabel ? `第${sequence}${unit}` : "";
     const name = title
         .replace(regex, "")
         .replace(/^[\s:：·.。-]+/, "")

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供EPUB 内容结构、标题去重与样式注入的自动化回归断言
- * [POS]: tests 的EPUB 内容结构、标题去重与样式注入守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供 EPUB 内容结构、源章节标题保真、标题去重与样式注入的自动化回归断言
+ * [POS]: tests 的 EPUB 内容结构与标题语义守卫，防止生成章号、重复标题或样式漂移
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -136,6 +136,22 @@ test("crane EPUB style remains available", async () => {
     assert.match(chapter, /reader-crane-header\.png/);
     assert.match(chapter, /class="chapter-header-number">第184章/);
     assert.match(chapter, /class="chapter-header-name">回国/);
+});
+
+test("EPUB styles preserve numeric source titles without synthesizing chapter labels", async () => {
+    for (const styleId of ["style1", "style2", "style3", "style4", "crane"]) {
+        const { makeEpubFiles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
+        const files = await makeEpubFiles(
+            { book_id: `numeric-${styleId}`, title: "我在修仙界大器晚成", author: "作者", description: "简介" },
+            [{ chapter_id: "c1", title: "1 大器晚成", text: "正文内容" }],
+            { epub: { styleId, includeColophon: false } }
+        );
+        const chapter = contentOf(files, "OEBPS/Text/chapter_0001.xhtml");
+        const toc = contentOf(files, "OEBPS/toc.ncx");
+        assert.match(chapter, /1 大器晚成/, `${styleId} should keep the source title`);
+        assert.doesNotMatch(chapter, /第1章/, `${styleId} should not synthesize a chapter label`);
+        assert.match(toc, /<text>1 大器晚成<\/text>/, `${styleId} TOC should keep the source title`);
+    }
 });
 
 test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", async () => {

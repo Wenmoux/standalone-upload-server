@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node path、运行目录内的旧仙鹤章头资源候选和生成器提供的安全模板上下文
- * [OUTPUT]: 对外提供 crane 兼容样式的 CSS、资源声明及制作说明、简介、分卷和章页渲染器
+ * [OUTPUT]: 对外提供 crane 兼容样式的 CSS、资源声明及保留源章节标题的页面渲染器
  * [POS]: epub-styles 的历史兼容插件，保留旧配置可解析性但不进入 Telegram 直接选择白名单
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -49,6 +49,7 @@ a:link,a:visited{color:black;text-decoration:none;}
         return `<body class="volume-page"><h1>${title}</h1></body>`;
     },
     renderChapter({ header, bodyHtml, hasAsset }) {
-        return `<body><div class="chapter-header">${hasAsset(ASSET_NAME) ? `<div class="chapter-header-art"><img alt="chapter header" src="../${ASSET_NAME}"/></div>` : ""}<div class="chapter-header-copy"><div class="chapter-header-number">${header.number}</div><div class="chapter-header-name">${header.name}</div></div></div>${bodyHtml}</body>`;
+        const number = header.number ? `<div class="chapter-header-number">${header.number}</div>` : "";
+        return `<body><div class="chapter-header">${hasAsset(ASSET_NAME) ? `<div class="chapter-header-art"><img alt="chapter header" src="../${ASSET_NAME}"/></div>` : ""}<div class="chapter-header-copy">${number}<div class="chapter-header-name">${header.name}</div></div></div>${bodyHtml}</body>`;
     }
 };

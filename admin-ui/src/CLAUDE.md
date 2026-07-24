@@ -13,7 +13,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `styles/`: 全局视觉分层模块，按 foundation、workflow、content、operations、responsive 顺序组织；详见 `styles/CLAUDE.md`。
 `components/ConfirmDialog.vue`: 全局高风险操作确认器，收集可选原因并把确认结果交回调用视图。
 `components/DataTable.vue`: 声明式表格外壳，通过列定义和插槽统一键盘排序、加载/空状态、单元格与行操作渲染。
-`components/EpubStyleEditor.vue`: EPUB 导出样式配置与资产预览工作台，按最终 XHTML 同构预览四套内置 CSS/图片及可选书籍信息页，并经 Admin API 管理自定义模板资产。
+`components/EpubStyleEditor.vue`: EPUB 导出样式配置与资产预览工作台，按最终 XHTML 同构预览四套内置 CSS/图片、条件章号行及可选书籍信息页，并经 Admin API 管理自定义模板资产。
 `components/epub-style-editor.css`: EPUB 样式工作台局部样式，隔离预览设备、配置栏和图片资源列表的响应式布局。
 `components/FormModal.vue`: 通用表单弹窗容器，统一数值边界、关闭门禁、提交状态和错误提示槽位。
 `components/InputDialog.vue`: 应用级单值输入器，以非阻塞弹窗统一文本、长文本与枚举选择任务。

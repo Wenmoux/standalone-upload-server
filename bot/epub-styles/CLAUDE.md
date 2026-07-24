@@ -22,5 +22,6 @@ EPUB 视觉插件模块。每个样式只描述 CSS、页面模板、全屏页�
 - `index.js` 决定生成器可解析的样式，`services/epub-style-config.js` 决定合法配置，`bot/epub-style-picker.js` 决定 Telegram 可直选样式，三者职责不同。
 - 动态文本必须使用生成器提供的转义和段落函数；资源必须先由 `hasAsset` 确认可用，模板不得假设本地文件一定存在。
 - 只有源章节含真实分卷记录时才生成分卷页；样式不得自行注入“正文”等占位卷。
+- 章号只来自源标题本身已有的“第 X 章”等标签；没有该标签时 `header.number` 为空，样式必须直接显示完整 `header.name`，不得按章节位置合成编号或保留空章号行。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

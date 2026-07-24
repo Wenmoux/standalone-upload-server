@@ -10,13 +10,13 @@
 `style1-colophon.xhtml`: 样式一制作说明页骨架。
 `style1-intro.xhtml`: 样式一简介页骨架。
 `style1-volume.xhtml`: 样式一分卷页骨架。
-`style1-chapter.xhtml`: 样式一正文章页骨架。
+`style1-chapter.xhtml`: 样式一正文章页骨架，章号行按源标题是否含章号条件注入。
 `style2.css`: 样式二参考 EPUB 同值排版规则，保留独立背景并使用单一分卷图和单一章头图。
 `style2-title.xhtml`: 样式二标题页骨架，不包含固定标志。
 `style2-colophon.xhtml`: 样式二制作说明页骨架，不包含注记图。
 `style2-intro.xhtml`: 样式二书籍信息与简介页骨架。
 `style2-volume.xhtml`: 样式二统一分卷图骨架。
-`style2-chapter.xhtml`: 样式二统一章头图与正文骨架。
+`style2-chapter.xhtml`: 样式二统一章头图与正文骨架，章号行按源标题是否含章号条件注入。
 `style3.css`: 样式三参考 EPUB 同值排版规则，覆盖完整原版字体、正文/引用/脚注、轻灰说明框、下划线分卷与居中章题。
 `style3-colophon.xhtml`: 样式三制作说明页骨架。
 `style3-intro.xhtml`: 样式三复用参考 EPUB 版权信息框结构的简介页骨架。
@@ -27,6 +27,6 @@
 `style4-info.xhtml`: 样式四独立书籍信息页骨架，动态注入当前封面和元信息。
 `style4-intro.xhtml`: 样式四简介横幅、竖排标签、双虚线与正文骨架。
 `style4-volume.xhtml`: 样式四长屏彩墨底图和竖排动态卷名骨架。
-`style4-chapter.xhtml`: 样式四无固定图片的居中双色章题与正文章页骨架。
+`style4-chapter.xhtml`: 样式四无固定图片的居中双色章题与正文章页骨架，缺少源章号时不生成空行。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

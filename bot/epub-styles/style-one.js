@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node path、独立 Style1 CSS/XHTML 模板、参考 EPUB 拆出的头图/字体和生成器提供的转义、段落及资源上下文
- * [OUTPUT]: 对外提供 style1 江湖纸卷的长屏封面声明、原版字体资源和制作说明、无底色简介、分卷、章页渲染器
+ * [OUTPUT]: 对外提供 style1 江湖纸卷的长屏封面声明、原版字体资源和保留源标题的前置页/卷章渲染器
  * [POS]: epub-styles 的古典纸卷视觉插件，保持参考 EPUB 的页面语义和数值，不负责 EPUB 容器装配
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -77,7 +77,7 @@ module.exports = {
                 : "";
         return renderEpubTemplate("style1-chapter.xhtml", {
             ART: art,
-            NUMBER: header.number,
+            NUMBER_LINE: header.number ? `<span class="chapter-sequence-number">${header.number}</span><br/>` : "",
             TITLE: header.name,
             CONTENT: bodyHtml
         });

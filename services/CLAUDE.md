@@ -35,7 +35,7 @@ csrf.js: 基于可信 Origin、浏览器 same-origin Fetch Metadata 与 session 
 data-quality.js: 数据质量诊断服务，以只读查询发现重复书籍、缺章、异常元数据和大体积正文。
 db-errors.js: PostgreSQL 可用性错误分类器，把驱动/网络错误转换为稳定的启动与 API 提示。
 epub-style2-assets.js: 老二次元 EPUB 资源服务，校验图片类型、尺寸和大小并管理 `/config` 自定义覆盖。
-epub-style2-template.js: 老二次元 EPUB 模板内核，定义资源槽、基础 CSS 与标题页/简介/分卷/正文渲染器。
+epub-style2-template.js: 老二次元 EPUB 模板内核，定义资源槽、基础 CSS 与标题页/简介/分卷/保留源章节标题的正文渲染器。
 epub-template-files.js: 四样式独立 CSS/XHTML 文件加载器，缓存模板并执行受控动态占位符替换。
 epub-style-config.js: EPUB 样式配置契约，登记样式选项并规范化通用、Style2 和追加 CSS 配置。
 error-response.js: HTTP 错误规范化中间件，为既有 `error` 响应补充稳定 code 与 request_id。
