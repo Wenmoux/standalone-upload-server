@@ -7,6 +7,8 @@ Telegram 交互边界与跨平台导出内核。消息与按钮回调在本模�
 ## 成员清单
 
 `assets/`: Bot/EPUB 共用的旧仙鹤章头静态资源；只提供只读候选文件，不承载业务配置。
+`account-view.js`: Telegram/QQ 共用账户展示模型，统一书卷等级和经验文案，不携带具体平台标记。
+`book-card-view.js`: Telegram/QQ 共用书卡展示模型，统一字段回退、标签截断与统计口径，各平台只负责自身标记和按钮协议。
 `account-handlers.js`: 账户交互层，提供注册保障、start/menu/help/reg/me/sign 处理，并消费私聊导出续接而不持有任务状态机。
 `automatic-push-unpin.js`: 识别置顶服务消息中的频道自动转发与根级系统标记，并用精确消息 ID 容错取消置顶，拒绝触碰人工消息。
 `commands/`: 按账户、搜索、导出、社交和外部集成拆分的命令注册器；命令名需与 `command-catalog.js` 同步。

@@ -379,14 +379,14 @@ test("bot user registration and sign-in ignore client-controlled privilege and r
         const signed = await fetch(`${base}/bot-api/users/42/sign`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Test-Bot": "1" },
-            body: JSON.stringify({ copper: 999999999, silver: 999999999, exp: 999999999 })
+            body: JSON.stringify({ copper: 999999999, silver: 999999999, exp: 999999999, source: "qq_bot" })
         });
         assert.equal(signed.status, 200);
         assert.equal((await signed.json()).reward.copper, 100);
     });
 
     assert.deepEqual(calls[0], ["register", { telegramId: "42", telegramUsername: "", nickname: "Reader", inviterTelegramId: "" }]);
-    assert.deepEqual(calls[1], ["sign", { telegramId: "42", source: "telegram_bot" }]);
+    assert.deepEqual(calls[1], ["sign", { telegramId: "42", source: "qq_bot" }]);
 });
 
 test("bot currency rewards require settlement identity and event rows cannot forge balances", async () => {

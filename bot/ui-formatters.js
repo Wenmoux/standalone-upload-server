@@ -1,9 +1,12 @@
 /**
- * [INPUT]: 依赖调用方注入的 HTML 清洗、截断、卷章识别、平台展示能力及书籍、众筹、书评、资产领域对象
+ * [INPUT]: 依赖 account-view/book-card-view 的跨平台展示模型、调用方注入的 HTML 清洗/截断/卷章识别/平台展示能力及众筹、书评、资产领域对象
  * [OUTPUT]: 对外提供 Telegram 书卡、分页、回调键盘、引导式书评、众筹、资产和导出报价格式化能力
  * [POS]: bot 的集中 Telegram 视图层，保持 callback_data 协议和展示规则不散落在领域处理器中
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
+const { scholarText } = require("./account-view");
+const { createBookCardView } = require("./book-card-view");
+
 function createBotUi(deps = {}) {
     const escapeHtml =
         deps.escapeHtml ||
@@ -132,33 +135,25 @@ function createBotUi(deps = {}) {
     }
 
     function bookCardText(book, index = 1) {
-        const tags = String(book.tags || "")
-            .split(/[,，\s、|/]+/)
-            .filter(Boolean)
-            .slice(0, 4)
-            .join(" / ");
+        const card = createBookCardView(book, { tagLimit: 4 });
         const lines = [
-            `<b>${index}. ${escapeHtml(book.title || book.book_id)}</b>`,
-            `作者：${escapeHtml(book.author || "佚名")}`,
-            `书号：<code>${escapeHtml(book.book_id)}</code>`,
-            `站别：${escapeHtml(book.platform || "-")} · 缓存 ${book.cache_count || 0} 章 · 总章 ${book.total_chapters || book.subscribed_chapters || "-"}`,
-            `人气：${book.total_popularity || 0} · 收藏：${book.favorites_count || 0}`,
-            tags ? `标签：${escapeHtml(tags)}` : ""
+            `<b>${index}. ${escapeHtml(card.title)}</b>`,
+            `作者：${escapeHtml(card.author)}`,
+            `书号：<code>${escapeHtml(card.bookId)}</code>`,
+            `站别：${escapeHtml(card.platform)} · 缓存 ${card.cacheCount} 章 · 总章 ${card.totalChapters}`,
+            `人气：${card.popularity} · 收藏：${card.favorites}`,
+            card.tags.length ? `标签：${escapeHtml(card.tags.join(" / "))}` : ""
         ];
         return lines.filter(Boolean).join("\n");
     }
 
     function bookListItem(book, index = 1) {
-        const tags = String(book.tags || "")
-            .split(/[,，\s、|/]+/)
-            .filter(Boolean)
-            .slice(0, 3)
-            .join(" / ");
+        const card = createBookCardView(book, { tagLimit: 3, platformLabel });
         return [
-            `<b>${index}. ${escapeHtml(book.title || book.book_id)}</b>`,
-            `作者：${escapeHtml(book.author || "佚名")} · 站别：${escapeHtml(platformLabel(book.platform))} · 书号：<code>${escapeHtml(book.book_id)}</code>`,
-            `缓存 ${book.cache_count || 0} 章 / 总章 ${book.total_chapters || book.subscribed_chapters || "-"} · 人气 ${book.total_popularity || 0}`,
-            tags ? `标签：${escapeHtml(tags)}` : ""
+            `<b>${index}. ${escapeHtml(card.title)}</b>`,
+            `作者：${escapeHtml(card.author)} · 站别：${escapeHtml(card.platform)} · 书号：<code>${escapeHtml(card.bookId)}</code>`,
+            `缓存 ${card.cacheCount} 章 / 总章 ${card.totalChapters} · 人气 ${card.popularity}`,
+            card.tags.length ? `标签：${escapeHtml(card.tags.join(" / "))}` : ""
         ]
             .filter(Boolean)
             .join("\n");
@@ -167,19 +162,20 @@ function createBotUi(deps = {}) {
     function detailCardText(book, chapters = [], reviewsPayload = null) {
         const intro = truncate(cleanText(book.description || ""), 700);
         const reviewTotal = reviewsPayload ? Number(reviewsPayload.total || 0) : null;
+        const card = createBookCardView(book, { chapters, intro, reviewTotal, tagLimit: 8 });
         return [
-            `<b>${escapeHtml(book.title || book.book_id)}</b>`,
-            `作者：${escapeHtml(book.author || "佚名")}`,
-            `书号：<code>${escapeHtml(book.book_id)}</code>`,
-            `站别：${escapeHtml(book.platform || "-")}`,
-            `状态：${escapeHtml(book.status || "-")}`,
-            `标签：${escapeHtml(book.tags || "-")}`,
-            `章节：缓存 ${book.cache_count || chapters.length} / 总章 ${book.total_chapters || book.subscribed_chapters || "-"}`,
-            `免费/付费：${book.free_chapters || 0}/${book.paid_chapters || 0}`,
-            `热度：${book.total_popularity || 0} · 收藏：${book.favorites_count || 0} · 评论：${book.comments_count || 0}`,
-            `反馈：喜欢 ${book.like_count || 0} · 不喜欢 ${book.dislike_count || 0}`,
-            reviewTotal !== null ? `书评：${reviewTotal} 条` : "",
-            intro ? `\n${escapeHtml(intro)}` : ""
+            `<b>${escapeHtml(card.title)}</b>`,
+            `作者：${escapeHtml(card.author)}`,
+            `书号：<code>${escapeHtml(card.bookId)}</code>`,
+            `站别：${escapeHtml(card.platform)}`,
+            `状态：${escapeHtml(card.status)}`,
+            `标签：${escapeHtml(card.allTags)}`,
+            `章节：缓存 ${card.cacheCount} / 总章 ${card.totalChapters}`,
+            `免费/付费：${card.freeChapters}/${card.paidChapters}`,
+            `热度：${card.popularity} · 收藏：${card.favorites} · 评论：${card.comments}`,
+            `反馈：喜欢 ${card.likes} · 不喜欢 ${card.dislikes}`,
+            card.reviewTotal !== null ? `书评：${card.reviewTotal} 条` : "",
+            card.intro ? `\n${escapeHtml(card.intro)}` : ""
         ]
             .filter(Boolean)
             .join("\n");
@@ -365,15 +361,6 @@ function createBotUi(deps = {}) {
         if (!Number(quote.amount || 0)) return "后台设置为 0，本次免费";
         if (quote.currency === "silver") return `${quote.amount} 银币（收费章节 ${quote.paidChapters} 章 × ${quote.unitCost}）`;
         return `${quote.amount} 铜币（纯免费书导出）`;
-    }
-
-    function scholarText(user = {}) {
-        const scholar = user.scholar || {};
-        const level = scholar.level || user.scholar_level || 1;
-        const name = scholar.name || user.scholar_level_name || "卷首书童";
-        const exp = scholar.exp ?? user.scholar_exp ?? 0;
-        const toNext = scholar.exp_to_next ?? 0;
-        return `${name} Lv.${level} · 经验 ${exp}${toNext ? ` · 距下一级 ${toNext}` : ""}`;
     }
 
     function freeExportText(freeExport = {}) {

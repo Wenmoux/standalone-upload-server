@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 node:test、QQ 配置策略/API/Gateway 模块及受控 Fetch/配置存储替身
- * [OUTPUT]: 提供密钥不回显、平台标签范围、事件归一化和富媒体分片上传契约回归断言
+ * [INPUT]: 依赖 node:test、QQ 配置策略/API/Gateway/展示模块及受控 Fetch/配置存储替身
+ * [OUTPUT]: 提供密钥不回显、平台标签范围、跨 Bot 书卡字段、Markdown 按钮和富媒体分片上传契约回归断言
  * [POS]: tests 的 QQ Bot 安全与官方协议守卫，防止凭据、访问范围或文件投递在后续修改中退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -18,6 +18,8 @@ const {
 } = require("../services/qq-bot-config");
 const { commandKeyboard, createQqApiClient, requestAppAccessToken } = require("../qq-bot/qq-api");
 const { normalizeQqEvent } = require("../qq-bot/gateway");
+const { detailText, searchText, signText, styleText } = require("../qq-bot/formatters");
+const { createQqMessageRuntime } = require("../qq-bot/message-runtime");
 
 test("QQ config encrypts AppSecret and never exposes it through the public projection", async () => {
     const stored = {};
@@ -111,7 +113,76 @@ test("QQ command keyboard emits the official long-form command button payload", 
     assert.equal(keyboard.content.rows[0].buttons[0].action.type, 2);
     assert.equal(keyboard.content.rows[0].buttons[0].action.permission.type, 2);
     assert.equal(keyboard.content.rows[0].buttons[0].action.enter, false);
+    assert.equal(keyboard.content.rows[0].buttons[0].render_data.style, 1);
     assert.equal(keyboard.content.rows[0].buttons[1].render_data.label, "下一页");
+});
+
+test("QQ Markdown cards keep Telegram book fields while using richer native hierarchy", () => {
+    const book = {
+        book_id: "1047414337",
+        title: "顶流手记",
+        author: "油炸大金",
+        platform: "qidian",
+        tags: "都市 娱乐明星",
+        cache_count: 92,
+        total_chapters: 633,
+        total_popularity: 1039,
+        favorites_count: 8,
+        comments_count: 3,
+        like_count: 5,
+        dislike_count: 1,
+        description: "第一行\n第二行"
+    };
+    const search = searchText("顶流", [book], 1, true);
+    assert.match(search, /站别：\*\*qidian/);
+    assert.match(search, /缓存 92 章 \/ 总章 633/);
+    assert.match(search, /人气：\*\*1039/);
+    const detail = detailText(book);
+    assert.match(detail, /反馈：\*\*喜欢 5　不喜欢 1/);
+    assert.match(detail, /> 第一行\n> 第二行/);
+    assert.match(styleText([{ id: "style1", label: "江湖纸卷" }], "style1"), /江湖纸卷.*默认/);
+    assert.match(signText({ reward: { copper: 100, exp: 60, day: 2 }, user: { copper_coins: 300 } }), /连续签到：\*\*2 天/);
+});
+
+test("QQ daily sign-in reuses the shared account and source-aware check-in contract", async () => {
+    const calls = [];
+    const messages = [];
+    const runtime = createQqMessageRuntime({
+        client: {
+            sign: async (...args) => {
+                calls.push(["sign", ...args]);
+                return { reward: { copper: 100, exp: 60, day: 1 }, user: { copper_coins: 200 } };
+            }
+        },
+        api: {
+            sendMarkdown: async (_target, content, _reply, keyboard) => messages.push({ content, keyboard }),
+            sendText: async () => {}
+        },
+        configProvider: async () => ({}),
+        exportRuntime: {
+            ensureRegistered: async (profile) => {
+                calls.push(["register", profile]);
+                return { nickname: "QQ 书友", copper_coins: 100 };
+            },
+            epubStyles: []
+        }
+    });
+    await runtime.handle({
+        content: "签到",
+        identity: "qq:user-open",
+        kind: "user",
+        messageId: "message-sign-1",
+        raw: { author: { nickname: "QQ 书友" } },
+        reply: { msgId: "message-sign-1", seq: 0 },
+        target: { kind: "user", id: "user-open" },
+        targetKey: "user:user-open",
+        userOpenId: "user-open"
+    });
+    assert.equal(calls[0][0], "register");
+    assert.equal(calls[0][1].id, "qq:user-open");
+    assert.deepEqual(calls[1], ["sign", "qq:user-open", "qq_bot"]);
+    assert.match(messages[0].content, /签到成功/);
+    assert.equal(messages[0].keyboard[0][1].data, "签到");
 });
 
 test("QQ file delivery prepares, uploads, confirms, merges and replies with file_info", async () => {

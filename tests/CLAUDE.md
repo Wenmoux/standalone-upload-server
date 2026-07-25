@@ -25,7 +25,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `book-maintenance.test.js`: 陈旧 PO18 书籍预览、事务锁定、平台隔离清理与回滚。
 - `book-social.test.js`: 书评幂等发布扣费、操作键冲突、投票奖励、频率限制与权限语义。
 - `bot-adapters.test.js`: Bot 外部适配器的请求、PO18 会话/跨年书架/已购与缺失章筛选和错误规范化。
-- `bot-api-routes.test.js`: Bot API 账户、书籍、书评操作键、任务及 Worker fencing token 路由契约。
+- `bot-api-routes.test.js`: Bot API 跨渠道账户/签到、书籍、书评操作键、任务及 Worker fencing token 路由契约。
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
 - `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、PEER_ID_INVALID 降级、发送后结算、权限与文案契约。
@@ -66,8 +66,8 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `migrations.test.js`: 迁移顺序、回滚配对、历史重复修复和不可变约束。
 - `network-security.test.js`: 出站 URL、私网与代理安全规则。
 - `openapi-error-response.test.js`: OpenAPI 索引与统一错误响应契约。
-- `pg-bot-client.test.js`: Bot HTTP 客户端分页、动态平台读取、鉴权、书评操作键和错误映射。
-- `qq-bot.test.js`: QQ AppSecret 脱敏、平台/标签范围、Gateway 事件归一化、Access Token 与富媒体分片上传契约。
+- `pg-bot-client.test.js`: Bot HTTP 客户端分页、动态平台读取、来源感知签到、鉴权、书评操作键和错误映射。
+- `qq-bot.test.js`: QQ AppSecret 脱敏、平台/标签范围、签到、跨 Bot 书卡字段、Markdown 按钮、Gateway 事件归一化、Access Token 与富媒体分片上传契约。
 - `pg-flow-core-cases.js`: 真实 PostgreSQL 迁移、元数据/章节统计、任务租约、API Token、凭据迁移和注册事务用例组。
 - `pg-flow-domain-cases.js`: 真实 PostgreSQL 红包并发、书评治理/清单、备份恢复与最新迁移回滚用例组。
 - `pg-flows.test.js`: 真实 PostgreSQL 集成组合根，装配共享 fixture 并顺序执行核心/领域用例组，避免并发重置 schema。

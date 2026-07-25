@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供 Bot HTTP 客户端分页、动态平台读取、鉴权、书评操作键和错误映射的自动化回归断言
+ * [OUTPUT]: 提供 Bot HTTP 客户端分页、动态平台读取、来源感知签到、鉴权、书评操作键和错误映射的自动化回归断言
  * [POS]: tests 的 Bot HTTP 访问边界守卫，防止分页或幂等请求字段在协议演进中静默丢失
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -76,6 +76,26 @@ test("bot client forwards the stable book review operation key", async () => {
         idempotency_key: "telegram:book-review:chat:9"
     });
     assert.equal(captured.options.headers["X-Bot-Token"], "test-token");
+});
+
+test("bot client forwards the namespaced identity and QQ check-in source", async () => {
+    let captured = null;
+    const client = new PgBotClient({
+        baseUrl: "http://bot.test",
+        botToken: "test-token",
+        fetchImpl: async (url, options) => {
+            captured = { url, options };
+            return {
+                ok: true,
+                async json() {
+                    return { success: true };
+                }
+            };
+        }
+    });
+    await client.sign("qq:user-open", "qq_bot");
+    assert.equal(captured.url, "http://bot.test/bot-api/users/qq%3Auser-open/sign");
+    assert.deepEqual(JSON.parse(captured.options.body), { source: "qq_bot" });
 });
 
 test("bot client reads the server platform registry", async () => {

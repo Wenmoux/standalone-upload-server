@@ -1,7 +1,7 @@
 ﻿/**
- * [INPUT]: 依赖 Express、Bot Scope、Reader 账户/签到、用户经济/认证服务与 Telegram 身份参数
+ * [INPUT]: 依赖 Express、Bot Scope、Reader 账户/签到、用户经济/认证服务与 Telegram/QQ 命名空间身份参数
  * [OUTPUT]: 对外提供 Bot 用户注册、签到、余额流水、转账、CDK、额度及 PO18 凭据内部路由
- * [POS]: routes 的 Bot 用户适配层，把 Telegram 身份映射到事务服务，避免 Bot 进程持有数据库权限
+ * [POS]: routes 的 Bot 用户适配层，把跨渠道命名空间身份映射到事务服务，避免 Bot 进程持有数据库权限
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -251,7 +251,11 @@ function createBotApiUserRoutes(deps = {}) {
 
     router.post("/bot-api/users/:telegramId/sign", requireBotApi, async (req, res, next) => {
         try {
-            const result = await checkInUser({ telegramId: req.params.telegramId, source: "telegram_bot" });
+            const source = enumValue(req.body?.source, ["telegram_bot", "qq_bot"], {
+                defaultValue: "telegram_bot",
+                name: "sign source"
+            });
+            const result = await checkInUser({ telegramId: req.params.telegramId, source });
             res.json({ success: true, reward: result.reward, user: botPublicUser(result.user) });
         } catch (err) {
             next(err);
