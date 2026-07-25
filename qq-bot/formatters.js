@@ -1,11 +1,14 @@
 /**
- * [INPUT]: 依赖 bot/account-view/book-card-view 的跨平台展示模型及搜索分页、签到、实时缓存状态、EPUB 样式领域对象
- * [OUTPUT]: 对外提供 QQ Markdown 菜单、签到结果、搜索列表、可下载状态明确的书籍详情和样式选择文本
- * [POS]: qq-bot 的纯展示层，使 QQ 内容层级与 Telegram 书卡一致且不泄漏其 HTML/callback 协议
+ * [INPUT]: 依赖 bot/account-view/book-card-view 的跨平台展示模型、共享平台名称及搜索/签到/导出状态领域对象
+ * [OUTPUT]: 对外提供 QQ 安全 Markdown 主面板、帮助、签到、紧凑搜索书卡、详情、样式和导出状态文本
+ * [POS]: qq-bot 的纯展示层，只依赖稳定的块级标题/分隔线与纯文本字段，避免 QQ 客户端裸露行内 Markdown 标记
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { scholarText } = require("../bot/account-view");
 const { createBookCardView } = require("../bot/book-card-view");
+const { defaultPlatformLabel } = require("../services/platforms");
+
+const NUMBER_FORMAT = new Intl.NumberFormat("zh-CN");
 
 function clean(value = "") {
     return String(value ?? "")
@@ -14,25 +17,52 @@ function clean(value = "") {
         .trim();
 }
 
+function truncate(value = "", limit = 80) {
+    const chars = Array.from(clean(value));
+    return chars.length > limit ? `${chars.slice(0, Math.max(1, limit - 1)).join("")}…` : chars.join("");
+}
+
+function compactNumber(value = 0) {
+    const number = Number(value || 0);
+    return NUMBER_FORMAT.format(Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : 0);
+}
+
+function cardView(book = {}, options = {}) {
+    return createBookCardView(book, { ...options, platformLabel: defaultPlatformLabel });
+}
+
+function joinLines(lines = []) {
+    return lines.filter((line) => line !== null && line !== undefined).join("\n");
+}
+
 function menuText(user = null) {
-    const account = user
-        ? `你好，**${clean(user.nickname || user.telegram_username || user.username || "书友")}**　${clean(scholarText(user))}\n\n铜币 ${Number(user.copper_coins || 0)}　银币 ${Number(user.silver_coins || 0)}`
-        : "";
+    const name = clean(user?.nickname || user?.telegram_username || user?.username || "书友");
     return [
-        "# 📚 PO18 书库功能面板",
+        "# 📚 PO18 书库",
         "",
-        account,
-        "> 直接发送书名、作者、书号或 `#标签` 搜索。",
+        `${name}　·　${clean(scholarText(user || {}))}`,
+        `铜币 ${compactNumber(user?.copper_coins)}　银币 ${compactNumber(user?.silver_coins)}`,
         "",
-        "## 🔎 搜索与下载",
-        "- `下一页` / `上一页`　翻页",
-        "- `1` 或 `选择 1`　查看本页书籍",
-        "- `TXT 1`　导出本页第 1 本",
-        "- `EPUB 1`　选择与 Telegram 相同的 EPUB 样式",
-        "- `详情 书号`　直接查看书籍",
-        "- `签到`　领取每日奖励",
+        "---",
+        "发送书名、作者、书号或 #标签，即可查找可下载书籍。"
+    ].join("\n");
+}
+
+function helpText() {
+    return [
+        "# ❔ 使用帮助",
         "",
-        "群聊中请先 **@机器人**。"
+        "## 搜索",
+        "直接发送书名、作者、书号或 #标签；群聊中先 @机器人。",
+        "",
+        "## 选择与翻页",
+        "点击结果书名查看详情，使用「上一页」「下一页」浏览。",
+        "",
+        "## 下载",
+        "在详情卡片中选择 TXT 或 EPUB；EPUB 可选择四种同源样式。",
+        "",
+        "## 快捷文字",
+        "签到　详情 书号　TXT 书号　EPUB 书号"
     ].join("\n");
 }
 
@@ -42,85 +72,146 @@ function signText(result = {}) {
     return [
         "# ✅ 签到成功",
         "",
-        `**本次获得：**铜币 ${Number(reward.copper || 0)}${reward.silver ? `　银币 ${Number(reward.silver)}` : ""}　经验 ${Number(reward.exp || 0)}`,
-        `**连续签到：**${Number(reward.day || user.sign_cycle_day || 0)} 天`,
-        `**书卷等级：**${clean(scholarText(user))}${reward.level_up ? "　`已升级`" : ""}`,
-        `**当前铜币：**${Number(user.copper_coins || 0)}`,
+        `奖励：+${compactNumber(reward.copper)} 铜币${reward.silver ? `　+${compactNumber(reward.silver)} 银币` : ""}　+${compactNumber(reward.exp)} 经验`,
         "",
-        "> 明天再来，连续签到奖励会更高。"
+        `连续签到：${compactNumber(reward.day || user.sign_cycle_day)} 天`,
+        `书卷等级：${clean(scholarText(user))}${reward.level_up ? "　等级提升" : ""}`,
+        `当前铜币：${compactNumber(user.copper_coins)}`
     ].join("\n");
 }
 
 function bookLine(book = {}, index = 1) {
-    const card = createBookCardView(book, { tagLimit: 3 });
+    const card = cardView(book, { tagLimit: 3 });
+    const total = card.totalChapters === "-" ? "?" : compactNumber(card.totalChapters);
     return [
-        `## ${index}. ${clean(card.title)}`,
-        `**作者：**${clean(card.author)}　**站别：**${clean(card.platform)}`,
-        `**书号：**\`${clean(card.bookId)}\``,
-        `**章节：**缓存 ${card.cacheCount} 章 / 总章 ${card.totalChapters}　**人气：**${card.popularity}`,
-        card.tags.length ? `**标签：**${card.tags.map(clean).join(" / ")}` : ""
+        `## ${String(index).padStart(2, "0")}｜${clean(card.title)}`,
+        `作者：${clean(card.author)}`,
+        `平台：${clean(card.platform)}${card.status === "-" ? "" : `　状态：${clean(card.status)}`}`,
+        `缓存：${compactNumber(card.cacheCount)}/${total}　人气：${compactNumber(card.popularity)}`,
+        `书号：${clean(card.bookId)}`,
+        card.tags.length ? `标签：${card.tags.map(clean).join(" / ")}` : ""
     ]
         .filter(Boolean)
         .join("\n");
 }
 
 function searchText(query, rows = [], page = 1, hasMore = false) {
-    const footer = [
+    const cards = rows.map((book, index) => bookLine(book, index + 1)).join("\n\n---\n\n");
+    return joinLines([
+        "# 🔎 搜索结果",
+        "",
+        `关键词：${truncate(query, 36)}　·　第 ${compactNumber(page)} 页`,
+        "",
+        cards,
+        "",
         "---",
-        `**第 ${page} 页**${hasMore ? "　点击「下一页」继续" : "　已到最后一页"}`,
-        "> 点击序号查看详情，TXT / EPUB 请在详情卡片中选择。"
-    ];
-    return [`# 🔎 搜索：${clean(query)}`, "", ...rows.map((book, index) => bookLine(book, index + 1)), ...footer].join("\n\n");
+        `本页 ${compactNumber(rows.length)} 本${hasMore ? "，还可继续翻页" : "，已到最后一页"}。点击下方书名查看详情。`
+    ]);
+}
+
+function emptySearchText(query = "") {
+    return ["# 🔍 暂无结果", "", `没有找到可下载的「${truncate(query, 36)}」。`, "", "可以换用作者、书号或更短的关键词。"].join("\n");
 }
 
 function detailText(book = {}) {
-    const intro = clean(book.description || "").slice(0, 700);
-    const card = createBookCardView(book, { intro, tagLimit: 8 });
-    const introQuote = card.intro
-        ? card.intro
-              .split(/\r?\n/)
-              .map((line) => `> ${line}`)
-              .join("\n")
-        : "";
-    return [
+    const intro = truncate(
+        clean(book.description || "")
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .join("\n"),
+        420
+    );
+    const card = cardView(book, { intro, tagLimit: 5 });
+    const total = card.totalChapters === "-" ? "?" : compactNumber(card.totalChapters);
+    const introText = card.intro ? card.intro.split(/\r?\n/).map(clean).filter(Boolean).join("\n") : "";
+    const chapterStats = [`缓存 ${compactNumber(card.cacheCount)}/${total}`];
+    if (card.freeChapters || card.paidChapters) chapterStats.push(`免费 ${compactNumber(card.freeChapters)}`, `付费 ${compactNumber(card.paidChapters)}`);
+    return joinLines([
         `# 📖 ${clean(card.title)}`,
-        `**作者：**${clean(card.author)}`,
-        `**书号：**\`${clean(card.bookId)}\``,
-        `**站别：**${clean(card.platform)}　**状态：**${clean(card.status)}`,
-        `**标签：**${card.tags.map(clean).join(" / ") || "-"}`,
-        `**章节：**缓存 ${card.cacheCount} / 总章 ${card.totalChapters}`,
-        `**免费/付费：**${card.freeChapters}/${card.paidChapters}`,
-        `**热度：**${card.popularity}　**收藏：**${card.favorites}　**评论：**${card.comments}`,
-        `**反馈：**喜欢 ${card.likes}　不喜欢 ${card.dislikes}`,
-        introQuote ? `\n## 简介\n${introQuote}` : "",
         "",
-        card.cacheCount > 0 ? "> 点击下方按钮下载 TXT，或选择 EPUB 样式。" : "> 当前只有元信息，尚无正文缓存，暂时不能导出。"
-    ]
-        .filter(Boolean)
-        .join("\n");
+        `作者：${clean(card.author)}`,
+        `平台：${clean(card.platform)}　状态：${clean(card.status)}`,
+        `书号：${clean(card.bookId)}`,
+        "",
+        "---",
+        `章节：${chapterStats.join("　")}`,
+        `热度：${compactNumber(card.popularity)}　收藏：${compactNumber(card.favorites)}　评论：${compactNumber(card.comments)}`,
+        `反馈：喜欢 ${compactNumber(card.likes)}　·　不喜欢 ${compactNumber(card.dislikes)}`,
+        card.tags.length ? `标签：${card.tags.map(clean).join(" / ")}` : null,
+        introText ? `\n---\n\n## 简介\n${introText}` : null,
+        "",
+        card.cacheCount > 0 ? "正文已就绪，可直接下载。" : "当前只有元信息，尚无正文缓存。"
+    ]);
 }
 
 function cacheUnavailableText(book = {}) {
-    const card = createBookCardView(book);
+    const card = cardView(book);
     return [
         "# ⏳ 暂不可下载",
         "",
         `《${clean(card.title)}》当前只有元信息，尚无正文缓存。`,
         "",
-        "> QQ Bot 只会为已有正文缓存的书籍生成 TXT/EPUB，请重新搜索其他结果。"
+        "QQ Bot 只会为已有正文缓存的书籍生成 TXT/EPUB，请重新搜索其他结果。"
     ].join("\n");
 }
 
-function styleText(styles = [], defaultStyle = "style1") {
-    return [
-        "# 🎨 选择 EPUB 样式",
+function styleText(styles = [], defaultStyle = "style1", book = {}) {
+    const title = truncate(book.title || book.book_id || "", 28);
+    const defaultLabel = styles.find((style) => style.id === defaultStyle)?.label || defaultStyle;
+    return joinLines([
+        "# 🎨 EPUB 样式",
         "",
-        "> 与 Telegram Bot 使用同一套生成器和四种样式。",
+        title ? `书籍：《${clean(title)}》` : null,
+        `默认样式：${clean(defaultLabel)}`,
         "",
-        ...(styles || []).map((style, index) => `${index + 1}. **${clean(style.label || style.id)}**${style.id === defaultStyle ? "　`默认`" : ""}`),
+        "---",
+        ...(styles || []).map((style, index) => `${index + 1}｜${clean(style.label || style.id)}${style.id === defaultStyle ? "（默认）" : ""}`),
         "",
-        "点击样式开始导出，点击「取消」关闭。"
-    ].join("\n");
+        "选择后立即开始生成。"
+    ]);
 }
 
-module.exports = { bookLine, cacheUnavailableText, clean, detailText, menuText, searchText, signText, styleText };
+function bookButtonLabel(book = {}, index = 1) {
+    return `${index}｜${truncate(book.title || book.book_id || "未命名", 8)}`;
+}
+
+function exportStatusText(value = "") {
+    const text = clean(String(value || "").replace(/<br\s*\/?>/gi, "\n"));
+    const progress = text.match(/^正在生成\s+(TXT|EPUB)(?:（([^）]+)）)?[：:]\s*(.+)$/i);
+    if (progress) {
+        return joinLines([
+            `# ⏳ 正在生成 ${progress[1].toUpperCase()}`,
+            "",
+            progress[2] ? `样式：${clean(progress[2])}` : null,
+            `书号：${clean(progress[3])}`,
+            "",
+            "文件生成和上传需要一点时间。"
+        ]);
+    }
+    const failed = /失败|不足|已用完|无法|错误码/.test(text);
+    const completed = /导出完成|已私聊发送/.test(text);
+    const title = failed ? "# ⚠️ 导出未完成" : completed ? "# ✅ 导出完成" : "# 📦 导出状态";
+    return [title, "", ...text.split(/\r?\n/).map(clean).filter(Boolean)].join("\n");
+}
+
+function errorText(message = "") {
+    return ["# ⚠️ 操作未完成", "", clean(message || "请稍后重试。"), "", "可以稍后重试；若持续失败，请保留错误码。"].join("\n");
+}
+
+module.exports = {
+    bookButtonLabel,
+    bookLine,
+    cacheUnavailableText,
+    clean,
+    compactNumber,
+    detailText,
+    emptySearchText,
+    errorText,
+    exportStatusText,
+    helpText,
+    menuText,
+    searchText,
+    signText,
+    styleText
+};

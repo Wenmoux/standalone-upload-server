@@ -1,13 +1,26 @@
 /**
- * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、导出运行时与展示格式化器
- * [OUTPUT]: 对外提供 QQ 单聊/群聊消息分派、每日签到、仅可下载结果分页、详情选择、EPUB 样式选择和 TXT/EPUB 下载交互
- * [POS]: qq-bot 的业务交互核心，在进入昂贵导出前拒绝零缓存书籍，不处理 Gateway Opcode、Token 或文件分片协议
+ * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、导出运行时与卡片格式化器
+ * [OUTPUT]: 对外提供 QQ 主面板/帮助/签到、紧凑结果键盘、详情、EPUB 样式和带状态卡的 TXT/EPUB 下载交互
+ * [POS]: qq-bot 的业务交互核心，统一移动端按钮层级并在昂贵导出前拒绝零缓存书籍，不处理 Gateway Opcode、Token 或文件分片协议
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { createSearchPlatformRegistry } = require("../bot/search-platforms");
 const { createSearchQueryParser, parseBookId } = require("../bot/search-query");
 const { filterQqBooks } = require("../services/qq-bot-config");
-const { cacheUnavailableText, clean, detailText, menuText, searchText, signText, styleText } = require("./formatters");
+const {
+    bookButtonLabel,
+    cacheUnavailableText,
+    clean,
+    detailText,
+    emptySearchText,
+    errorText,
+    exportStatusText,
+    helpText,
+    menuText,
+    searchText,
+    signText,
+    styleText
+} = require("./formatters");
 
 function createQqMessageRuntime(options = {}) {
     const client = options.client;
@@ -86,8 +99,32 @@ function createQqMessageRuntime(options = {}) {
         return Number(book.cache_count || 0) > 0;
     }
 
+    function chunkRows(buttons = [], size = 2) {
+        const rows = [];
+        for (let index = 0; index < buttons.length; index += size) rows.push(buttons.slice(index, index + size));
+        return rows;
+    }
+
     function searchAgainKeyboard() {
-        return [[{ label: "重新搜索", data: "搜索 ", enter: false, style: 1 }]];
+        return [[{ label: "🔎 重新搜索", data: "搜索 ", enter: false, style: 1 }]];
+    }
+
+    function afterActionKeyboard() {
+        return [
+            [
+                { label: "🔎 继续搜书", data: "搜索 ", enter: false, style: 1 },
+                { label: "返回面板", data: "菜单", style: 0 }
+            ]
+        ];
+    }
+
+    function helpKeyboard() {
+        return [
+            [
+                { label: "🔎 开始搜书", data: "搜索 ", enter: false, style: 1 },
+                { label: "返回面板", data: "菜单", style: 0 }
+            ]
+        ];
     }
 
     function profileFor(event) {
@@ -107,14 +144,18 @@ function createQqMessageRuntime(options = {}) {
         return sendMarkdown(event, menuText(user), menuKeyboard());
     }
 
+    async function showHelp(event) {
+        return sendMarkdown(event, helpText(), helpKeyboard());
+    }
+
     async function sign(event) {
         await ensureUser(event);
         try {
             const result = await client.sign(event.identity, "qq_bot");
-            return sendMarkdown(event, signText(result), menuKeyboard());
+            return sendMarkdown(event, signText(result), afterActionKeyboard());
         } catch (err) {
             if (err.status === 409) {
-                return sendMarkdown(event, "# 📅 今日已签到\n\n> 今天已经签到过了，明天再来。", menuKeyboard());
+                return sendMarkdown(event, "# 📅 今日已签到\n\n今天的奖励已经领取，明天再来。", afterActionKeyboard());
             }
             throw err;
         }
@@ -122,7 +163,7 @@ function createQqMessageRuntime(options = {}) {
 
     async function search(event, rawQuery, page = 1) {
         const query = String(rawQuery || "").trim();
-        if (!query) return sendMarkdown(event, menuText());
+        if (!query) return showMenu(event);
         const config = await configProvider();
         const platformPayload = await client.searchPlatforms().catch(() => ({ platforms: [] }));
         platformRegistry.update(platformPayload);
@@ -134,7 +175,7 @@ function createQqMessageRuntime(options = {}) {
         const data = await client.searchBooks(parsed.params);
         const rows = filterQqBooks(data.rows, config).slice(0, searchLimit);
         await client.recordSearch(parsed.keyword, `qq_${parsed.type}`, rows.length).catch(() => {});
-        if (!rows.length) return sendText(event, `没有找到已缓存且符合 QQ Bot 当前搜索范围的「${query}」。`);
+        if (!rows.length) return sendMarkdown(event, emptySearchText(query), searchAgainKeyboard());
         const state = getSession(event);
         state.query = query;
         state.page = Number(data.page || page);
@@ -143,12 +184,17 @@ function createQqMessageRuntime(options = {}) {
         state.pendingStyleBookId = "";
         state.updatedAt = Date.now();
         const hasMore = !!data.has_more || state.page * Number(data.limit || 30) < Number(data.total || 0);
-        const numberButtons = rows.map((_book, index) => ({ label: String(index + 1), data: `选择 ${index + 1}`, style: 0 }));
+        const numberButtons = rows.map((book, index) => ({
+            label: bookButtonLabel(book, index + 1),
+            data: `选择 ${index + 1}`,
+            style: 0
+        }));
         const pagerButtons = [
-            ...(state.page > 1 ? [{ label: "上一页", data: "上一页", style: 1 }] : []),
-            ...(hasMore ? [{ label: "下一页", data: "下一页", style: 1 }] : [])
+            ...(state.page > 1 ? [{ label: "‹ 上一页", data: "上一页", style: 1 }] : []),
+            ...(hasMore ? [{ label: "下一页 ›", data: "下一页", style: 1 }] : [])
         ];
-        return sendMarkdown(event, searchText(query, rows, state.page, hasMore), [numberButtons, pagerButtons]);
+        const keyboard = [...chunkRows(numberButtons, 2), ...(pagerButtons.length ? [pagerButtons] : [])];
+        return sendMarkdown(event, searchText(query, rows, state.page, hasMore), keyboard);
     }
 
     function resolveBookId(event, value = "") {
@@ -170,10 +216,10 @@ function createQqMessageRuntime(options = {}) {
         const keyboard = hasCachedContent(access.book)
             ? [
                   [
-                      { label: "TXT", data: "TXT", style: 1 },
-                      { label: "EPUB", data: "EPUB", style: 1 }
+                      { label: "下载 TXT", data: "TXT", style: 1 },
+                      { label: "制作 EPUB", data: "EPUB", style: 1 }
                   ],
-                  [{ label: "重新搜索", data: "搜索 ", enter: false, style: 0 }]
+                  [{ label: "🔎 继续搜索", data: "搜索 ", enter: false, style: 0 }]
               ]
             : searchAgainKeyboard();
         return sendMarkdown(event, detailText(access.book), keyboard);
@@ -204,13 +250,16 @@ function createQqMessageRuntime(options = {}) {
             state.updatedAt = Date.now();
             return sendMarkdown(
                 event,
-                styleText(exportRuntime.epubStyles, config.defaultEpubStyle),
+                styleText(exportRuntime.epubStyles, config.defaultEpubStyle, access.book),
                 [
-                    exportRuntime.epubStyles.map((style, index) => ({
-                        label: style.label || style.id,
-                        data: `样式 ${index + 1}`,
-                        style: style.id === config.defaultEpubStyle ? 1 : 0
-                    })),
+                    ...chunkRows(
+                        exportRuntime.epubStyles.map((style, index) => ({
+                            label: style.label || style.id,
+                            data: `样式 ${index + 1}`,
+                            style: style.id === config.defaultEpubStyle ? 1 : 0
+                        })),
+                        2
+                    ),
                     [{ label: "取消", data: "取消", style: 0 }]
                 ]
             );
@@ -224,7 +273,9 @@ function createQqMessageRuntime(options = {}) {
             await exportRuntime.exportBook(event, state.selectedBookId, format, style?.id || "");
         } catch (err) {
             logger.error?.(`[qq-bot] export failed: ${err.code || err.message || err}`);
-            if (!err.userNotified) await sendText(event, `导出失败：${err.message || "请稍后重试"}`).catch(() => {});
+            if (!err.userNotified) {
+                await sendMarkdown(event, errorText(`导出失败：${err.message || "请稍后重试"}`), afterActionKeyboard()).catch(() => {});
+            }
         } finally {
             activeExports.delete(key);
             state.pendingStyleBookId = "";
@@ -242,12 +293,13 @@ function createQqMessageRuntime(options = {}) {
         let input = String(event.content || "").trim();
         if (!input) return showMenu(event);
         input = input.replace(/^\//, "").trim();
-        if (/^(?:start|help|menu|帮助|菜单|功能)$/i.test(input)) return showMenu(event);
+        if (/^(?:start|menu|菜单|功能)$/i.test(input)) return showMenu(event);
+        if (/^(?:help|帮助|使用帮助)$/i.test(input)) return showHelp(event);
         if (/^(?:sign|签到|每日签到)$/i.test(input)) return sign(event);
         if (/^(?:取消|cancel)$/i.test(input)) {
             state.pendingStyleBookId = "";
             state.updatedAt = Date.now();
-            return sendText(event, "已取消当前选择。 ");
+            return sendMarkdown(event, "# 已取消\n\n当前 EPUB 样式选择已关闭。", afterActionKeyboard());
         }
         const styleMatch = input.match(/^(?:样式|style)\s*(\S+)$/i);
         if (styleMatch && state.pendingStyleBookId) return exportBook(event, "epub", state.pendingStyleBookId, styleMatch[1]);
@@ -269,14 +321,19 @@ function createQqMessageRuntime(options = {}) {
     function menuKeyboard() {
         return [
             [
-                { label: "搜索", data: "搜索 ", enter: false, style: 1 },
-                { label: "每日签到", data: "签到", style: 1 }
+                { label: "🔎 搜书", data: "搜索 ", enter: false, style: 1 },
+                { label: "✅ 每日签到", data: "签到", style: 1 }
             ],
-            [{ label: "帮助", data: "帮助", style: 0 }]
+            [{ label: "使用帮助", data: "帮助", style: 0 }]
         ];
     }
 
-    return { handle, sendFile, sendMarkdown, sendText };
+    async function sendStatus(eventOrTarget, text) {
+        const terminal = /导出完成|已私聊发送|失败|不足|已用完|无法|错误码/.test(String(text || ""));
+        return sendMarkdown(eventOrTarget, exportStatusText(text), terminal ? afterActionKeyboard() : []);
+    }
+
+    return { handle, sendFile, sendMarkdown, sendStatus, sendText };
 }
 
 module.exports = { createQqMessageRuntime };

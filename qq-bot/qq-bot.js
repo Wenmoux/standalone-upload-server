@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: 依赖 PgBotClient、QQ API/Gateway、消息与导出运行时，以及 server-pg 下发的加密配置投影
- * [OUTPUT]: 启动可热加载启停/凭据/搜索范围的 QQ Bot 长连接进程
- * [POS]: qq-bot 的进程组合根，只装配依赖和生命周期；搜索、导出、协议细节分别委托领域模块
+ * [OUTPUT]: 启动可热加载启停/凭据/搜索范围并使用 Markdown 状态卡的 QQ Bot 长连接进程
+ * [POS]: qq-bot 的进程组合根，只装配依赖和生命周期；搜索、导出状态、协议细节分别委托领域模块
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const crypto = require("crypto");
@@ -53,7 +53,7 @@ const api = createQqApiClient({
 let messageRuntime = null;
 const exportRuntime = createQqExportRuntime({
     client,
-    sendMessage: (...args) => messageRuntime.sendText(...args),
+    sendMessage: (...args) => messageRuntime.sendStatus(...args),
     sendFile: (...args) => messageRuntime.sendFile(...args)
 });
 messageRuntime = createQqMessageRuntime({

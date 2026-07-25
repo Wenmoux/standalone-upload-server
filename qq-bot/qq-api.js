@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 QQ 官方 App Access Token、OpenAPI、Gateway 与富媒体分片上传/合并协议，以及 Node Fetch/文件/摘要能力
- * [OUTPUT]: 对外提供 QQ API 客户端、Token 获取/凭据测试、文本/Markdown 内嵌键盘、带阶段重试的文件发送和错误类型
+ * [OUTPUT]: 对外提供 QQ API 客户端、Token 获取/凭据测试、文本/Markdown 内嵌键盘、语义化纯文本降级、带阶段重试的文件发送和错误类型
  * [POS]: qq-bot 的唯一腾讯网络边界，集中处理鉴权刷新、超时、回复序号与官方可重试错误，避免调用方解释内部代理故障
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -124,6 +124,7 @@ function labelQqUploadError(error, operation) {
 }
 
 function commandKeyboard(rows = []) {
+    const label = (value) => Array.from(String(value || "操作")).slice(0, 12).join("");
     const contentRows = (Array.isArray(rows) ? rows : [])
         .slice(0, 5)
         .map((row, rowIndex) => ({
@@ -132,8 +133,8 @@ function commandKeyboard(rows = []) {
                 .map((button, buttonIndex) => ({
                     id: `po18_${rowIndex}_${buttonIndex}`,
                     render_data: {
-                        label: String(button.label || button.text || "操作").slice(0, 12),
-                        visited_label: String(button.visitedLabel || button.label || button.text || "操作").slice(0, 12),
+                        label: label(button.label || button.text),
+                        visited_label: label(button.visitedLabel || button.label || button.text),
                         style: Number(button.style ?? 1)
                     },
                     action: {
@@ -147,6 +148,18 @@ function commandKeyboard(rows = []) {
         }))
         .filter((row) => row.buttons.length);
     return contentRows.length ? { content: { rows: contentRows } } : null;
+}
+
+function markdownToPlainText(content = "") {
+    return String(content || "")
+        .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+        .replace(/\\([\\`*_[\]{}()#+\-.!|>])/g, "$1")
+        .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+        .replace(/^\s*>\s?/gm, "")
+        .replace(/^\s*[-*_]{3,}\s*$/gm, "")
+        .replace(/\*\*|__|`/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 }
 
 function createQqApiClient(options = {}) {
@@ -220,10 +233,7 @@ function createQqApiClient(options = {}) {
                 })
             });
         } catch (err) {
-            const fallback = String(content || "")
-                .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
-                .replace(/[*_`>#~-]/g, "")
-                .trim();
+            const fallback = markdownToPlainText(content);
             return request(targetPath(target, "messages"), {
                 method: "POST",
                 body: JSON.stringify({ content: fallback.slice(0, 1900), msg_type: 0, ...sequence })
@@ -322,6 +332,7 @@ module.exports = {
     commandKeyboard,
     createQqApiClient,
     isRetryableQqUploadError,
+    markdownToPlainText,
     requestAppAccessToken,
     targetPath,
     testQqBotCredentials

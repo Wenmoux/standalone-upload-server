@@ -7,11 +7,11 @@ QQ 官方机器人适配器。它通过受 Bot Token 保护的 server API 获取
 ## 成员清单
 
 `export-runtime.js`: QQ 导出组合边界，将共享生成器、EPUB 样式和结算状态机接到 QQ 富媒体文件投递。
-`formatters.js`: QQ Markdown/纯文本展示层，消费跨平台账户/书卡模型保持签到与书籍内容和 Telegram 一致，明确区分可下载缓存与纯元信息，并用标题、引用和按钮色阶增强 QQ 原生呈现。
+`formatters.js`: QQ 安全 Markdown/纯文本展示层，提供轻量主面板、独立帮助、紧凑书卡、详情信息条和导出状态卡；只使用客户端稳定渲染的块级标题/分隔线，业务字段不依赖行内标记。
 `gateway.js`: QQ WebSocket Gateway 协议入口，负责 Intents、Identify/Resume、心跳和 C2C/群聊事件归一化。
-`message-runtime.js`: QQ 菜单/签到/仅缓存搜索/分页/选书/样式/下载交互编排，并在展示和下载前执行范围及实时缓存双重校验。
-`qq-api.js`: QQ OpenAPI 唯一网络客户端，封装 App Access Token、Markdown 长格式内嵌键盘、消息降级及 200 MB 内富媒体分片上传，对官方可重试错误按阶段退避且保持消息序号幂等。
-`qq-bot.js`: 进程组合根，轮询后台配置并在启停或凭据变化时安全重连 Gateway。
+`message-runtime.js`: QQ 主面板/帮助/签到/仅缓存搜索/分页/选书/样式/下载交互编排，以两列书名和分层动作键盘适配移动端，并在下载前执行范围及实时缓存双重校验。
+`qq-api.js`: QQ OpenAPI 唯一网络客户端，封装 App Access Token、Markdown 长格式内嵌键盘、保留普通 `#标签`/连字符的纯文本降级及 200 MB 内富媒体分片上传，对官方可重试错误按阶段退避且保持消息序号幂等。
+`qq-bot.js`: 进程组合根，轮询后台配置并在启停或凭据变化时安全重连 Gateway，同时把共享导出状态接入 QQ Markdown 状态卡。
 `README.md`: QQ 开放平台权限、后台配置和用户命令说明。
 
 ## 数据流

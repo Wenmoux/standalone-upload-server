@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、QQ 配置策略/API/Gateway/展示模块及受控 Fetch/配置存储替身
- * [OUTPUT]: 提供密钥不回显、平台标签/缓存范围、跨 Bot 书卡字段、Markdown 按钮和可重试富媒体分片上传契约回归断言
+ * [OUTPUT]: 提供密钥不回显、平台标签/缓存范围、QQ 安全 Markdown/纯文本降级、内嵌按钮和可重试富媒体分片上传契约回归断言
  * [POS]: tests 的 QQ Bot 安全与官方协议守卫，防止凭据、访问范围或文件投递在后续修改中退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -16,9 +16,19 @@ const {
     normalizeQqPolicy,
     qqBookAccess
 } = require("../services/qq-bot-config");
-const { commandKeyboard, createQqApiClient, isRetryableQqUploadError, requestAppAccessToken } = require("../qq-bot/qq-api");
+const { commandKeyboard, createQqApiClient, isRetryableQqUploadError, markdownToPlainText, requestAppAccessToken } = require("../qq-bot/qq-api");
 const { normalizeQqEvent } = require("../qq-bot/gateway");
-const { detailText, searchText, signText, styleText } = require("../qq-bot/formatters");
+const {
+    bookButtonLabel,
+    detailText,
+    emptySearchText,
+    exportStatusText,
+    helpText,
+    menuText,
+    searchText,
+    signText,
+    styleText
+} = require("../qq-bot/formatters");
 const { createQqMessageRuntime } = require("../qq-bot/message-runtime");
 
 test("QQ config encrypts AppSecret and never exposes it through the public projection", async () => {
@@ -136,7 +146,42 @@ test("QQ command keyboard emits the official long-form command button payload", 
     assert.equal(keyboard.content.rows[0].buttons[1].render_data.label, "下一页");
 });
 
-test("QQ Markdown cards keep Telegram book fields while using richer native hierarchy", () => {
+test("QQ Markdown fallback removes formatting escapes without damaging copy", async () => {
+    const messageBodies = [];
+    const api = createQqApiClient({
+        credentials: () => ({ appId: "10001", appSecret: "test-secret" }),
+        tokenUrl: "https://token.example/app/getAppAccessToken",
+        fetchImpl: async (url, options = {}) => {
+            if (String(url).includes("getAppAccessToken")) {
+                return new Response(JSON.stringify({ access_token: "access", expires_in: 7200 }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+            const body = JSON.parse(options.body);
+            messageBodies.push(body);
+            if (body.msg_type === 2) {
+                return new Response(JSON.stringify({ code: 304036, message: "no markdown permission" }), {
+                    status: 400,
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+            return new Response(JSON.stringify({ id: "plain-reply" }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+    });
+    await api.sendMarkdown({ kind: "user", id: "openid" }, "# 账户\n卷首书童 Lv\\.1\n#标签\n书名：A-B", { msgId: "message-1", seq: 0 });
+    assert.equal(messageBodies.length, 2);
+    assert.match(messageBodies[1].content, /Lv\.1/);
+    assert.match(messageBodies[1].content, /#标签/);
+    assert.match(messageBodies[1].content, /A-B/);
+    assert.doesNotMatch(messageBodies[1].content, /\\\./);
+    assert.equal(markdownToPlainText("# 标题\n---\n#标签\n书名：A-B"), "标题\n\n#标签\n书名：A-B");
+});
+
+test("QQ Markdown cards use compact mobile hierarchy and shared book facts", () => {
     const book = {
         book_id: "1047414337",
         title: "顶流手记",
@@ -153,15 +198,29 @@ test("QQ Markdown cards keep Telegram book fields while using richer native hier
         description: "第一行\n第二行"
     };
     const search = searchText("顶流", [book], 1, true);
-    assert.match(search, /站别：\*\*qidian/);
-    assert.match(search, /缓存 92 章 \/ 总章 633/);
-    assert.match(search, /人气：\*\*1039/);
+    assert.match(search, /作者：油炸大金/);
+    assert.match(search, /平台：起点/);
+    assert.match(search, /缓存：92\/633/);
+    assert.match(search, /人气：1,039/);
+    assert.doesNotMatch(search, /\*\*|`|^> /m);
     const detail = detailText(book);
-    assert.match(detail, /反馈：\*\*喜欢 5　不喜欢 1/);
-    assert.match(detail, /> 第一行\n> 第二行/);
+    assert.match(detail, /喜欢 5　·　不喜欢 1/);
+    assert.match(detail, /## 简介\n第一行\n第二行/);
+    assert.doesNotMatch(detail, /\*\*|`|^> /m);
     assert.match(detailText({ ...book, cache_count: 0 }), /尚无正文缓存/);
-    assert.match(styleText([{ id: "style1", label: "江湖纸卷" }], "style1"), /江湖纸卷.*默认/);
-    assert.match(signText({ reward: { copper: 100, exp: 60, day: 2 }, user: { copper_coins: 300 } }), /连续签到：\*\*2 天/);
+    assert.match(styleText([{ id: "style1", label: "江湖纸卷" }], "style1", book), /顶流手记/);
+    assert.match(signText({ reward: { copper: 100, exp: 60, day: 2 }, user: { copper_coins: 300 } }), /连续签到：2 天/);
+    assert.equal(bookButtonLabel({ title: "一个非常非常长的书名" }, 1), "1｜一个非常非常长…");
+});
+
+test("QQ menu stays focused while help and export states carry secondary detail", () => {
+    const menu = menuText({ nickname: "书友", copper_coins: 1200, silver_coins: 8 });
+    assert.match(menu, /铜币 1,200/);
+    assert.doesNotMatch(menu, /TXT 书号/);
+    assert.match(helpText(), /TXT 书号/);
+    assert.match(emptySearchText("不存在"), /暂无结果/);
+    assert.match(exportStatusText("正在生成 EPUB（江湖纸卷）：1047414337"), /正在生成 EPUB/);
+    assert.match(exportStatusText("TXT 导出完成：顶流手记\n已导出 633 章"), /导出完成/);
 });
 
 test("QQ search requests only downloadable cached books", async () => {
@@ -201,6 +260,7 @@ test("QQ search requests only downloadable cached books", async () => {
     });
     assert.equal(searchParams.cache_min, 1);
     assert.match(messages[0].content, /可下载/);
+    assert.equal(messages[0].keyboard[0][0].label, "1｜可下载");
 });
 
 test("QQ detail and export suppress false download actions without cached chapters", async () => {
@@ -239,7 +299,7 @@ test("QQ detail and export suppress false download actions without cached chapte
     await runtime.handle(event("详情 101", "message-detail-1"));
     assert.match(messages[0].content, /尚无正文缓存/);
     assert.equal(messages[0].keyboard.length, 1);
-    assert.equal(messages[0].keyboard[0][0].label, "重新搜索");
+    assert.equal(messages[0].keyboard[0][0].label, "🔎 重新搜索");
     await runtime.handle(event("TXT", "message-export-1"));
     assert.equal(exports, 0);
     assert.match(messages[1].content, /暂不可下载/);
@@ -283,7 +343,10 @@ test("QQ daily sign-in reuses the shared account and source-aware check-in contr
     assert.equal(calls[0][1].id, "qq:user-open");
     assert.deepEqual(calls[1], ["sign", "qq:user-open", "qq_bot"]);
     assert.match(messages[0].content, /签到成功/);
-    assert.equal(messages[0].keyboard[0][1].data, "签到");
+    assert.equal(messages[0].keyboard[0][1].data, "菜单");
+    await runtime.sendStatus("user:user-open", "TXT 导出完成：顶流手记\n已导出 633 章");
+    assert.match(messages[1].content, /导出完成/);
+    assert.equal(messages[1].keyboard[0][0].data, "搜索 ");
 });
 
 test("QQ file delivery prepares, uploads, confirms, merges and replies with file_info", async () => {
