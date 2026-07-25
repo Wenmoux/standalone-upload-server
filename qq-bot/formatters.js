@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 bot/account-view/book-card-view 的跨平台展示模型及搜索分页、签到、EPUB 样式领域对象
- * [OUTPUT]: 对外提供 QQ Markdown 菜单、签到结果、搜索列表、书籍详情和样式选择文本
+ * [INPUT]: 依赖 bot/account-view/book-card-view 的跨平台展示模型及搜索分页、签到、实时缓存状态、EPUB 样式领域对象
+ * [OUTPUT]: 对外提供 QQ Markdown 菜单、签到结果、搜索列表、可下载状态明确的书籍详情和样式选择文本
  * [POS]: qq-bot 的纯展示层，使 QQ 内容层级与 Telegram 书卡一致且不泄漏其 HTML/callback 协议
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -94,10 +94,21 @@ function detailText(book = {}) {
         `**反馈：**喜欢 ${card.likes}　不喜欢 ${card.dislikes}`,
         introQuote ? `\n## 简介\n${introQuote}` : "",
         "",
-        "> 点击下方按钮下载 TXT，或选择 EPUB 样式。"
+        card.cacheCount > 0 ? "> 点击下方按钮下载 TXT，或选择 EPUB 样式。" : "> 当前只有元信息，尚无正文缓存，暂时不能导出。"
     ]
         .filter(Boolean)
         .join("\n");
+}
+
+function cacheUnavailableText(book = {}) {
+    const card = createBookCardView(book);
+    return [
+        "# ⏳ 暂不可下载",
+        "",
+        `《${clean(card.title)}》当前只有元信息，尚无正文缓存。`,
+        "",
+        "> QQ Bot 只会为已有正文缓存的书籍生成 TXT/EPUB，请重新搜索其他结果。"
+    ].join("\n");
 }
 
 function styleText(styles = [], defaultStyle = "style1") {
@@ -112,4 +123,4 @@ function styleText(styles = [], defaultStyle = "style1") {
     ].join("\n");
 }
 
-module.exports = { bookLine, clean, detailText, menuText, searchText, signText, styleText };
+module.exports = { bookLine, cacheUnavailableText, clean, detailText, menuText, searchText, signText, styleText };

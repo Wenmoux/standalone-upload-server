@@ -1,13 +1,13 @@
 /**
- * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围策略、导出运行时与展示格式化器
- * [OUTPUT]: 对外提供 QQ 单聊/群聊消息分派、每日签到、分页搜索、详情选择、EPUB 样式选择和 TXT/EPUB 下载交互
- * [POS]: qq-bot 的业务交互核心，只编排平台中立书库能力，不处理 Gateway Opcode、Token 或文件分片协议
+ * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、导出运行时与展示格式化器
+ * [OUTPUT]: 对外提供 QQ 单聊/群聊消息分派、每日签到、仅可下载结果分页、详情选择、EPUB 样式选择和 TXT/EPUB 下载交互
+ * [POS]: qq-bot 的业务交互核心，在进入昂贵导出前拒绝零缓存书籍，不处理 Gateway Opcode、Token 或文件分片协议
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { createSearchPlatformRegistry } = require("../bot/search-platforms");
 const { createSearchQueryParser, parseBookId } = require("../bot/search-query");
 const { filterQqBooks } = require("../services/qq-bot-config");
-const { clean, detailText, menuText, searchText, signText, styleText } = require("./formatters");
+const { cacheUnavailableText, clean, detailText, menuText, searchText, signText, styleText } = require("./formatters");
 
 function createQqMessageRuntime(options = {}) {
     const client = options.client;
@@ -82,6 +82,14 @@ function createQqMessageRuntime(options = {}) {
         return "这本书不在 QQ Bot 当前允许的平台范围内。";
     }
 
+    function hasCachedContent(book = {}) {
+        return Number(book.cache_count || 0) > 0;
+    }
+
+    function searchAgainKeyboard() {
+        return [[{ label: "重新搜索", data: "搜索 ", enter: false, style: 1 }]];
+    }
+
     function profileFor(event) {
         return {
             id: event.identity,
@@ -121,11 +129,12 @@ function createQqMessageRuntime(options = {}) {
         const parsed = parseSearchQuery(query);
         parsed.params.page = Math.max(1, page);
         parsed.params.limit = 30;
+        parsed.params.cache_min = 1;
         if (!parsed.params.platform && config.allowedPlatforms?.length === 1) parsed.params.platform = config.allowedPlatforms[0];
         const data = await client.searchBooks(parsed.params);
         const rows = filterQqBooks(data.rows, config).slice(0, searchLimit);
         await client.recordSearch(parsed.keyword, `qq_${parsed.type}`, rows.length).catch(() => {});
-        if (!rows.length) return sendText(event, `没有找到符合 QQ Bot 当前搜索范围的「${query}」。`);
+        if (!rows.length) return sendText(event, `没有找到已缓存且符合 QQ Bot 当前搜索范围的「${query}」。`);
         const state = getSession(event);
         state.query = query;
         state.page = Number(data.page || page);
@@ -158,13 +167,16 @@ function createQqMessageRuntime(options = {}) {
         state.selectedBookId = String(access.book.book_id || bookId);
         state.pendingStyleBookId = "";
         state.updatedAt = Date.now();
-        return sendMarkdown(event, detailText(access.book), [
-            [
-                { label: "TXT", data: "TXT", style: 1 },
-                { label: "EPUB", data: "EPUB", style: 1 }
-            ],
-            [{ label: "重新搜索", data: "搜索 ", enter: false, style: 0 }]
-        ]);
+        const keyboard = hasCachedContent(access.book)
+            ? [
+                  [
+                      { label: "TXT", data: "TXT", style: 1 },
+                      { label: "EPUB", data: "EPUB", style: 1 }
+                  ],
+                  [{ label: "重新搜索", data: "搜索 ", enter: false, style: 0 }]
+              ]
+            : searchAgainKeyboard();
+        return sendMarkdown(event, detailText(access.book), keyboard);
     }
 
     function styleByInput(value = "") {
@@ -180,6 +192,11 @@ function createQqMessageRuntime(options = {}) {
         if (!bookId) return sendText(event, "请先搜索并选择一本书，或在命令后填写书号。 ");
         const access = await accessBook(bookId);
         if (!access.allowed) return sendText(event, blockedMessage(access));
+        if (!hasCachedContent(access.book)) {
+            state.pendingStyleBookId = "";
+            state.updatedAt = Date.now();
+            return sendMarkdown(event, cacheUnavailableText(access.book), searchAgainKeyboard());
+        }
         state.selectedBookId = String(access.book.book_id || bookId);
         if (format === "epub" && !styleInput) {
             const config = await configProvider();

@@ -22,6 +22,7 @@ GET /api-docs
 - `POST /reader-auth/register` 会在同一事务内创建用户并消费 CDK；同一 CDK 并发只能有一个请求成功。
 - `POST /reader-auth/login`、`POST /reader-auth/telegram` 均拒绝封禁账户；Telegram 首次登录使用唯一键 upsert，不会因并发创建重复用户。
 - `POST /reader-auth/sign` 与 `POST /bot-api/users/:telegramId/sign` 使用相同的服务端奖励规则，客户端传入的铜币、银币或经验字段不会覆盖奖励；Bot 内部签到只接受 `telegram_bot`（默认）或 `qq_bot` 来源。
+- `GET /bot-api/qq/books/:bookId/access` 在平台/标签授权结果外返回 `book_stats` 的实时 `cache_count` 与反馈统计；QQ 下载入口和最终导出都以该统计大于 0 为准。
 - `POST /bot-api/users/register` 只接收 Telegram 身份、昵称和邀请人；初始 100 铜币由服务端决定，`is_admin`、封禁、余额和签到状态字段不会生效。批量迁移应使用需要 `bot:admin` 的 `/bot-api/users/import`，每批最多 2000 条且整批事务提交。
 - `PATCH /bot-api/users/:telegramId/currency` 的 `po18_bookshelf_share_reward` 必须同时提供 `idempotency_key` 与 `book_id`；`POST /bot-api/users/:telegramId/transactions` 仅记录零金额事件，币种、余额和来源由服务端确定。
 

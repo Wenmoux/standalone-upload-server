@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 admin_config 读写、凭据加密器、平台别名规范化和书籍元信息查询能力
- * [OUTPUT]: 对外提供 QQ Bot 配置读写、公开/运行时配置投影及平台/标签访问策略
- * [POS]: services 的 QQ Bot 配置与内容范围事实源，确保搜索展示和下载授权使用同一套规则
+ * [INPUT]: 依赖 admin_config 读写、凭据加密器、平台别名规范化和书籍元信息/缓存统计查询能力
+ * [OUTPUT]: 对外提供 QQ Bot 配置读写、公开/运行时配置投影及携带实时缓存统计的平台/标签访问策略
+ * [POS]: services 的 QQ Bot 配置与内容范围事实源，确保搜索展示、下载可用性和最终授权使用同一套规则
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { canonicalPlatformKey, normalizePlatformKey } = require("./platforms");
@@ -141,9 +141,13 @@ function createQqBotConfigService(options = {}) {
     async function bookAccessById(bookId) {
         if (typeof query !== "function") throw new Error("QQ Bot book access query is not configured");
         const result = await query(
-            `SELECT * FROM book_metadata
-             WHERE book_id=$1
-             ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+            `SELECT m.*, COALESCE(bs.cache_count, 0)::int cache_count,
+                    COALESCE(bs.like_count, 0)::int like_count,
+                    COALESCE(bs.dislike_count, 0)::int dislike_count
+             FROM book_metadata m
+             LEFT JOIN book_stats bs ON bs.book_id = m.book_id
+             WHERE m.book_id=$1
+             ORDER BY COALESCE(m.updated_at, m.created_at) DESC, m.id DESC
              LIMIT 1`,
             [String(bookId || "").trim()]
         );

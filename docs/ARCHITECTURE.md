@@ -47,7 +47,7 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
 | Setup | `docker/control-panel.js` | 无数据库时的初始化向导，以及运行后的配置/状态/日志入口 |
 | Reader | `cirno-src/` | Vue 3 阅读器；`reader-server.js` 提供静态文件并代理 Reader API |
 | Bot | `bot/telegram-bot.js` 与模块 | Telegram polling、命令、持久任务编排、注册用户全员通知、TXT/EPUB 构建和外部同步 |
-| QQ Bot | `qq-bot/qq-bot.js` 与模块 | QQ Gateway、搜索会话、范围过滤，以及复用共享生成/结算规则的富媒体文件投递 |
+| QQ Bot | `qq-bot/qq-bot.js` 与模块 | QQ Gateway、仅缓存搜索会话、范围/实时缓存过滤，以及复用共享生成/结算规则的可重试富媒体文件投递 |
 | 数据库 | `pg-store.js`、`db/` | Pool、迁移、rollback、schema snapshot 和数据模型 |
 | 运维 | `docker/`、`scripts/`、`monitoring/` | 入口、监管、备份、状态、构建、发布和告警 |
 

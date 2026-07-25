@@ -67,7 +67,7 @@ routes → services → pg-store → PostgreSQL
 - 生产绑定非 localhost 时 Metrics Token 必填；任何示例不得弱化生产安全校验。
 - `main` 推送会发布可变 `v2.0` 标签，必须保护分支和工作流修改权限。
 - Telegram 频道推送通过根级不可见标记跨进程识别；Bot 只精确取消关联群中带标记的自动转发置顶，人工消息不进入该策略。注册用户全员通知独立写入 `system_jobs`，由 Bot 管理员/后台 owner 发起并由 Bot Worker 限速私聊。
-- QQ Bot 通过后台加密保存 AppSecret，并以同一范围策略过滤搜索、详情和下载；OpenID 使用 `qq:` 命名空间复用当前用户经济边界，文件通过官方富媒体分片协议投递。
+- QQ Bot 通过后台加密保存 AppSecret，并以同一平台/标签策略和实时缓存统计过滤搜索、详情和下载；OpenID 使用 `qq:` 命名空间复用当前用户经济边界，文件通过官方富媒体分片协议按阶段重试投递。
 - `npm run check:docs` 是地图同构门禁：验证必需 L2、相对链接与受控源码 L3；已发布 migration 和生成产物遵守上层契约，不为注释破坏不可变性。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
