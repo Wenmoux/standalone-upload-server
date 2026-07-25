@@ -9,7 +9,7 @@
 CLAUDE.md: 本模块的语义地图，约束路由边界、鉴权落点和服务依赖。
 admin-auth.js: Admin 认证与管理员账号路由，登录响应前确认 session 已持久化，并承接访问角色及 owner 约束。
 admin-backups.js: Admin 备份路由，把创建、校验、上传、恢复、演练和远端操作映射到备份服务与任务中心。
-admin-config.js: Admin 配置路由，暴露 Telegram 类型开关、owner 全员通知、平台、导出和 EPUB Style2 模板/资源配置。
+admin-config.js: Admin 配置路由，暴露 Telegram/QQ Bot 凭据与范围、owner 全员通知、平台、导出和 EPUB Style2 模板/资源配置。
 admin-content.js: Admin 内容域组合路由，挂载维护、用户和书库子路由并处理其余后台内容/配置接口。
 admin-crawler.js: PO18 爬虫管理路由，提供配置、运行、暂停、恢复、停止和 Cookie 测试入口。
 admin-library.js: Admin 书库路由，负责书籍/章节 CRUD、筛选导出、书评及目录查询的 HTTP 适配。
@@ -21,7 +21,7 @@ bot-api.js: Bot API 纯组合边界，在统一 Bot Token 下按固定顺序挂�
 bot-api-library.js: Bot 书库协议路由，承接 PO18 凭据、书架、缺书请求、批量热词、词云与分享事实，只映射 HTTP 并把全部持久化委托给领域服务。
 bot-api-red-packets.js: Bot 红包协议路由，把兼容请求字段和过期/幂等状态映射到红包聚合根。
 bot-api-social.js: Bot 社交协议路由，映射反馈、众筹、书评与投票，固定可信书评来源并透传发布操作键。
-bot-api-system.js: Bot 内部系统路由，处理持久任务登记、worker/attempt fencing token 状态回写、管理员广播入队、收件人分页、审计与命令配置读取。
+bot-api-system.js: Bot 内部系统路由，处理 QQ 运行配置/书籍范围复核、持久任务登记、worker/attempt fencing token 状态回写、管理员广播入队、收件人分页、审计与命令配置读取。
 bot-api-users.js: Bot 内部用户路由，把 Telegram 身份、签到、任务、转账、兑换与只读/零金额事件流水映射到账户和用户经济服务，拒绝普通注册夹带权限或奖励状态。
 health.js: 运维路由，提供 liveness/readiness/deep health、版本、Prometheus 文本和 Admin 指标摘要。
 openapi.js: OpenAPI 入口路由，按请求实时生成 Express 端点索引并提供轻量文档页。

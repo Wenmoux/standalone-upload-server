@@ -338,7 +338,7 @@ test("admin backup routes expose remote backup status and upload", async () => {
     assert.ok(calls.some((item) => item.log?.[2] === "backup-remote-uploaded"));
 });
 
-test("admin config routes read and update telegram, platform and export settings", async () => {
+test("admin config routes read and update Telegram, QQ, platform and export settings", async () => {
     const stored = {
         telegram_bot_token: "123456:token",
         telegram_chat_id: "chat-1"
@@ -347,6 +347,7 @@ test("admin config routes read and update telegram, platform and export settings
     const style2AssetCalls = [];
     const telegramPosts = [];
     const broadcastJobs = [];
+    const qqUpdates = [];
     const router = createAdminConfigRoutes({
         requireAdmin: adminOnly,
         configGet: async (key) => stored[key] || "",
@@ -361,7 +362,7 @@ test("admin config routes read and update telegram, platform and export settings
         channelDailyReportRecipients: async () => ["2", "3"],
         parseTelegramPushTypes: (value) => (Array.isArray(value) ? value : []),
         parseDailyReportTime: (value) => ({ value: String(value || "22:00") }),
-        platformConfigPayload: async () => ({ labels: { po18: "PO18" } }),
+        platformConfigPayload: async () => ({ labels: { po18: "PO18" }, platforms: [{ value: "po18", label: "PO18", count: 3 }] }),
         cleanPlatformKey: (value) =>
             String(value || "")
                 .trim()
@@ -370,7 +371,8 @@ test("admin config routes read and update telegram, platform and export settings
             unlockCost: 10,
             freeCopperCost: 20,
             paidChapterSilverCost: 30,
-            epub: { styleId: "style1", includeColophon: true }
+            epub: { styleId: "style1", includeColophon: true },
+            epubStyles: [{ id: "style1", label: "样式一" }]
         }),
         exportPricingPayload: (value) => ({
             unlockCost: Number(value.unlockCost || 0),
@@ -404,6 +406,21 @@ test("admin config routes read and update telegram, platform and export settings
         },
         sendDailyReport: async () => ({ sent: 1 }),
         countRegisteredUserRecipients: async () => 8,
+        qqBotConfig: async () => ({
+            enabled: true,
+            appId: "10001",
+            appSecretConfigured: true,
+            appSecretSource: "admin_config",
+            allowedPlatforms: [],
+            blockedPlatforms: ["fanqie"],
+            blockedTags: ["限制级"],
+            defaultEpubStyle: "style1"
+        }),
+        updateQqBotConfig: async (payload) => {
+            qqUpdates.push(payload);
+            return { enabled: !!payload.enabled, appId: payload.appId, appSecretConfigured: true };
+        },
+        testQqBotConfig: async () => ({ ok: true, expiresIn: 7200 }),
         createSystemJob: async (input) => {
             broadcastJobs.push(input);
             return { id: 99, status: "queued" };
@@ -424,6 +441,28 @@ test("admin config routes read and update telegram, platform and export settings
         assert.equal(telegramBody.botTokenLast4, "oken");
         assert.equal(Object.prototype.hasOwnProperty.call(telegramBody, "botToken"), false);
         assert.equal(JSON.stringify(telegramBody).includes("123456:token"), false);
+
+        const qq = await fetch(`${base}/admin-api/config/qq-bot`, { headers: { "X-Test-Admin": "1" } });
+        const qqBody = await qq.json();
+        assert.equal(qqBody.appSecretConfigured, true);
+        assert.equal(Object.prototype.hasOwnProperty.call(qqBody, "appSecret"), false);
+        assert.equal(qqBody.platforms[0].value, "po18");
+        assert.equal(qqBody.epubStyles[0].id, "style1");
+
+        const updateQq = await fetch(`${base}/admin-api/config/qq-bot`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: JSON.stringify({ enabled: true, appId: "10002", blockedPlatforms: ["fanqie"], blockedTags: ["限制级"] })
+        });
+        assert.equal(updateQq.status, 200);
+        assert.equal((await updateQq.json()).appId, "10002");
+
+        const testQq = await fetch(`${base}/admin-api/config/qq-bot/test`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Test-Admin": "1" },
+            body: "{}"
+        });
+        assert.equal((await testQq.json()).expiresIn, 7200);
 
         const updateTelegram = await fetch(`${base}/admin-api/config/telegram`, {
             method: "PUT",
@@ -531,6 +570,7 @@ test("admin config routes read and update telegram, platform and export settings
     assert.equal(telegramPosts[0].body.chat_id, "chat-2");
     assert.equal(broadcastJobs[0].type, "bot_registered_user_broadcast");
     assert.equal(broadcastJobs[0].maxAttempts, 1);
+    assert.deepEqual(qqUpdates[0].blockedPlatforms, ["fanqie"]);
     assert.equal(hasTelegramSystemPushMarker(telegramPosts[0].body.text), true);
     assert.deepEqual(style2AssetCalls, [
         { action: "send", slot: "title-background" },

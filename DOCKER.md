@@ -11,15 +11,16 @@
 - `server-pg`：Admin/API/Setup，端口 `3100`。
 - Reader server：静态站点和 API 代理，端口 `3200`。
 - Telegram Bot：仅配置 Telegram Token 时启动，健康端口 `3300`。
+- QQ Bot：进程常驻监听后台启停配置，未配置时不连接腾讯 Gateway。
 
 单容器只需要持久化 `/config`，PostgreSQL 可以在外部服务器或另一个容器中。
 
-### Compose 四容器
+### Compose 五服务
 
 `docker-compose.hub.yml` 启动：
 
 - `postgres`：PostgreSQL 16。
-- `server-pg`、`reader`、`bot`：三个进程容器，复用同一应用镜像。
+- `server-pg`、`reader`、`bot`、`qq-bot`：四个进程容器，复用同一应用镜像。
 
 Compose 使用 `po18-postgres-data` 和 `po18-config` 两个命名卷。Bot 的 `3300` 只映射到宿主机 `127.0.0.1`。
 
@@ -86,10 +87,16 @@ docker compose -f docker-compose.hub.yml up -d
 docker compose -f docker-compose.hub.yml ps
 ```
 
-不用 Bot 时不要启动一个空 Token 的 `bot` 容器，应明确选择服务：
+不用 Telegram Bot 时不要启动一个空 Token 的 `bot` 容器，应明确选择服务：
 
 ```bash
 docker compose -f docker-compose.hub.yml up -d postgres server-pg reader
+```
+
+只启用 QQ Bot：
+
+```bash
+docker compose -f docker-compose.hub.yml up -d postgres server-pg reader qq-bot
 ```
 
 Bot 进程会在 Token 为空时返回失败；若仍使用无参数 `up -d`，`restart: unless-stopped` 会导致它反复重启。
@@ -111,8 +118,10 @@ docker compose up -d --build
 - `PO18_UPLOAD_ADMIN_PASSWORD`：后台管理员密码。
 - `PO18_UPLOAD_SESSION_SECRET`：至少 16 字符，建议随机 32 字节以上。
 - `PO18_UPLOAD_API_TOKEN`：外部写 API 的 `X-Upload-Token`。
-- `PO18_BOT_API_TOKEN`：Bot 与后端通信的 `X-Bot-Token`。
+- `PO18_BOT_API_TOKEN`：Telegram/QQ Bot 与后端通信的 `X-Bot-Token`。
 - `PO18_METRICS_TOKEN`：生产环境绑定非 localhost 时强制要求。
+
+QQ AppID/AppSecret 优先在 Admin 的“QQ Bot”页面配置；AppSecret 加密落库且读取接口不回显，环境变量只作为应急回退。
 
 访问 Metrics：
 
@@ -259,7 +268,7 @@ PO18_REMOTE_BACKUP_KEEP=8
 
 ## 进程监管
 
-单容器会独立重启 server、Reader 和 Bot：
+单容器会独立重启 server、Reader、Telegram Bot 和 QQ Bot：
 
 ```env
 PO18_CHILD_RESTART_BASE_MS=1000

@@ -108,6 +108,24 @@ services:
       retries: 10
       start_period: 60s
 
+  qq-bot:
+    build:
+      context: .
+      target: bot
+    image: po18-bot:local
+    command: ["node", "qq-bot/qq-bot.js"]
+    environment:
+      NODE_ENV: production
+      PO18_SERVER_URL: http://server-pg:3100
+      PO18_BOT_API_TOKEN: ${PO18_BOT_API_TOKEN:-change-this-bot-api-token}
+      QQ_BOT_CONFIG_POLL_MS: ${QQ_BOT_CONFIG_POLL_MS:-15000}
+      QQ_BOT_REQUEST_TIMEOUT_MS: ${QQ_BOT_REQUEST_TIMEOUT_MS:-30000}
+    volumes:
+      - po18-config:/config
+    depends_on:
+      server-pg:
+        condition: service_healthy
+
   status:
     profiles:
       - tools

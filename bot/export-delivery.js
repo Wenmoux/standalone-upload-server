@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Bot API 客户端、Telegram 投递/私聊不可达识别、导出构建器、计价规则、EPUB 样式协议和临时文件系统
- * [OUTPUT]: 对外提供私聊导出续接、EPUB 样式提示、私聊可达性检查和成功后幂等结算状态机
- * [POS]: bot 的导出投递边界，连接 export-builder 产物与 Telegram/用户经济，但不持有命令注册和轮询生命周期
+ * [INPUT]: 依赖 Bot API 客户端、消息平台投递/私聊不可达识别、导出构建器、计价规则、EPUB 样式协议和临时文件系统
+ * [OUTPUT]: 对外提供私聊导出续接、EPUB 样式提示、私聊可达性检查和带来源的成功后幂等结算状态机
+ * [POS]: bot 的导出投递边界，连接 export-builder 产物与消息平台/用户经济，但不持有命令注册和轮询生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs/promises");
@@ -34,6 +34,7 @@ function createExportDelivery(options = {}) {
     const now = options.now || Date.now;
     const random = options.random || Math.random;
     const removeDirectory = options.removeDirectory || ((dir) => fs.rm(dir, { recursive: true, force: true }));
+    const source = String(options.source || "telegram_bot").slice(0, 64);
 
     function botPrivateUrl(payload = "") {
         const username = String(botUserProvider()?.username || "").trim();
@@ -240,7 +241,7 @@ function createExportDelivery(options = {}) {
                         quote.amount,
                         `export_${format}_fee`,
                         `${result.book.book_id} ${result.chapters} chapters paid=${quote.paidChapters}`,
-                        "telegram_bot",
+                        source,
                         settlementOptions
                     );
                     return { kind: "currency", quote };
@@ -250,7 +251,7 @@ function createExportDelivery(options = {}) {
 
             async function recordAndSettle() {
                 await client
-                    .recordUserEvent(from.id, `export_${format}`, `${result.book.book_id} ${result.chapters} chapters`)
+                    .recordUserEvent(from.id, `export_${format}`, `${result.book.book_id} ${result.chapters} chapters`, source)
                     .catch(() => {});
                 try {
                     return await settleSuccessfulExport();

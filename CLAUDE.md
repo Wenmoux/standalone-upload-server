@@ -1,4 +1,4 @@
-# PO18 Reader Stack - 自托管小说书库、Reader、Admin 与 Telegram Bot 一体化平台
+# PO18 Reader Stack - 自托管小说书库、Reader、Admin 与 Telegram/QQ Bot 一体化平台
 
 Node.js 20 + Express 4 + PostgreSQL 16 + Vue 3 + Vite 8 + Docker + GitHub Actions
 
@@ -8,6 +8,7 @@ admin-ui/ - Vue 3 管理后台 (2 核心目录: src、dist)
 assets/ - README、EPUB 独立 CSS/XHTML 模板与发布静态资源
 benchmarks/ - 搜索计划性能预算
 bot/ - Telegram polling、命令、持久任务与 TXT/EPUB 导出 (2 子目录: commands、epub-styles)
+qq-bot/ - QQ Gateway、搜索会话与富媒体 TXT/EPUB 投递 (独立适配器)
 cirno-src/ - Vue 3 Reader、Reader server 与离线/PWA 能力 (4 子目录: src、docs、scripts、public)
 db/ - PostgreSQL schema 演进 (3 核心项: migrations、rollbacks、schema-snapshot)
 docker/ - 镜像入口、Setup、进程监管、健康与备份
@@ -43,14 +44,14 @@ telegram-push-contract.js - server/Bot 跨进程共享的不可见系统推送�
 ## 依赖方向
 
 ```text
-Admin / Reader / Bot / Userscript
+Admin / Reader / Telegram Bot / QQ Bot / Userscript
              ↓ HTTP
 routes → services → pg-store → PostgreSQL
              ↓
        system_jobs / audit / metrics
 ```
 
-- `server-pg` 是唯一数据库业务入口；Bot 不直接连接 PostgreSQL。端口可先承载健康探测，但迁移和启动初始化完成前，启动闸门会以 503 拒绝全部业务流量。
+- `server-pg` 是唯一数据库业务入口；Telegram/QQ Bot 不直接连接 PostgreSQL。端口可先承载健康探测，但迁移和启动初始化完成前，启动闸门会以 503 拒绝全部业务流量。
 - Reader server 只提供静态文件并代理 `/reader-auth`、`/reader-api`。
 - `db/migrations` 是 schema 唯一正向来源，`db/rollbacks` 只用于显式人工回滚。
 - `chapter_cache` 的正数 `chapter_order` 在同一本书内跨平台唯一；上传冲突通过事务内区间移动解决，历史重复由 024 按 `chapter_order → chapter_id → id` 稳定重排。
@@ -66,6 +67,7 @@ routes → services → pg-store → PostgreSQL
 - 生产绑定非 localhost 时 Metrics Token 必填；任何示例不得弱化生产安全校验。
 - `main` 推送会发布可变 `v2.0` 标签，必须保护分支和工作流修改权限。
 - Telegram 频道推送通过根级不可见标记跨进程识别；Bot 只精确取消关联群中带标记的自动转发置顶，人工消息不进入该策略。注册用户全员通知独立写入 `system_jobs`，由 Bot 管理员/后台 owner 发起并由 Bot Worker 限速私聊。
+- QQ Bot 通过后台加密保存 AppSecret，并以同一范围策略过滤搜索、详情和下载；OpenID 使用 `qq:` 命名空间复用当前用户经济边界，文件通过官方富媒体分片协议投递。
 - `npm run check:docs` 是地图同构门禁：验证必需 L2、相对链接与受控源码 L3；已发布 migration 和生成产物遵守上层契约，不为注释破坏不可变性。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

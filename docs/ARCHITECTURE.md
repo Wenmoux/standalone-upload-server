@@ -5,8 +5,8 @@
 PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设计目标是：
 
 - PostgreSQL 作为唯一运行数据库。
-- Reader、Admin、Setup 和 Bot 共用同一后端数据与权限边界。
-- Bot 不直接连接数据库，所有业务写入通过 HTTP API。
+- Reader、Admin、Setup 和 Telegram/QQ Bot 共用同一后端数据与权限边界。
+- Telegram/QQ Bot 不直接连接数据库，所有业务写入通过 HTTP API。
 - 长任务进入持久任务表，支持租约、心跳、重试、取消和幂等结算。
 - 本地部署保持简单，同时保留可观测、备份与恢复能力。
 
@@ -25,6 +25,7 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
 │ Userscript   │        │ Express + Vue Admin  │
 │ Reader       │        │ routes + services    │
 │ Telegram Bot │        │ jobs + migration     │
+│ QQ Bot       │        │ config + policy      │
 └──────────────┘        └──────────▲───────────┘
                                    │
                  ┌─────────────────┴─────────────────┐
@@ -35,7 +36,7 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
        └───────────────────┘             └─────────────────────┘
 ```
 
-单容器模式由 `docker/run-all.js` 监管三个子进程；Compose 模式将 PostgreSQL、server、Reader 和 Bot 分成四个容器，但应用容器使用同一镜像。
+单容器模式由 `docker/run-all.js` 监管 server、Reader、Telegram Bot 和 QQ Bot；Compose 模式将它们拆成独立服务，但应用容器使用同一镜像。
 
 ## 服务职责
 
@@ -46,6 +47,7 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
 | Setup | `docker/control-panel.js` | 无数据库时的初始化向导，以及运行后的配置/状态/日志入口 |
 | Reader | `cirno-src/` | Vue 3 阅读器；`reader-server.js` 提供静态文件并代理 Reader API |
 | Bot | `bot/telegram-bot.js` 与模块 | Telegram polling、命令、持久任务编排、注册用户全员通知、TXT/EPUB 构建和外部同步 |
+| QQ Bot | `qq-bot/qq-bot.js` 与模块 | QQ Gateway、搜索会话、范围过滤，以及复用共享生成/结算规则的富媒体文件投递 |
 | 数据库 | `pg-store.js`、`db/` | Pool、迁移、rollback、schema snapshot 和数据模型 |
 | 运维 | `docker/`、`scripts/`、`monitoring/` | 入口、监管、备份、状态、构建、发布和告警 |
 
@@ -55,7 +57,7 @@ PO18 Reader Stack 是单仓库、单镜像的自托管阅读平台。核心设�
 | --- | --- | --- |
 | `/reader-auth/*` | Reader | 登录/注册公开，其余按 Reader Session |
 | `/reader-api/*` | Reader、Bot 只读发现 | 搜索/元信息等公开；书架、正文、TTS、纠错、性能等按 Reader Session 或具体路由策略 |
-| `/bot-api/*` | Telegram Bot | `X-Bot-Token` 和 Scope/IP 策略 |
+| `/bot-api/*` | Telegram/QQ Bot | `X-Bot-Token` 和 Scope/IP 策略；QQ 下载额外执行平台/标签范围复核 |
 | `/api/metadata/*`、`/api/parse/*` | Userscript、Bot 共享 | Admin Session 或 Upload Token |
 | `/admin-api/*` | Admin | Admin Session、RBAC、CSRF 和审计 |
 | `/health/*` | Docker/运维 | 无登录；返回存活或就绪状态 |
@@ -70,7 +72,7 @@ Reader server 只代理 `/reader-auth` 和 `/reader-api` 到 `3100`。上传与 
 
 - 书籍元信息、章节缓存、标准化分类和标签。
 - Reader 用户、Session、书架、历史、按用户/日期/书籍/章节唯一的正文用量、性能样本和书评。
-- Telegram 用户、交易、签到、CDK、红包、众筹和 PO18 凭据。
+- Telegram/QQ 命名空间用户、交易、签到、CDK、红包、众筹和 PO18 凭据。
 - 系统任务、任务租约、幂等副作用账本、来源健康和审计。
 - Admin 配置、API Token、备份、Manifest 和数据质量。
 
@@ -94,7 +96,7 @@ Reader server 只代理 `/reader-auth` 和 `/reader-api` 到 `3100`。上传与 
 - Admin 和 Reader 使用独立 PostgreSQL Session。
 - 写请求有 CSRF、CORS、限流和分路由 Body 限制。
 - Upload/Bot Token 在数据库中只存 SHA-256，并支持 Scope、允许 IP、吊销和最近使用时间。
-- PO18 密码与 Cookie 使用 AES-256-GCM 信封加密，支持新旧密钥并行轮换。
+- PO18 密码/Cookie 与后台 QQ AppSecret 使用 AES-256-GCM 信封加密，支持新旧密钥并行轮换。
 - TTS 代理拒绝内网、localhost、链路本地、保留地址和重定向绕过。
 - Admin 高风险操作进入追加式审计；RBAC 区分 owner/operator/moderator/viewer。
 - 生产环境绑定非 localhost 时必须配置 Metrics Token。

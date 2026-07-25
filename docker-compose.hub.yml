@@ -113,6 +113,23 @@ services:
       retries: 10
       start_period: 60s
 
+  qq-bot:
+    image: wenmoux/reader:v2.0
+    restart: unless-stopped
+    command: ["node", "qq-bot/qq-bot.js"]
+    environment:
+      NODE_ENV: production
+      PO18_CONFIG_FILE: /config/app.env
+      PO18_SERVER_URL: http://server-pg:3100
+      PO18_BOT_API_TOKEN: ${PO18_BOT_API_TOKEN:-}
+      QQ_BOT_CONFIG_POLL_MS: ${QQ_BOT_CONFIG_POLL_MS:-15000}
+      QQ_BOT_REQUEST_TIMEOUT_MS: ${QQ_BOT_REQUEST_TIMEOUT_MS:-30000}
+    volumes:
+      - po18-config:/config
+    depends_on:
+      server-pg:
+        condition: service_healthy
+
 volumes:
   po18-config:
   po18-postgres-data:

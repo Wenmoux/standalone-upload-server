@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert 与 Admin Vue/CSS 源码文件
- * [OUTPUT]: 提供后台导航、会话恢复、表格/弹窗无障碍和工作区分层的静态契约回归
+ * [OUTPUT]: 提供后台导航、Bot 凭据配置、会话恢复、表格/弹窗无障碍和工作区分层的静态契约回归
  * [POS]: tests 的 Admin UI 结构守卫，在无需浏览器的快速测试中阻止关键交互退回阻塞或不可访问实现
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -34,9 +34,21 @@ test("admin navigation is grouped and mobile shell exposes current page semantic
     const styles = source("styles/responsive.css");
     assert.match(router, /export const adminNavGroups/);
     assert.match(router, /group:\s*"content"/);
+    assert.match(router, /key:\s*"qqbot"/);
     assert.match(app, /aria-current="activeView === item\.key \? 'page'/);
     assert.match(app, /mobile-nav-backdrop/);
     assert.match(styles, /\.admin-sidebar\.open/);
+});
+
+test("QQ Bot admin keeps secrets write-only and exposes explicit search scopes", () => {
+    const qq = source("views/QqBotView.vue");
+    assert.match(qq, /type="password"/);
+    assert.match(qq, /appSecretConfigured/);
+    assert.match(qq, /allowedPlatforms/);
+    assert.match(qq, /blockedPlatforms/);
+    assert.match(qq, /blockedTags/);
+    assert.match(qq, /clearAppSecret/);
+    assert.doesNotMatch(qq, /appSecret:\s*["'][^"']{8,}["']/);
 });
 
 test("admin tables and dialogs preserve keyboard and screen-reader contracts", () => {

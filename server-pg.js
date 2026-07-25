@@ -1,7 +1,7 @@
 ﻿/**
- * [INPUT]: 依赖 Express/PostgreSQL、账户/签到等领域服务、应用生命周期、启动流量闸门、Admin 静态产物及 /config 配置
- * [OUTPUT]: 装配并启动 3100 端口服务，在迁移及初始化完成前仅开放健康检查、拒绝业务流量
- * [POS]: 项目后端唯一组合根，只声明依赖图、HTTP 管线和启动入口，领域规则与生命周期下沉到 services
+ * [INPUT]: 依赖 Express/PostgreSQL、账户/签到/QQ Bot 配置等领域服务、应用生命周期、启动流量闸门、Admin 静态产物及 /config 配置
+ * [OUTPUT]: 装配并启动 3100 端口服务，提供 Admin/Reader/Telegram/QQ 内部 API，并在初始化完成前拒绝业务流量
+ * [POS]: 项目后端唯一组合根，只声明跨端依赖图、HTTP 管线和启动入口，领域规则与生命周期下沉到 services
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -44,6 +44,7 @@ const { createReaderAccountService } = require("./services/reader-account");
 const { createReaderCheckInService } = require("./services/reader-check-in");
 const { createBookChapterService } = require("./services/book-chapters");
 const { createConfigService } = require("./services/config");
+const { createQqBotConfigService } = require("./services/qq-bot-config");
 const { createEpubStyle2AssetService } = require("./services/epub-style2-assets");
 const { createBotSettingsService } = require("./services/bot-settings");
 const { dbUnavailableMessage, isPgUnavailableError: isPgConnectionError } = require("./services/db-errors");
@@ -96,6 +97,7 @@ const { createBotApiRoutes } = require("./routes/bot-api");
 const { createReaderApiRoutes } = require("./routes/reader-api");
 const { createUploadApiRoutes } = require("./routes/upload-api");
 const { createOpenApiRoutes } = require("./routes/openapi");
+const { testQqBotCredentials } = require("./qq-bot/qq-api");
 const {
     createTelegramPushService,
     parseDailyReportTime,
@@ -181,10 +183,7 @@ const numericBookFields = new Set([
 ]);
 const numericChapterFields = new Set(["chapter_order"]);
 const booleanChapterFields = new Set(["is_volume"]);
-const configService = createConfigService({
-    query,
-    cleanPgText
-});
+const configService = createConfigService({ query, cleanPgText });
 const epubStyle2Assets = createEpubStyle2AssetService({ configFile: CONFIG_FILE });
 const {
     cleanPlatformKey,
@@ -196,10 +195,8 @@ const {
     platformConfigPayload,
     platformLabelConfig
 } = configService;
-const botSettingsService = createBotSettingsService({
-    configGet,
-    configSet
-});
+const botSettingsService = createBotSettingsService({ configGet, configSet });
+const qqBotConfigService = createQqBotConfigService({ configGet, configSet, credentialCrypto, query });
 const authService = createAuthService({
     query,
     crypto,
@@ -528,7 +525,9 @@ const adminConfigRoutes = createAdminConfigRoutes({
     sendDailyReport,
     postJson,
     createSystemJob,
-    countRegisteredUserRecipients
+    countRegisteredUserRecipients,
+    ...qqBotConfigService,
+    testQqBotConfig: () => testQqBotCredentials(qqBotConfigService.runtimeConfig)
 });
 const adminCrawlerRoutes = createAdminCrawlerRoutes({
     requireAdmin,
@@ -663,7 +662,8 @@ const botApiRoutes = createBotApiRoutes({
     cancelSystemJob,
     registeredUserRecipients,
     botCommandSettings: botSettingsService.botCommandSettings,
-    recordBotAuditLog: botAuditService.recordBotAuditLog
+    recordBotAuditLog: botAuditService.recordBotAuditLog,
+    ...qqBotConfigService
 });
 const readerApiRoutes = createReaderApiRoutes({
     query,

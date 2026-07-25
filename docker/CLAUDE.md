@@ -13,7 +13,7 @@
 - `entrypoint.js`: 单镜像容器入口；按配置状态选择 Setup 或完整服务栈，并维持退出语义。
 - `healthcheck.js`: 容器健康探针客户端；聚合本地服务端点并为 Docker HEALTHCHECK 返回稳定退出码。
 - `process-supervisor.js`: 子进程监督原语；处理重启退避、信号转发和不可恢复退出。
-- `run-all.js`: 单容器服务编排器与受信 env 文件加载器；启动 server、Reader、Bot 并连接统一监督策略。
+- `run-all.js`: 单容器服务编排器与受信 env 文件加载器；启动 server、Reader、Telegram Bot、QQ Bot 并连接统一监督策略，QQ Bot 是否连接由后台配置决定。
 - `setup-wizard.js`: 未初始化实例的最小启动器；把首次配置请求交给控制面板。
 - `status-check.js`: 本地或容器状态检查 CLI；输出面向运维人员的端点诊断结果。
 - `structured-log.js`: 容器运行日志结构化与脱敏层；统一子进程前缀、字段和敏感值过滤。

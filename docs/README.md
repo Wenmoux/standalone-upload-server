@@ -15,6 +15,8 @@
 | `/openapi.json` | 运行实例生成的机器可读端点与 Schema 索引 |
 | [数据库迁移](../db/MIGRATIONS.md) | 迁移锁、超时、备份、rollback 和手动修复 |
 | [Telegram Bot](../bot/README.md) | 当前命令、权限、导出和任务流程 |
+| [QQ Bot](../qq-bot/README.md) | QQ 开放平台权限、搜索范围、命令和文件投递 |
+| [QQ Bot](../qq-bot/README.md) | QQ 开放平台权限、搜索范围、命令和文件投递 |
 | [EPUB 样式](../bot/epub-styles/README.md) | 样式注册、预览、资源和兼容边界 |
 | [Reader](../cirno-src/README.md) | Reader 功能、独立开发和构建 |
 | [2026-07-23 综合审计报告](../PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md) | 当前代码、逻辑、UI、安全、测试和文档完整度评估 |

@@ -2,7 +2,7 @@
 
 > L2 | 父级: [../CLAUDE.md](../CLAUDE.md)
 
-Telegram 交互边界。消息与按钮回调在本模块归一化，通过 `PgBotClient` 访问 server API；耗时导出、书架同步、共享和注册用户全员通知写入 `system_jobs` 后由可恢复 Worker 执行，模块内禁止建立数据库连接。
+Telegram 交互边界与跨平台导出内核。消息与按钮回调在本模块归一化，通过 `PgBotClient` 访问 server API；TXT/EPUB 生成、计费格式与 HTTP 客户端同时供 `qq-bot/` 复用，模块内禁止建立数据库连接。
 
 ## 成员清单
 

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Fetch/URLSearchParams、server-pg 的 Bot/Reader/Upload HTTP 契约和环境中的服务地址与 Bot Token
- * [OUTPUT]: 对外提供 PgBotClient 统一 HTTP 客户端、动态平台读取、Bot 鉴权正文分页、管理员广播任务/收件人分页，以及 Telegram 用户显示名和邀请参数解析工具
- * [POS]: bot 到 server-pg 的唯一业务数据访问层，封装鉴权、超时、缓存、幂等键与分页聚合，禁止直连 PostgreSQL
+ * [OUTPUT]: 对外提供 PgBotClient 统一 HTTP 客户端、动态平台读取、QQ 运行配置/范围校验、Bot 鉴权正文分页、管理员广播任务/收件人分页，以及用户显示名和邀请参数解析工具
+ * [POS]: Telegram/QQ Bot 到 server-pg 的唯一业务数据访问层，封装鉴权、超时、缓存、幂等键与分页聚合，禁止直连 PostgreSQL
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { URLSearchParams } = require("url");
@@ -146,6 +146,14 @@ class PgBotClient {
         return this.request("/bot-api/health");
     }
 
+    async qqBotConfig() {
+        return this.request("/bot-api/config/qq-bot");
+    }
+
+    async qqBookAccess(bookId) {
+        return this.request(`/bot-api/qq/books/${encodeURIComponent(bookId)}/access`);
+    }
+
     async createBroadcast(telegramId, message, chatId = "") {
         return this.request("/bot-api/broadcasts", {
             method: "POST",
@@ -256,10 +264,10 @@ class PgBotClient {
         });
     }
 
-    async recordUserEvent(telegramId, type, detail = "") {
+    async recordUserEvent(telegramId, type, detail = "", source = "telegram_bot") {
         return this.request(`/bot-api/users/${encodeURIComponent(telegramId)}/transactions`, {
             method: "POST",
-            body: JSON.stringify({ currency: "copper", amount: 0, type, detail, source: "telegram_bot" })
+            body: JSON.stringify({ currency: "copper", amount: 0, type, detail, source })
         });
     }
 

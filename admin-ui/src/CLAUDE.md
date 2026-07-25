@@ -43,6 +43,7 @@ Admin 单页应用的可执行语义层。`main.js` 装配 Vue，`App.vue` 维�
 `views/system-backups.js`: 系统备份工作区组合层，封装索引、上传、远端归档、验证、恢复演练与数据库恢复状态机。
 `views/system-config.js`: 系统页稳定声明与纯展示规则，集中工作区、日志筛选、状态、性能、备份、版本和 RUM 映射。
 `views/TelegramView.vue`: 按需加载的分区 Telegram 运营中心，按运行、消息、导出、命令组织全员通知、频道日报、EPUB 样式和连接测试。
+`views/QqBotView.vue`: QQ Bot 配置工作台，维护启停、加密凭据、允许/屏蔽平台、屏蔽标签及默认 EPUB 样式。
 `views/TransactionsView.vue`: 货币流水查询页，按用户、币种和类型分页检索交易记录。
 `views/UsersView.vue`: Reader 用户管理页，展示今日阅读章节用量，维护账号、会员、余额与每日章节上限，并让 owner 通过专用审计动作设置或取消 Reader/Bot 管理员。
 

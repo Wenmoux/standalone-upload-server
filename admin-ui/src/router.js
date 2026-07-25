@@ -10,7 +10,7 @@ export const adminNavGroups = [
   { key: "overview", label: "概览", items: ["dashboard"] },
   { key: "content", label: "内容与质量", items: ["books", "quality", "events", "platforms", "booklist"] },
   { key: "community", label: "用户与治理", items: ["users", "transactions", "feedback", "corrections", "cdks"] },
-  { key: "automation", label: "自动化", items: ["telegram", "po18crawler", "jobs"] },
+  { key: "automation", label: "自动化", items: ["telegram", "qqbot", "po18crawler", "jobs"] },
   { key: "operations", label: "系统与审计", items: ["audit", "system"] }
 ];
 
@@ -27,6 +27,7 @@ export const adminNavItems = [
   { key: "corrections", group: "community", label: "纠错审核", path: "/admin/corrections", component: () => import("./views/CorrectionsView.vue") },
   { key: "cdks", group: "community", label: "CDK", path: "/admin/cdks", component: () => import("./views/CdksView.vue") },
   { key: "telegram", group: "automation", label: "TG Bot", path: "/admin/bot", component: () => import("./views/TelegramView.vue") },
+  { key: "qqbot", group: "automation", label: "QQ Bot", path: "/admin/qq-bot", component: () => import("./views/QqBotView.vue") },
   { key: "po18crawler", group: "automation", label: "PO18 遍历", path: "/admin/crawler", component: () => import("./views/Po18CrawlerView.vue") },
   { key: "jobs", group: "automation", label: "任务中心", path: "/admin/jobs", component: () => import("./views/JobsView.vue") },
   { key: "audit", group: "operations", label: "操作审计", path: "/admin/audit", component: () => import("./views/AuditView.vue") },

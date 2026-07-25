@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Express、根级 Telegram 推送标记、Admin 权限、config/system-jobs/bot-settings/EPUB Style2 服务与输入校验
- * [OUTPUT]: 对外提供 平台、Telegram 全员通知、导出计价、Bot 命令和 EPUB 模板/资源配置路由
- * [POS]: routes 的 Admin 配置边界，把持久配置与高风险全员通知能力分组为受 owner 保护的 HTTP 契约
+ * [INPUT]: 依赖 Express、根级 Telegram 推送标记、Admin 权限、QQ/Telegram 配置、system-jobs/bot-settings/EPUB Style2 服务与输入校验
+ * [OUTPUT]: 对外提供 平台、QQ/Telegram Bot、全员通知、导出计价、Bot 命令和 EPUB 模板/资源配置路由
+ * [POS]: routes 的 Admin 配置边界，把持久配置、机器人凭据与高风险全员通知能力分组为受 owner 保护的 HTTP 契约
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -17,7 +17,7 @@ function createAdminConfigRoutes(options = {}) {
             const role = String(req.session?.adminUser?.role || "owner")
                 .trim()
                 .toLowerCase();
-            if (role !== "owner") return res.status(403).json({ error: "仅 owner 可以修改 Telegram 凭据" });
+            if (role !== "owner") return res.status(403).json({ error: "仅 owner 可以修改 Bot 凭据" });
             next();
         });
     const configGet = options.configGet || (async () => "");
@@ -38,6 +38,34 @@ function createAdminConfigRoutes(options = {}) {
     const postJson = options.postJson || (async () => {});
     const createSystemJob = options.createSystemJob;
     const countRegisteredUserRecipients = options.countRegisteredUserRecipients || (async () => 0);
+    const qqBotConfig = options.qqBotConfig || (async () => ({ enabled: false, appSecretConfigured: false }));
+    const updateQqBotConfig = options.updateQqBotConfig || (async () => ({}));
+    const testQqBotConfig = options.testQqBotConfig || (async () => ({ ok: false }));
+
+    router.get("/admin-api/config/qq-bot", requireAdmin, async (req, res, next) => {
+        try {
+            const [config, platforms, pricing] = await Promise.all([qqBotConfig(), platformConfigPayload(), exportPricingConfig()]);
+            res.json({ ...config, platforms: platforms.platforms || [], epubStyles: pricing.epubStyles || [] });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.put("/admin-api/config/qq-bot", requireAdmin, requireOwner, async (req, res, next) => {
+        try {
+            res.json({ success: true, ...(await updateQqBotConfig(req.body || {})) });
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.post("/admin-api/config/qq-bot/test", requireAdmin, requireOwner, async (req, res, next) => {
+        try {
+            res.json({ success: true, ...(await testQqBotConfig()) });
+        } catch (err) {
+            next(err);
+        }
+    });
 
     router.get("/admin-api/config/telegram", requireAdmin, async (req, res, next) => {
         try {

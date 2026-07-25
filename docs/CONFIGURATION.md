@@ -21,7 +21,7 @@
 | `PO18_UPLOAD_ADMIN_PASSWORD` | 生产 | 不得使用默认或空值 |
 | `PO18_UPLOAD_SESSION_SECRET` | 生产 | Session 签名，建议随机 32 字节以上 |
 | `PO18_UPLOAD_API_TOKEN` | 使用外部写 API | `X-Upload-Token` / `X-PO18-Upload-Token` |
-| `PO18_BOT_API_TOKEN` | 使用 Bot | Bot 与 server 的 `X-Bot-Token` |
+| `PO18_BOT_API_TOKEN` | 使用 Telegram/QQ Bot | Bot 与 server 的 `X-Bot-Token` |
 | `PO18_METRICS_TOKEN` | 生产且 server 绑定非 localhost | `/metrics` Bearer Token；默认 Docker 场景必填 |
 | `TELEGRAM_BOT_TOKEN` | 使用 Bot | BotFather Token；留空时单容器跳过 Bot，Compose 必须同时不启动 `bot` 服务 |
 
@@ -115,12 +115,17 @@
 - `PO18_BOT_JOB_LEASE_SECONDS`、`PO18_BOT_JOB_HEARTBEAT_MS`：持久任务租约与心跳。
 - `TELEGRAM_BROADCAST_POLL_MS`：Bot 领取后台全员通知任务的轮询间隔，默认 `5000`，最小 `2000`。
 - `TELEGRAM_BROADCAST_SEND_DELAY_MS`：注册用户私聊之间的限速间隔，默认 `60` 毫秒，运行时最低 `35` 毫秒。
+- `QQ_BOT_CONFIG_POLL_MS`：QQ Bot 从 server 刷新启停、凭据和搜索范围的间隔，默认 `15000`。
+- `QQ_BOT_REQUEST_TIMEOUT_MS`：QQ Token/OpenAPI 请求超时，默认 `30000`。
+- `QQ_BOT_APP_ID`、`QQ_BOT_APP_SECRET`、`QQ_BOT_ENABLED`：仅作为后台配置不可用时的环境回退；生产优先从 Admin 加密保存。
 - `PO18_BOT_EXPORT_UNLOCK_COST`、`PO18_BOT_EXPORT_FREE_COPPER_COST`、`PO18_BOT_EXPORT_PAID_CHAPTER_SILVER_COST`：导出定价默认值；后台配置可覆盖。
 - `PIKPAK_WEBDAV_URL`、`PIKPAK_WEBDAV_USERNAME`、`PIKPAK_WEBDAV_PASSWORD`、`PIKPAK_WEBDAV_ROOT`：可选导出目标。
 
 Telegram 搜索、详情、导出、书架和 PikPak 还有独立 cooldown；除非确认滥用或限流问题，不建议一次性覆盖全部默认值。
 
 后台 Telegram `pushTypes` 支持 `metadata`、`chapter`、`daily`、`review`。这些选项只控制频道/群组同步；全员通知是单独的 owner/Bot 管理员高风险操作，收件人固定为已注册、未封禁且绑定 Telegram 的用户。
+
+后台 QQ Bot 配置包含允许平台、屏蔽平台和屏蔽标签。允许平台为空代表全部，屏蔽平台优先；标签按规范化后的完整 token 匹配。相同策略在搜索结果、详情和下载前服务端复核三处生效。
 
 ## 单容器进程监管
 

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Express、Bot Token Scope、system-jobs/bot-audit/config、管理员身份与注册用户广播收件人服务
- * [OUTPUT]: 对外提供 Bot 健康、带 worker/attempt 所有权校验的持久任务更新、管理员广播、审计和命令配置内部路由
- * [POS]: routes 的 Bot 系统协作边界，让 Worker 通过带 fencing token 的 HTTP 协议管理任务生命周期而不直连数据库
+ * [INPUT]: 依赖 Express、Bot Token Scope、QQ/Telegram 配置、system-jobs/bot-audit、管理员身份与注册用户广播收件人服务
+ * [OUTPUT]: 对外提供 Bot 健康、QQ 运行配置、带 worker/attempt 所有权校验的持久任务更新、管理员广播、审计和命令配置内部路由
+ * [POS]: routes 的 Bot 系统协作边界，让各 Bot Worker 通过受鉴权 HTTP 协议读取配置和管理任务而不直连数据库
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const express = require("express");
@@ -61,8 +61,28 @@ function createBotApiSystemRoutes(deps = {}) {
     const botCommandSettings = deps.botCommandSettings || (async () => ({ commands: [] }));
     const findBotUserByTelegramId = deps.findBotUserByTelegramId;
     const registeredUserRecipients = deps.registeredUserRecipients;
+    const qqBotRuntimeConfig = deps.qqBotRuntimeConfig || (async () => ({ enabled: false }));
+    const qqBookAccessById = deps.qqBookAccessById || (async () => ({ allowed: false, reason: "not_configured" }));
 
     router.get("/bot-api/health", requireBotApi, (req, res) => res.json({ ok: true }));
+
+    router.get("/bot-api/config/qq-bot", requireBotApi, async (req, res, next) => {
+        try {
+            res.json(await qqBotRuntimeConfig());
+        } catch (err) {
+            next(err);
+        }
+    });
+
+    router.get("/bot-api/qq/books/:bookId/access", requireBotApi, async (req, res, next) => {
+        try {
+            const result = await qqBookAccessById(req.params.bookId);
+            if (result.reason === "book_not_found") return res.status(404).json(result);
+            res.status(result.allowed ? 200 : 403).json(result);
+        } catch (err) {
+            next(err);
+        }
+    });
 
     router.post("/bot-api/broadcasts", requireBotApi, async (req, res, next) => {
         try {

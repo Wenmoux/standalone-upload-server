@@ -81,6 +81,27 @@ test("bot api routes expose health behind bot middleware", async () => {
     });
 });
 
+test("bot api exposes QQ runtime config and blocks disallowed books before export", async () => {
+    const router = createBotApiRoutes({
+        requireBotApi: botOnly,
+        qqBotRuntimeConfig: async () => ({ enabled: true, appId: "10001", appSecret: "secret", blockedTags: ["限制级"] }),
+        qqBookAccessById: async (bookId) =>
+            String(bookId) === "blocked"
+                ? { allowed: false, reason: "tag_blocked", blockedTag: "限制级" }
+                : { allowed: true, book: { book_id: String(bookId) } }
+    });
+    await withApp(router, async (base) => {
+        const config = await fetch(`${base}/bot-api/config/qq-bot`, { headers: { "X-Test-Bot": "1" } });
+        assert.equal((await config.json()).appSecret, "secret");
+        const blocked = await fetch(`${base}/bot-api/qq/books/blocked/access`, { headers: { "X-Test-Bot": "1" } });
+        assert.equal(blocked.status, 403);
+        assert.equal((await blocked.json()).reason, "tag_blocked");
+        const allowed = await fetch(`${base}/bot-api/qq/books/ok/access`, { headers: { "X-Test-Bot": "1" } });
+        assert.equal(allowed.status, 200);
+        assert.equal((await allowed.json()).book.book_id, "ok");
+    });
+});
+
 test("bot chapter export uses an authenticated bounded page", async () => {
     const calls = [];
     const router = createBotApiRoutes({

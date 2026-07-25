@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * [INPUT]: 依赖 /config/app.env、process-supervisor、结构化日志以及 server/Reader/Bot 可执行入口
- * [OUTPUT]: 提供单容器多进程启动、配置加载、日志汇聚、重启退避与信号关闭能力
+ * [INPUT]: 依赖 /config/app.env、process-supervisor、结构化日志以及 server/Reader/Telegram/QQ Bot 可执行入口
+ * [OUTPUT]: 提供单容器多进程启动、后台可启停 QQ Bot、日志汇聚、重启退避与信号关闭能力
  * [POS]: app 镜像的服务编排器；只监管进程，不替代各服务的健康、鉴权或领域逻辑
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -125,6 +125,7 @@ async function main() {
 
         supervisor.start("server-pg", ["node", "server-pg.js"]);
         supervisor.start("reader", ["node", "cirno-src/reader-server.js"]);
+        supervisor.start("qq-bot", ["node", "qq-bot/qq-bot.js"]);
 
         if (process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN) {
             supervisor.start("bot", ["node", "bot/telegram-bot.js"]);

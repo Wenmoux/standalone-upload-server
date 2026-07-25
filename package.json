@@ -7,6 +7,7 @@
     "start": "node server-pg.js",
     "status": "node docker/status-check.js local",
     "bot": "node bot/telegram-bot.js",
+    "qq-bot": "node qq-bot/qq-bot.js",
     "admin:dev": "npm --prefix admin-ui run dev",
     "admin:build": "npm --prefix admin-ui run build && node scripts/publish-admin-ui.mjs",
     "test": "node scripts/run-node-tests.js",

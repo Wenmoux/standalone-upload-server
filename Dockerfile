@@ -72,6 +72,7 @@ COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY pg-store.js server-pg.js telegram-push-contract.js ./
 COPY services ./services
+COPY qq-bot/qq-api.js ./qq-bot/qq-api.js
 COPY assets ./assets
 COPY ui ./ui
 COPY routes ./routes
@@ -111,6 +112,7 @@ COPY package*.json ./
 COPY --from=build-info /build-info/.po18-build.json ./.po18-build.json
 COPY telegram-push-contract.js ./telegram-push-contract.js
 COPY bot ./bot
+COPY qq-bot ./qq-bot
 COPY services ./services
 COPY assets ./assets
 COPY docker/status-check.js ./docker/status-check.js
@@ -192,6 +194,7 @@ COPY scripts/migrate-rollback.js scripts/clean-chapter-titles.js ./scripts/
 COPY public/legado-po18-reader-source.json public/rank.html ./public/
 COPY --from=admin-build /build/admin-ui/dist ./public/
 COPY bot ./bot
+COPY qq-bot ./qq-bot
 COPY cirno-src/reader-server.js ./cirno-src/reader-server.js
 COPY --from=reader-build /build/cirno-src/dist-reader ./cirno-src/dist-reader
 COPY docker ./docker

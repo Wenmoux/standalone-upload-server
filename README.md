@@ -2,7 +2,7 @@
 
 ![PO18 Reader Stack](assets/readme-hero.svg)
 
-PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平台，把 PostgreSQL 后端、管理后台、网页阅读器、Telegram Bot、缓存上传、PO18 辅助遍历、任务中心和备份恢复整合在同一个代码库与 Docker 镜像中。
+PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平台，把 PostgreSQL 后端、管理后台、网页阅读器、Telegram/QQ Bot、缓存上传、PO18 辅助遍历、任务中心和备份恢复整合在同一个代码库与 Docker 镜像中。
 
 > 本项目不是 PO18 官方服务，也不提供账号、Cookie、数据库内容或书籍正文。请只处理你有权访问的内容，并遵守目标站点规则与当地法律。
 
@@ -50,6 +50,13 @@ PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平�
 - 管理员可在 Bot 或后台发布全员通知，按注册用户分页、限速私聊并在任务中心查看发送统计；不追踪用户是否已读。
 - Bot 不直连 PostgreSQL；业务数据通过后端的 Reader/Bot/Upload API 访问。
 
+### QQ Bot
+
+- 支持 QQ 单聊和群聊 @ 搜索，书名、作者、`#标签`、翻页与序号选书的内容层级与 Telegram 书卡一致。
+- 支持 TXT 及四种同源 EPUB 样式；导出继续使用现有缓存、用户额度、币种结算和 200 MB 内 QQ 官方富媒体分片上传。
+- Admin 可加密保存 AppID/AppSecret，并分别设置允许平台、屏蔽平台和屏蔽标签；搜索、详情和最终下载使用同一策略，不能靠旧消息绕过。
+- QQ OpenID 以 `qq:` 命名空间进入既有用户边界，QQ Bot 同样只通过 `server-pg:3100` 的 Bot API 工作。
+
 ### 数据、运维与安全
 
 - PostgreSQL 有序迁移、checksum 漂移检查、advisory lock 和显式 rollback。
@@ -60,7 +67,7 @@ PO18 Reader Stack 是一套面向个人或小团队自托管的小说书库平�
 ## 架构与运行模式
 
 ```text
-Browser / Userscript / Telegram Bot
+Browser / Userscript / Telegram Bot / QQ Bot
               │
               ▼
 ┌──────────────────────────────────────────────────────────┐
@@ -72,13 +79,13 @@ Browser / Userscript / Telegram Bot
                            ▼
                      PostgreSQL 16
 
-Reader server :3200 只提供静态阅读器与 Reader Auth/API 代理；Telegram Bot 通过 `server-pg:3100` 的 Bot API 工作，`3300` 仅是 Bot 健康端口。
+Reader server :3200 只提供静态阅读器与 Reader Auth/API 代理；Telegram/QQ Bot 通过 `server-pg:3100` 的 Bot API 工作，`3300` 仅是 Telegram Bot 健康端口。
 ```
 
 支持两种形态：
 
-- **单容器**：镜像默认运行 `docker/run-all.js`，分别监管 server、Reader 和 Bot；适合最简单部署。
-- **Compose**：PostgreSQL、server、Reader、Bot 为四个容器，三个应用容器复用同一镜像；适合独立健康检查和进程隔离。
+- **单容器**：镜像默认运行 `docker/run-all.js`，分别监管 server、Reader、Telegram Bot 和 QQ Bot；QQ 未配置时进程仅等待后台启用。
+- **Compose**：PostgreSQL、server、Reader、Telegram Bot、QQ Bot 分为独立服务，应用容器复用同一镜像。
 
 详细边界见 [架构说明](docs/ARCHITECTURE.md)。
 
@@ -216,6 +223,7 @@ npm --prefix cirno-src ci
 ```bash
 npm start                              # 后端，默认 3100
 npm run bot                            # Telegram Bot
+npm run qq-bot                         # QQ Bot（从后台读取配置）
 npm --prefix admin-ui run dev          # Admin 开发服务器
 npm --prefix cirno-src run dev         # Reader 开发服务器
 npm run admin:build                    # 构建并发布 Admin 静态文件
@@ -236,6 +244,7 @@ npm run lint
 ├─ .github/        CI、Docker 发布和 Dependabot
 ├─ admin-ui/       Vue 3 Admin
 ├─ bot/            Telegram Bot 与 EPUB 构建器
+├─ qq-bot/         QQ Gateway、搜索会话与文件投递适配器
 ├─ cirno-src/      Vue 3 Reader 与 Reader server
 ├─ db/             migrations、rollbacks、schema snapshot
 ├─ docker/         入口、Setup、监管、状态和备份工具
@@ -261,6 +270,7 @@ npm run lint
 - [API 文档](API.md) 与运行时 `/openapi.json`
 - [数据库迁移](db/MIGRATIONS.md)
 - [Bot 命令与运行方式](bot/README.md)
+- [QQ Bot 接入与命令](qq-bot/README.md)
 - [阶段更新记录](PROJECT_UPDATE_LOG.md)
 - [2026-07-23 综合审计报告](PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md)
 - [可优化完善与功能路线图](PROJECT_OPTIMIZATION_FEATURE_ROADMAP_2026-07-23.md)
@@ -268,6 +278,6 @@ npm run lint
 
 ## 数据、隐私与免责声明
 
-不要提交或分享以下内容：`.env`、`/config/app.env`、运行日志、数据库 dump、Cookie、账号密码、Telegram Token、加密密钥和私人正文缓存。普通 Setup 配置导出默认已经脱敏，但仍应在分享前人工检查。
+不要提交或分享以下内容：`.env`、`/config/app.env`、运行日志、数据库 dump、Cookie、账号密码、Telegram Token、QQ AppSecret、加密密钥和私人正文缓存。普通 Setup 配置导出默认已经脱敏，但仍应在分享前人工检查。
 
 本项目适合个人或小规模可信用户自托管。当前数据模型仍保留部分平台无感的 `book_id` 兼容路径；跨平台同号 Manifest 会拒绝导入，但在完成统一 `book_key` 迁移前，不建议把系统直接作为开放注册的公网多租户服务。

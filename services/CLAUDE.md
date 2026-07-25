@@ -29,6 +29,7 @@ bot-settings.js: Bot 命令开关服务，以命令目录为白名单清洗、�
 chapter-maintenance.js: 章节结构维护服务，全量预览同书重复顺序与同名分卷，以排序后的整书锁、集合删除和两阶段集合更新消除重复值；合法顺序缺口不压缩，并返回全部实际改动书籍。
 chapter-title-cleaner.js: 章节标题规范化纯函数，按可审计规则清理空白、已确认括号/未闭合尾注、用户正则与首尾连接符，并保留未确认正文语义。
 config.js: `admin_config` 访问与配置语义层，消费共享平台语义并统一人工标签、导出计价、EPUB 配置及数值归一化。
+qq-bot-config.js: QQ Bot 配置与搜索范围策略，负责 AppSecret 加密投影、平台别名、精确标签屏蔽以及详情/下载前的服务端复核。
 correction-text.js: 纠错文本规则层，统一 Unicode 字符偏移、换行规范化与精确/首处替换语义。
 credential-crypto.js: 外部站点凭证加密层，以版本化密文和轮换密钥保护数据库中的 PO18 Cookie/账号字段。
 csrf.js: 基于可信 Origin、浏览器 same-origin Fetch Metadata 与 session cookie 的 CSRF 防护，仅对旧版登录/注册身份入口兼容代理完全丢失来源头，并优先拒绝明确的 cross-site 与其他无来源写入。
