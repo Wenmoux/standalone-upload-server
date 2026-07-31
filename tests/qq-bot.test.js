@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、QQ 配置策略/API/Gateway/展示模块及受控 Fetch/配置存储替身
- * [OUTPUT]: 提供密钥不回显、平台标签/缓存范围、QQ 安全 Markdown/纯文本降级、内嵌按钮和可重试富媒体分片上传契约回归断言
+ * [OUTPUT]: 提供密钥不回显、平台标签/缓存范围、QQ 可折叠代码块/纯文本降级、紧凑内嵌按钮和可重试富媒体分片上传契约回归断言
  * [POS]: tests 的 QQ Bot 安全与官方协议守卫，防止凭据、访问范围或文件投递在后续修改中退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -178,7 +178,7 @@ test("QQ Markdown fallback removes formatting escapes without damaging copy", as
     assert.match(messageBodies[1].content, /#标签/);
     assert.match(messageBodies[1].content, /A-B/);
     assert.doesNotMatch(messageBodies[1].content, /\\\./);
-    assert.equal(markdownToPlainText("# 标题\n---\n#标签\n书名：A-B"), "标题\n\n#标签\n书名：A-B");
+    assert.equal(markdownToPlainText("# 标题\n---\n```text\n简介正文\n```\n#标签\n书名：A-B"), "标题\n\n简介正文\n#标签\n书名：A-B");
 });
 
 test("QQ Markdown cards use compact mobile hierarchy and shared book facts", () => {
@@ -198,29 +198,71 @@ test("QQ Markdown cards use compact mobile hierarchy and shared book facts", () 
         description: "第一行\n第二行"
     };
     const search = searchText("顶流", [book], 1, true);
-    assert.match(search, /作者：油炸大金/);
-    assert.match(search, /平台：起点/);
-    assert.match(search, /缓存：92\/633/);
-    assert.match(search, /人气：1,039/);
+    assert.match(search, /油炸大金　·　起点/);
+    assert.match(search, /📚 缓存 92\/633/);
+    assert.match(search, /🔥 热度 1,039/);
     assert.doesNotMatch(search, /\*\*|`|^> /m);
     const detail = detailText(book);
-    assert.match(detail, /喜欢 5　·　不喜欢 1/);
-    assert.match(detail, /## 简介\n第一行\n第二行/);
-    assert.doesNotMatch(detail, /\*\*|`|^> /m);
+    assert.match(detail, /👍 喜欢 5　·　👎 不喜欢 1/);
+    assert.match(detail, /## 简介\n```text\n第一行\n第二行\n```/);
+    assert.doesNotMatch(detail, /\*\*|^> /m);
     assert.match(detailText({ ...book, cache_count: 0 }), /尚无正文缓存/);
     assert.match(styleText([{ id: "style1", label: "江湖纸卷" }], "style1", book), /顶流手记/);
-    assert.match(signText({ reward: { copper: 100, exp: 60, day: 2 }, user: { copper_coins: 300 } }), /连续签到：2 天/);
+    assert.match(signText({ reward: { copper: 100, exp: 60, day: 2 }, user: { copper_coins: 300 } }), /📅 连续签到　2 天/);
     assert.equal(bookButtonLabel({ title: "一个非常非常长的书名" }, 1), "1｜一个非常非常长…");
 });
 
 test("QQ menu stays focused while help and export states carry secondary detail", () => {
     const menu = menuText({ nickname: "书友", copper_coins: 1200, silver_coins: 8 });
     assert.match(menu, /铜币 1,200/);
+    assert.match(menu, /👤 书友/);
     assert.doesNotMatch(menu, /TXT 书号/);
     assert.match(helpText(), /TXT 书号/);
     assert.match(emptySearchText("不存在"), /暂无结果/);
     assert.match(exportStatusText("正在生成 EPUB（江湖纸卷）：1047414337"), /正在生成 EPUB/);
     assert.match(exportStatusText("TXT 导出完成：顶流手记\n已导出 633 章"), /导出完成/);
+});
+
+test("QQ primary actions use one compact mobile row", async () => {
+    const messages = [];
+    const runtime = createQqMessageRuntime({
+        client: {
+            qqBookAccess: async () => ({
+                allowed: true,
+                book: { book_id: "101", title: "可下载", platform: "qidian", cache_count: 2 }
+            })
+        },
+        api: {
+            sendMarkdown: async (_target, content, _reply, keyboard) => messages.push({ content, keyboard }),
+            sendText: async () => {}
+        },
+        configProvider: async () => ({}),
+        exportRuntime: {
+            ensureRegistered: async () => ({ nickname: "书友" }),
+            epubStyles: []
+        }
+    });
+    const event = (content, messageId) => ({
+        content,
+        identity: "qq:user-open",
+        kind: "user",
+        messageId,
+        raw: {},
+        reply: { msgId: messageId, seq: 0 },
+        target: { kind: "user", id: "user-open" },
+        targetKey: "user:user-open",
+        userOpenId: "user-open"
+    });
+    await runtime.handle(event("菜单", "message-menu-layout"));
+    assert.deepEqual(
+        messages[0].keyboard[0].map((button) => button.label),
+        ["搜书", "签到", "帮助"]
+    );
+    await runtime.handle(event("详情 101", "message-detail-layout"));
+    assert.deepEqual(
+        messages[1].keyboard[0].map((button) => button.label),
+        ["下载 TXT", "制作 EPUB", "继续搜书"]
+    );
 });
 
 test("QQ search requests only downloadable cached books", async () => {
@@ -299,7 +341,8 @@ test("QQ detail and export suppress false download actions without cached chapte
     await runtime.handle(event("详情 101", "message-detail-1"));
     assert.match(messages[0].content, /尚无正文缓存/);
     assert.equal(messages[0].keyboard.length, 1);
-    assert.equal(messages[0].keyboard[0][0].label, "🔎 重新搜索");
+    assert.equal(messages[0].keyboard[0][0].label, "重新搜书");
+    assert.equal(messages[0].keyboard[0][1].data, "菜单");
     await runtime.handle(event("TXT", "message-export-1"));
     assert.equal(exports, 0);
     assert.match(messages[1].content, /暂不可下载/);

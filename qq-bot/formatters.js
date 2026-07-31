@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 bot/account-view/book-card-view 的跨平台展示模型、共享平台名称及搜索/签到/导出状态领域对象
- * [OUTPUT]: 对外提供 QQ 安全 Markdown 主面板、帮助、签到、紧凑搜索书卡、详情、样式和导出状态文本
- * [POS]: qq-bot 的纯展示层，只依赖稳定的块级标题/分隔线与纯文本字段，避免 QQ 客户端裸露行内 Markdown 标记
+ * [OUTPUT]: 对外提供 QQ 安全 Markdown 主面板、帮助、签到、紧凑搜索书卡、可折叠简介、样式和导出状态文本
+ * [POS]: qq-bot 的纯展示层，以稳定块级标题/分隔线/代码块构建信息层级，业务字段不依赖易裸露的行内 Markdown 标记
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { scholarText } = require("../bot/account-view");
@@ -35,16 +35,21 @@ function joinLines(lines = []) {
     return lines.filter((line) => line !== null && line !== undefined).join("\n");
 }
 
+function codePanel(value = "", language = "text") {
+    const body = clean(value).replace(/```+/g, "'''");
+    return body ? `\`\`\`${language}\n${body}\n\`\`\`` : "";
+}
+
 function menuText(user = null) {
     const name = clean(user?.nickname || user?.telegram_username || user?.username || "书友");
     return [
         "# 📚 PO18 书库",
         "",
-        `${name}　·　${clean(scholarText(user || {}))}`,
-        `铜币 ${compactNumber(user?.copper_coins)}　银币 ${compactNumber(user?.silver_coins)}`,
+        `👤 ${name}　·　${clean(scholarText(user || {}))}`,
+        `🪙 铜币 ${compactNumber(user?.copper_coins)}　💠 银币 ${compactNumber(user?.silver_coins)}`,
         "",
         "---",
-        "发送书名、作者、书号或 #标签，即可查找可下载书籍。"
+        "🔎 发送书名、作者、书号或 #标签，即可查找可下载书籍。"
     ].join("\n");
 }
 
@@ -72,24 +77,24 @@ function signText(result = {}) {
     return [
         "# ✅ 签到成功",
         "",
-        `奖励：+${compactNumber(reward.copper)} 铜币${reward.silver ? `　+${compactNumber(reward.silver)} 银币` : ""}　+${compactNumber(reward.exp)} 经验`,
+        `🎁 奖励　+${compactNumber(reward.copper)} 铜币${reward.silver ? `　+${compactNumber(reward.silver)} 银币` : ""}　+${compactNumber(reward.exp)} 经验`,
         "",
-        `连续签到：${compactNumber(reward.day || user.sign_cycle_day)} 天`,
-        `书卷等级：${clean(scholarText(user))}${reward.level_up ? "　等级提升" : ""}`,
-        `当前铜币：${compactNumber(user.copper_coins)}`
+        `📅 连续签到　${compactNumber(reward.day || user.sign_cycle_day)} 天`,
+        `📖 书卷等级　${clean(scholarText(user))}${reward.level_up ? "　等级提升" : ""}`,
+        `🪙 当前铜币　${compactNumber(user.copper_coins)}`
     ].join("\n");
 }
 
 function bookLine(book = {}, index = 1) {
     const card = cardView(book, { tagLimit: 3 });
     const total = card.totalChapters === "-" ? "?" : compactNumber(card.totalChapters);
+    const identity = [card.author, card.platform, card.status === "-" ? "" : card.status].filter(Boolean).map(clean).join("　·　");
     return [
         `## ${String(index).padStart(2, "0")}｜${clean(card.title)}`,
-        `作者：${clean(card.author)}`,
-        `平台：${clean(card.platform)}${card.status === "-" ? "" : `　状态：${clean(card.status)}`}`,
-        `缓存：${compactNumber(card.cacheCount)}/${total}　人气：${compactNumber(card.popularity)}`,
-        `书号：${clean(card.bookId)}`,
-        card.tags.length ? `标签：${card.tags.map(clean).join(" / ")}` : ""
+        identity,
+        `📚 缓存 ${compactNumber(card.cacheCount)}/${total}　🔥 热度 ${compactNumber(card.popularity)}`,
+        card.tags.length ? `🏷 ${card.tags.map(clean).join(" / ")}` : "",
+        `书号 ${clean(card.bookId)}`
     ]
         .filter(Boolean)
         .join("\n");
@@ -100,12 +105,12 @@ function searchText(query, rows = [], page = 1, hasMore = false) {
     return joinLines([
         "# 🔎 搜索结果",
         "",
-        `关键词：${truncate(query, 36)}　·　第 ${compactNumber(page)} 页`,
+        `「${truncate(query, 36)}」　·　第 ${compactNumber(page)} 页`,
         "",
         cards,
         "",
         "---",
-        `本页 ${compactNumber(rows.length)} 本${hasMore ? "，还可继续翻页" : "，已到最后一页"}。点击下方书名查看详情。`
+        `共 ${compactNumber(rows.length)} 本${hasMore ? "，还可继续翻页" : "，已到最后一页"}　·　点击书名查看详情`
     ]);
 }
 
@@ -120,7 +125,7 @@ function detailText(book = {}) {
             .map((line) => line.trim())
             .filter(Boolean)
             .join("\n"),
-        420
+        1000
     );
     const card = cardView(book, { intro, tagLimit: 5 });
     const total = card.totalChapters === "-" ? "?" : compactNumber(card.totalChapters);
@@ -130,18 +135,17 @@ function detailText(book = {}) {
     return joinLines([
         `# 📖 ${clean(card.title)}`,
         "",
-        `作者：${clean(card.author)}`,
-        `平台：${clean(card.platform)}　状态：${clean(card.status)}`,
-        `书号：${clean(card.bookId)}`,
+        `${clean(card.author)}　·　${clean(card.platform)}　·　${clean(card.status)}`,
+        `书号　${clean(card.bookId)}`,
         "",
         "---",
-        `章节：${chapterStats.join("　")}`,
-        `热度：${compactNumber(card.popularity)}　收藏：${compactNumber(card.favorites)}　评论：${compactNumber(card.comments)}`,
-        `反馈：喜欢 ${compactNumber(card.likes)}　·　不喜欢 ${compactNumber(card.dislikes)}`,
-        card.tags.length ? `标签：${card.tags.map(clean).join(" / ")}` : null,
-        introText ? `\n---\n\n## 简介\n${introText}` : null,
+        `📚 章节　${chapterStats.join("　")}`,
+        `🔥 热度 ${compactNumber(card.popularity)}　⭐ 收藏 ${compactNumber(card.favorites)}　💬 评论 ${compactNumber(card.comments)}`,
+        `👍 喜欢 ${compactNumber(card.likes)}　·　👎 不喜欢 ${compactNumber(card.dislikes)}`,
+        card.tags.length ? `🏷 ${card.tags.map(clean).join(" / ")}` : null,
+        introText ? `\n---\n\n## 简介\n${codePanel(introText)}` : null,
         "",
-        card.cacheCount > 0 ? "正文已就绪，可直接下载。" : "当前只有元信息，尚无正文缓存。"
+        card.cacheCount > 0 ? "✅ 正文已就绪，可直接下载" : "⏳ 当前只有元信息，尚无正文缓存"
     ]);
 }
 
@@ -166,7 +170,7 @@ function styleText(styles = [], defaultStyle = "style1", book = {}) {
         `默认样式：${clean(defaultLabel)}`,
         "",
         "---",
-        ...(styles || []).map((style, index) => `${index + 1}｜${clean(style.label || style.id)}${style.id === defaultStyle ? "（默认）" : ""}`),
+        ...(styles || []).map((style, index) => `${style.id === defaultStyle ? "●" : "○"} ${index + 1}｜${clean(style.label || style.id)}${style.id === defaultStyle ? "（默认）" : ""}`),
         "",
         "选择后立即开始生成。"
     ]);

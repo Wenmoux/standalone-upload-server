@@ -67,7 +67,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `network-security.test.js`: 出站 URL、私网与代理安全规则。
 - `openapi-error-response.test.js`: OpenAPI 索引与统一错误响应契约。
 - `pg-bot-client.test.js`: Bot HTTP 客户端分页、动态平台读取、来源感知签到、鉴权、书评操作键和错误映射。
-- `qq-bot.test.js`: QQ AppSecret 脱敏、平台/标签/实时缓存范围、签到、移动端安全 Markdown/纯文本降级、主面板/状态卡层级、内嵌按钮、Gateway 事件归一化、Access Token 与分阶段重试富媒体上传契约。
+- `qq-bot.test.js`: QQ AppSecret 脱敏、平台/标签/实时缓存范围、签到、移动端可折叠代码块/纯文本降级、主面板/状态卡层级、紧凑内嵌按钮、Gateway 事件归一化、Access Token 与分阶段重试富媒体上传契约。
 - `pg-flow-core-cases.js`: 真实 PostgreSQL 迁移、元数据/章节统计、任务租约、API Token、凭据迁移和注册事务用例组。
 - `pg-flow-domain-cases.js`: 真实 PostgreSQL 红包并发、书评治理/清单、备份恢复与最新迁移回滚用例组。
 - `pg-flows.test.js`: 真实 PostgreSQL 集成组合根，装配共享 fixture 并顺序执行核心/领域用例组，避免并发重置 schema。

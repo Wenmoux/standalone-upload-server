@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、导出运行时与卡片格式化器
  * [OUTPUT]: 对外提供 QQ 主面板/帮助/签到、紧凑结果键盘、详情、EPUB 样式和带状态卡的 TXT/EPUB 下载交互
- * [POS]: qq-bot 的业务交互核心，统一移动端按钮层级并在昂贵导出前拒绝零缓存书籍，不处理 Gateway Opcode、Token 或文件分片协议
+ * [POS]: qq-bot 的业务交互核心，以单行主动作和两列内容选择匹配 QQ 移动端密度，并在昂贵导出前拒绝零缓存书籍
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { createSearchPlatformRegistry } = require("../bot/search-platforms");
@@ -106,7 +106,12 @@ function createQqMessageRuntime(options = {}) {
     }
 
     function searchAgainKeyboard() {
-        return [[{ label: "🔎 重新搜索", data: "搜索 ", enter: false, style: 1 }]];
+        return [
+            [
+                { label: "重新搜书", data: "搜索 ", enter: false, style: 1 },
+                { label: "返回面板", data: "菜单", style: 0 }
+            ]
+        ];
     }
 
     function afterActionKeyboard() {
@@ -217,9 +222,9 @@ function createQqMessageRuntime(options = {}) {
             ? [
                   [
                       { label: "下载 TXT", data: "TXT", style: 1 },
-                      { label: "制作 EPUB", data: "EPUB", style: 1 }
-                  ],
-                  [{ label: "🔎 继续搜索", data: "搜索 ", enter: false, style: 0 }]
+                      { label: "制作 EPUB", data: "EPUB", style: 1 },
+                      { label: "继续搜书", data: "搜索 ", enter: false, style: 0 }
+                  ]
               ]
             : searchAgainKeyboard();
         return sendMarkdown(event, detailText(access.book), keyboard);
@@ -321,10 +326,10 @@ function createQqMessageRuntime(options = {}) {
     function menuKeyboard() {
         return [
             [
-                { label: "🔎 搜书", data: "搜索 ", enter: false, style: 1 },
-                { label: "✅ 每日签到", data: "签到", style: 1 }
-            ],
-            [{ label: "使用帮助", data: "帮助", style: 0 }]
+                { label: "搜书", data: "搜索 ", enter: false, style: 1 },
+                { label: "签到", data: "签到", style: 1 },
+                { label: "帮助", data: "帮助", style: 0 }
+            ]
         ];
     }
 

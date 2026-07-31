@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 QQ 官方 App Access Token、OpenAPI、Gateway 与富媒体分片上传/合并协议，以及 Node Fetch/文件/摘要能力
- * [OUTPUT]: 对外提供 QQ API 客户端、Token 获取/凭据测试、文本/Markdown 内嵌键盘、语义化纯文本降级、带阶段重试的文件发送和错误类型
+ * [OUTPUT]: 对外提供 QQ API 客户端、Token 获取/凭据测试、文本/Markdown 内嵌键盘、含代码块的语义化纯文本降级、带阶段重试的文件发送和错误类型
  * [POS]: qq-bot 的唯一腾讯网络边界，集中处理鉴权刷新、超时、回复序号与官方可重试错误，避免调用方解释内部代理故障
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -154,6 +154,7 @@ function markdownToPlainText(content = "") {
     return String(content || "")
         .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
         .replace(/\\([\\`*_[\]{}()#+\-.!|>])/g, "$1")
+        .replace(/^\s*```[^\r\n]*\r?\n?/gm, "")
         .replace(/^\s{0,3}#{1,6}\s+/gm, "")
         .replace(/^\s*>\s?/gm, "")
         .replace(/^\s*[-*_]{3,}\s*$/gm, "")
