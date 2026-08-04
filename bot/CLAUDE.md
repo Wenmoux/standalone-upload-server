@@ -21,10 +21,11 @@ Telegram 交互边界与跨平台导出内核。消息与按钮回调在本模�
 `command-catalog.js`: 命令名称、分组、帮助、别名、管理员与 Telegram 系统菜单显隐标记的单一元数据源，驱动后台配置、帮助和精简命令投影。
 `command-registry.js`: 注册、别名解析、启停配置和显式白名单 Telegram command list 的运行时注册表，不实现具体业务。
 `epub-builder.js`: 组装 EPUB 2 容器、原始/长屏封面、可选书籍信息页、全屏 spine、XHTML、目录、资源与样式插件；章页只拆分源标题已有的“第 X 章”，不按数组位置合成章号。
+`epub-preview.js`: Telegram/QQ 共享 EPUB 三联实时预览器，将当前成品/工坊配置确定性投影为简介、分卷、正文 SVG/PNG，并用有界缓存隔离连续切换的渲染成本。
 `epub-style-picker.js`: 从共享模板库投影 Telegram/QQ 公开样式，规范化基础与工坊配置，并生成满足 callback_data 限制的成品/基础自定义/组件工坊面板。
 `economy-handlers.js`: 用户经济交互层，转换 CDK、管理员发币、排行榜、流水和红包命令，并以 Telegram chat/message 生成稳定红包创建键；余额事务仍由 server API 裁决。
 `export-builder.js`: 从 Bot 鉴权 API 分页读取缓存，并在 PO18 元信息显示缺章时补抓账号实际可读内容，以章节 ID 合并后按来源顺序流式生成 TXT 或调用 EPUB 生成器；TXT/EPUB 文件名使用书名和排除分卷后的实际正文数，内容保留源标题与合法顺序缺口。
-`export-delivery.js`: 导出投递状态机，管理模板库/自定义面板、群聊私聊可达性探测、保留完整 EPUB 配置的 `/start` 续接、文件发送后幂等扣费和临时目录清理。
+`export-delivery.js`: 导出投递状态机，管理模板库/图片实时预览/自定义面板、群聊私聊可达性探测、保留完整 EPUB 配置的 `/start` 续接、生成至投递结算的耗时反馈、文件发送后幂等扣费和临时目录清理。
 `export-errors.js`: 归一化导出失败码、私聊不可达特征、可重试语义和用户提示，避免 Telegram/网络/配额/内容错误在调用点分叉。
 `health-server.js`: 提供 Bot live/ready/status 端点，将 polling 新鲜度与 server API 连通性折叠为健康状态。
 `job-queue.js`: 提供进程内有界并发、同键互斥和取消信号；持久状态由上层 task runtime 负责。
@@ -44,10 +45,10 @@ Telegram 交互边界与跨平台导出内核。消息与按钮回调在本模�
 `search-query.js`: 解析搜索词、中英文标签语法、动态平台后缀与书号，为普通搜索显式声明包含未缓存元信息。
 `share-handlers.js`: 编排缓存先行的单书/跨年已购书架共享，免费章仅在本地和目标都缺失时补抓，付费章只上传账号实际可读内容并幂等结算奖励。
 `social-handlers.js`: 实现收藏、红包、众筹及书评治理交互，以 Telegram 消息/草稿事实生成稳定发布键；私聊消费普通输入，群聊只消费手动回复，取消时清理提示且不遗留 ForceReply。
-`task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、带分类原因的退避重试、恢复、取消、审计及 worker/attempt fencing token 回写。
+`task-runtime.js`: 把进程内队列映射到 `system_jobs`，负责 claim、lease、心跳、带分类原因与最终导出耗时的退避重试、恢复、取消、审计及 worker/attempt fencing token 回写。
 `task-schedulers.js`: 定义导出、仅私聊 PO18 书架同步/共享和全员通知任务的持久类型、幂等键、互斥键与恢复工厂；EPUB 任务持久化底板和安全自定义开关。
 `task-status-handlers.js`: 提供 `/tasks`、`/task`、`/canceljob` 的状态查询与权限边界。
-`telegram.js`: Telegram HTTP API 客户端，统一请求超时、消息编辑、文件发送和文本截断。
+`telegram.js`: Telegram HTTP API 客户端，统一请求超时、文本/预览图片原位编辑、文件发送和文本截断。
 `telegram-bot.js`: Bot 业务组合根，只注入客户端、注册器、领域处理器、任务运行时并分派 update；进程恢复、polling 与健康启动委托 process-runtime。
 `text-share-utils.js`: 规范长文本分享、书籍元数据和文件命名，隔离 Telegram 长度限制与 HTML 清洗。
 `ui-formatters.js`: 生成书卡、分页、收藏、导出、书评发布/取消与投票等 Telegram HTML 和 keyboard。

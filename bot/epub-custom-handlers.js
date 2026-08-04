@@ -22,11 +22,12 @@ function createEpubCustomHandler(options = {}) {
         const message = input.message;
         if (!bookId) return sendMessage(message.chat.id, "EPUB 书号无效，请重新选择。");
         const epubConfig = parseEpubCustomState(styleId, flags);
+        const display = { messageId: message.message_id, media: Array.isArray(message.photo) && message.photo.length > 0 };
         if (operation === "back") {
-            return requestEpubStyle(message.chat, input.from, bookId, { messageId: message.message_id });
+            return requestEpubStyle(message.chat, input.from, bookId, display);
         }
         if (operation !== "export") {
-            return requestEpubCustomization(message.chat, bookId, epubConfig, { messageId: message.message_id });
+            return requestEpubCustomization(message.chat, bookId, epubConfig, display);
         }
         return withBotAudit(
             input.callbackMessage,

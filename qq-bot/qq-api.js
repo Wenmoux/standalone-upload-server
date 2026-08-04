@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 QQ 官方 App Access Token、OpenAPI、Gateway 与富媒体分片上传/合并协议，以及 Node Fetch/文件/摘要能力
- * [OUTPUT]: 对外提供 QQ API 客户端、Token 获取/凭据测试、文本/Markdown 内嵌键盘、含代码块的语义化纯文本降级、带阶段重试的文件发送和错误类型
- * [POS]: qq-bot 的唯一腾讯网络边界，集中处理鉴权刷新、超时、回复序号与官方可重试错误，避免调用方解释内部代理故障
+ * [OUTPUT]: 对外提供 QQ API 客户端、Token 获取/凭据测试、文本/Markdown/图片内嵌键盘、含代码块的语义化纯文本降级、带阶段重试的文件发送和错误类型
+ * [POS]: qq-bot 的唯一腾讯网络边界，集中处理鉴权刷新、超时、回复序号、图片富媒体与官方可重试错误，避免调用方解释内部代理故障
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const crypto = require("crypto");
@@ -124,7 +124,10 @@ function labelQqUploadError(error, operation) {
 }
 
 function commandKeyboard(rows = []) {
-    const label = (value) => Array.from(String(value || "操作")).slice(0, 12).join("");
+    const label = (value) =>
+        Array.from(String(value || "操作"))
+            .slice(0, 12)
+            .join("");
     const contentRows = (Array.isArray(rows) ? rows : [])
         .slice(0, 5)
         .map((row, rowIndex) => ({
@@ -176,7 +179,8 @@ function createQqApiClient(options = {}) {
         const appId = String(current.appId || "").trim();
         const appSecret = String(current.appSecret || "").trim();
         const fingerprint = crypto.createHash("sha256").update(`${appId}\0${appSecret}`).digest("hex");
-        if (tokenCache.value && tokenCache.fingerprint === fingerprint && tokenCache.expiresAt - Date.now() > 60000) return tokenCache.value;
+        if (tokenCache.value && tokenCache.fingerprint === fingerprint && tokenCache.expiresAt - Date.now() > 60000)
+            return tokenCache.value;
         const token = await requestAppAccessToken({ appId, appSecret, fetchImpl, timeoutMs, tokenUrl: options.tokenUrl });
         tokenCache = {
             value: token.accessToken,
@@ -217,6 +221,31 @@ function createQqApiClient(options = {}) {
         return request(targetPath(target, "messages"), {
             method: "POST",
             body: JSON.stringify({ content: String(content || "").slice(0, 1900), msg_type: 0, ...nextReplyPayload(reply) })
+        });
+    }
+
+    async function sendImage(target, bytes, fileName = "epub-preview.png", reply = {}, keyboardRows = []) {
+        if (!bytes || !Number(bytes.length)) throw new QqApiError("QQ 图片为空", { code: "QQ_IMAGE_EMPTY" });
+        if (bytes.length > 10 * 1024 * 1024) throw new QqApiError("QQ 图片预览超过 10 MB", { code: "QQ_IMAGE_TOO_LARGE" });
+        const uploaded = await request(targetPath(target, "files"), {
+            method: "POST",
+            body: JSON.stringify({
+                file_type: 1,
+                file_data: Buffer.from(bytes).toString("base64"),
+                file_name: String(fileName || "epub-preview.png"),
+                srv_send_msg: false
+            })
+        });
+        if (!uploaded.file_info) throw new QqApiError("QQ 图片上传响应缺少 file_info", { code: "QQ_IMAGE_INFO_MISSING", data: uploaded });
+        const keyboard = commandKeyboard(keyboardRows);
+        return request(targetPath(target, "messages"), {
+            method: "POST",
+            body: JSON.stringify({
+                msg_type: 7,
+                media: { file_info: uploaded.file_info },
+                ...(keyboard ? { keyboard } : {}),
+                ...nextReplyPayload(reply)
+            })
         });
     }
 
@@ -324,7 +353,7 @@ function createQqApiClient(options = {}) {
         );
     }
 
-    return { accessToken, gateway, request, sendFile, sendMarkdown, sendText, uploadFile };
+    return { accessToken, gateway, request, sendFile, sendImage, sendMarkdown, sendText, uploadFile };
 }
 
 module.exports = {

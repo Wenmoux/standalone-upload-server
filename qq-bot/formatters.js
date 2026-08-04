@@ -132,7 +132,8 @@ function detailText(book = {}) {
     const total = card.totalChapters === "-" ? "?" : compactNumber(card.totalChapters);
     const introText = card.intro ? card.intro.split(/\r?\n/).map(clean).filter(Boolean).join("\n") : "";
     const chapterStats = [`缓存 ${compactNumber(card.cacheCount)}/${total}`];
-    if (card.freeChapters || card.paidChapters) chapterStats.push(`免费 ${compactNumber(card.freeChapters)}`, `付费 ${compactNumber(card.paidChapters)}`);
+    if (card.freeChapters || card.paidChapters)
+        chapterStats.push(`免费 ${compactNumber(card.freeChapters)}`, `付费 ${compactNumber(card.paidChapters)}`);
     return joinLines([
         `# 📖 ${clean(card.title)}`,
         "",
@@ -172,9 +173,12 @@ function styleText(styles = [], defaultStyle = "style1", book = {}) {
         `默认样式：${clean(defaultLabel)}`,
         "",
         "---",
-        ...directStyles.map((style, index) => `${style.id === defaultStyle ? "●" : "○"} ${index + 1}｜${clean(style.label || style.id)}${style.id === defaultStyle ? "（默认）" : ""}`),
+        ...directStyles.map(
+            (style, index) =>
+                `${style.id === defaultStyle ? "●" : "○"} ${index + 1}｜${clean(style.label || style.id)}${style.id === defaultStyle ? "（默认）" : ""}`
+        ),
         "",
-        "选择成品模板会立即生成，也可以进入自定义模式。"
+        "选择模板后先查看实时预览，确认后再生成。"
     ]);
 }
 

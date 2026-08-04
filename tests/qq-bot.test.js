@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、QQ 配置策略/API/Gateway/展示模块及受控 Fetch/配置存储替身
- * [OUTPUT]: 提供密钥不回显、平台标签/缓存范围、QQ 可折叠代码块/纯文本降级、紧凑内嵌按钮和可重试富媒体分片上传契约回归断言
+ * [OUTPUT]: 提供密钥不回显、平台标签/缓存范围、QQ 可折叠代码块/纯文本降级、EPUB 图片实时预览、紧凑内嵌按钮和可重试富媒体分片上传契约回归断言
  * [POS]: tests 的 QQ Bot 安全与官方协议守卫，防止凭据、访问范围或文件投递在后续修改中退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -10,13 +10,14 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 const { createCredentialCrypto } = require("../services/credential-crypto");
+const { createQqBotConfigService, filterQqBooks, normalizeQqPolicy, qqBookAccess } = require("../services/qq-bot-config");
 const {
-    createQqBotConfigService,
-    filterQqBooks,
-    normalizeQqPolicy,
-    qqBookAccess
-} = require("../services/qq-bot-config");
-const { commandKeyboard, createQqApiClient, isRetryableQqUploadError, markdownToPlainText, requestAppAccessToken } = require("../qq-bot/qq-api");
+    commandKeyboard,
+    createQqApiClient,
+    isRetryableQqUploadError,
+    markdownToPlainText,
+    requestAppAccessToken
+} = require("../qq-bot/qq-api");
 const { normalizeQqEvent } = require("../qq-bot/gateway");
 const {
     bookButtonLabel,
@@ -181,6 +182,30 @@ test("QQ Markdown fallback removes formatting escapes without damaging copy", as
     assert.equal(markdownToPlainText("# 标题\n---\n```text\n简介正文\n```\n#标签\n书名：A-B"), "标题\n\n简介正文\n#标签\n书名：A-B");
 });
 
+test("QQ EPUB preview uploads an image rich-media payload with the existing keyboard", async () => {
+    const bodies = [];
+    const api = createQqApiClient({
+        credentials: () => ({ appId: "10001", appSecret: "test-secret" }),
+        tokenUrl: "https://token.example/app/getAppAccessToken",
+        fetchImpl: async (url, options = {}) => {
+            if (String(url).includes("getAppAccessToken")) {
+                return new Response(JSON.stringify({ access_token: "access", expires_in: 7200 }), { status: 200 });
+            }
+            bodies.push(JSON.parse(options.body));
+            if (bodies.at(-1).file_type === 1) return new Response(JSON.stringify({ file_info: "image-info" }), { status: 200 });
+            return new Response(JSON.stringify({ id: "preview-message" }), { status: 200 });
+        }
+    });
+    await api.sendImage({ kind: "user", id: "openid" }, Buffer.from("preview"), "epub-preview.png", { msgId: "message-1", seq: 0 }, [
+        [{ label: "生成", data: "确认生成EPUB" }]
+    ]);
+    assert.equal(bodies[0].file_type, 1);
+    assert.equal(Buffer.from(bodies[0].file_data, "base64").toString(), "preview");
+    assert.equal(bodies[1].msg_type, 7);
+    assert.equal(bodies[1].media.file_info, "image-info");
+    assert.equal(bodies[1].keyboard.content.rows[0].buttons[0].action.data, "确认生成EPUB");
+});
+
 test("QQ Markdown cards use compact mobile hierarchy and shared book facts", () => {
     const book = {
         book_id: "1047414337",
@@ -312,6 +337,46 @@ test("QQ EPUB template library supports custom options before export", async () 
     assert.equal(exports.length, 1);
     assert.equal(exports[0][3], "style2");
     assert.deepEqual(exports[0][4], { styleId: "style2", includeColophon: false, showTopImage: true });
+});
+
+test("QQ EPUB custom flow sends the live PNG preview with controls", async () => {
+    const images = [];
+    const messages = [];
+    const runtime = createQqMessageRuntime({
+        client: {
+            qqBookAccess: async () => ({ allowed: true, book: { book_id: "101", title: "可下载", cache_count: 2 } })
+        },
+        api: {
+            sendMarkdown: async (_target, content, _reply, keyboard) => messages.push({ content, keyboard }),
+            sendText: async () => {},
+            sendImage: async (_target, bytes, fileName, _reply, keyboard) => images.push({ bytes, fileName, keyboard })
+        },
+        configProvider: async () => ({ defaultEpubStyle: "style1" }),
+        exportRuntime: {
+            epubStyles: [{ id: "style1", label: "江湖纸卷", direct: true, capabilities: { chapterArt: "optional" } }]
+        }
+    });
+    const event = (content, messageId) => ({
+        content,
+        identity: "qq:user-preview",
+        kind: "user",
+        messageId,
+        raw: {},
+        reply: { msgId: messageId, seq: 0 },
+        target: { kind: "user", id: "user-preview" },
+        targetKey: "user:user-preview",
+        userOpenId: "user-preview"
+    });
+    await runtime.handle(event("详情 101", "preview-detail"));
+    await runtime.handle(event("EPUB", "preview-library"));
+    await runtime.handle(event("样式 1", "preview-open"));
+    await runtime.handle(event("切换章头装饰", "preview-toggle"));
+    assert.equal(images.length, 2);
+    assert.equal(images[0].fileName, "epub-preview.png");
+    assert.equal(images[0].bytes.subarray(1, 4).toString(), "PNG");
+    assert.ok(images[0].keyboard.flat().some((button) => button.data === "确认生成EPUB"));
+    assert.notDeepEqual(images[0].bytes, images[1].bytes);
+    assert.equal(messages.length, 2);
 });
 
 test("QQ EPUB studio cycles knowledge-base components before export", async () => {

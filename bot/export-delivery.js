@@ -1,17 +1,36 @@
 /**
- * [INPUT]: 依赖 Bot API 客户端、消息平台投递/私聊不可达识别、导出构建器、计价规则、EPUB 成品/基础/工坊配置协议和临时文件系统
- * [OUTPUT]: 对外提供私聊导出续接、EPUB 模板库/基础/工坊面板、私聊可达性检查和带来源的成功后幂等结算状态机
- * [POS]: bot 的导出投递边界，连接 export-builder 产物与消息平台/用户经济，但不持有命令注册和轮询生命周期
+ * [INPUT]: 依赖 Bot API 客户端、预览 PNG 渲染器、消息平台投递/私聊不可达识别、导出构建器、计价规则、EPUB 成品/基础/工坊配置协议和临时文件系统
+ * [OUTPUT]: 对外提供私聊导出续接、EPUB 模板库/实时预览/基础/工坊面板、私聊可达性检查，以及携带实际执行耗时和来源的成功后幂等结算状态机
+ * [POS]: bot 的导出投递边界，连接预览/导出产物与消息平台/用户经济，但不持有命令注册和轮询生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs/promises");
 const path = require("path");
+
+function formatExportDuration(value) {
+    const durationMs = Math.max(0, Number(value) || 0);
+    if (durationMs < 1000) return `${Math.max(1, Math.round(durationMs))} 毫秒`;
+    if (durationMs < 60_000) {
+        const seconds = durationMs / 1000;
+        return `${Number(seconds.toFixed(seconds < 10 ? 1 : 0))} 秒`;
+    }
+    const totalSeconds = Math.round(durationMs / 1000);
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (totalMinutes < 60) return `${totalMinutes} 分${seconds ? ` ${seconds} 秒` : ""}`;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours} 小时${minutes ? ` ${minutes} 分` : ""}`;
+}
 
 function createExportDelivery(options = {}) {
     const client = options.client;
     const telegram = options.telegram;
     const sendMessage = options.sendMessage;
     const editMessage = options.editMessage;
+    const sendPhoto = options.sendPhoto;
+    const editPhoto = options.editPhoto;
+    const clearReplyMarkup = options.clearReplyMarkup;
     const sendDocument = options.sendDocument;
     const isGroup = options.isGroup;
     const escapeHtml = options.escapeHtml;
@@ -35,6 +54,7 @@ function createExportDelivery(options = {}) {
     const freeExportText = options.freeExportText;
     const botUserProvider = options.botUserProvider || (() => null);
     const privateExportStartTtlMs = Number(options.privateExportStartTtlMs || 30 * 60 * 1000);
+    const renderEpubPreviewPng = options.renderEpubPreviewPng;
     const privateExportStarts = options.privateExportStarts || new Map();
     const now = options.now || Date.now;
     const random = options.random || Math.random;
@@ -95,8 +115,12 @@ function createExportDelivery(options = {}) {
         }
     }
 
-    async function showEpubPanel(chatId, messageId, text, replyMarkup) {
+    async function showEpubPanel(chatId, messageId, text, replyMarkup, display = {}) {
         if (messageId) {
+            if (display.media) {
+                await clearReplyMarkup?.(chatId, messageId);
+                return sendMessage(chatId, text, { reply_markup: replyMarkup });
+            }
             try {
                 return await editMessage(chatId, messageId, text, { reply_markup: replyMarkup });
             } catch {
@@ -106,6 +130,24 @@ function createExportDelivery(options = {}) {
         return sendMessage(chatId, text, { reply_markup: replyMarkup });
     }
 
+    async function showEpubPreview(chatId, messageId, caption, replyMarkup, config, display = {}) {
+        if (!renderEpubPreviewPng || !sendPhoto) return showEpubPanel(chatId, messageId, caption, replyMarkup, display);
+        try {
+            const bytes = await Promise.resolve(renderEpubPreviewPng(config));
+            if (messageId && display.media && editPhoto) {
+                try {
+                    return await editPhoto(chatId, messageId, bytes, "epub-preview.png", caption, { reply_markup: replyMarkup });
+                } catch {
+                    // 原消息可能不是可编辑图片，回退为新预览消息。
+                }
+            }
+            if (messageId) await clearReplyMarkup?.(chatId, messageId);
+            return await sendPhoto(chatId, bytes, "epub-preview.png", caption, { reply_markup: replyMarkup });
+        } catch {
+            return showEpubPanel(chatId, messageId, caption, replyMarkup, display);
+        }
+    }
+
     async function requestEpubStyle(chat, _from, bookId, display = {}) {
         const chatId = typeof chat === "object" ? chat.id : chat;
         const id = String(bookId || "").trim();
@@ -113,8 +155,9 @@ function createExportDelivery(options = {}) {
         return showEpubPanel(
             chatId,
             display.messageId,
-            ["请选择 EPUB 生成样式：", `<code>${escapeHtml(id)}</code>`, "选择成品模板会立即开始生成，也可以进入自定义模式。"].join("\n"),
-            epubStyleSelectionMarkup(id, callback)
+            ["请选择 EPUB 生成样式：", `<code>${escapeHtml(id)}</code>`, "选择模板后先查看实时预览，确认后再生成。"].join("\n"),
+            epubStyleSelectionMarkup(id, callback),
+            display
         );
     }
 
@@ -123,11 +166,13 @@ function createExportDelivery(options = {}) {
         const id = String(bookId || "").trim();
         if (!id) return sendMessage(chatId, "EPUB 书号无效，请重新选择。");
         const config = normalizeEpubCustomConfig(value);
-        return showEpubPanel(
+        return showEpubPreview(
             chatId,
             display.messageId,
             epubCustomSummary(id, config, escapeHtml),
-            epubCustomSelectionMarkup(id, config, callback)
+            epubCustomSelectionMarkup(id, config, callback),
+            config,
+            display
         );
     }
 
@@ -135,11 +180,14 @@ function createExportDelivery(options = {}) {
         const chatId = typeof chat === "object" ? chat.id : chat;
         const id = String(bookId || "").trim();
         if (!id) return sendMessage(chatId, "EPUB 书号无效，请重新选择。");
-        return showEpubPanel(
+        const config = normalizeEpubCustomConfig({ styleId: "studio", studio: value });
+        return showEpubPreview(
             chatId,
             display.messageId,
-            epubStudioSummary(id, value, escapeHtml),
-            epubStudioSelectionMarkup(id, value, callback)
+            epubStudioSummary(id, config.studio, escapeHtml),
+            epubStudioSelectionMarkup(id, config.studio, callback),
+            config,
+            display
         );
     }
 
@@ -182,6 +230,8 @@ function createExportDelivery(options = {}) {
             chatId,
             `正在生成 ${format.toUpperCase()}${epubStyleLabel ? `（${escapeHtml(epubStyleLabel)}）` : ""}：<code>${escapeHtml(id)}</code>`
         );
+        const exportStartedAt = now();
+        const elapsedText = () => `耗时：${formatExportDuration(now() - exportStartedAt)}`;
         let result = null;
         try {
             const savedEpubConfig = pricingData.pricing?.epub || pricingData.epub || {};
@@ -208,7 +258,8 @@ function createExportDelivery(options = {}) {
                         freeExportText(freeExport),
                         `授权价格：${pricing.unlockCost} 银币`,
                         `当前银币：${user.silver_coins ?? 0}`,
-                        "付费章节导出可使用每日免费额度、额外下载次数，或开通导出授权后按收费章节扣银币。"
+                        "付费章节导出可使用每日免费额度、额外下载次数，或开通导出授权后按收费章节扣银币。",
+                        elapsedText()
                     ].join("\n"),
                     { reply_markup: { inline_keyboard: [[{ text: "开通导出授权", callback_data: callback(["unlock", id]) }]] } }
                 ).catch(() => {});
@@ -225,7 +276,8 @@ function createExportDelivery(options = {}) {
                         failure.message,
                         `错误码：${failure.code}`,
                         `本次费用：${exportQuoteText(quote)}`,
-                        `当前铜币：${user.copper_coins ?? 0}`
+                        `当前铜币：${user.copper_coins ?? 0}`,
+                        elapsedText()
                     ].join("\n")
                 ).catch(() => {});
                 throw exportErr;
@@ -248,7 +300,8 @@ function createExportDelivery(options = {}) {
                         failure.message,
                         `错误码：${failure.code}`,
                         `本次费用：${exportQuoteText(quote)}`,
-                        `当前银币：${user.silver_coins ?? 0}`
+                        `当前银币：${user.silver_coins ?? 0}`,
+                        elapsedText()
                     ].join("\n")
                 ).catch(() => {});
                 throw exportErr;
@@ -321,7 +374,11 @@ function createExportDelivery(options = {}) {
                 try {
                     await sendDocument(from.id, result.filePath, exportSummary);
                     await recordAndSettle();
-                    await editMessage(chatId, progress.message_id, `${format.toUpperCase()} 已私聊发送：${exportSummary}`).catch(() => {});
+                    await editMessage(
+                        chatId,
+                        progress.message_id,
+                        `${format.toUpperCase()} 已私聊发送：${exportSummary}\n${elapsedText()}`
+                    ).catch(() => {});
                 } catch (err) {
                     if (isPrivateChatUnavailableError(err)) {
                         const exportErr = asExportError("EXPORT_PRIVATE_CHAT_REQUIRED", err.message || "private chat required", err);
@@ -335,7 +392,8 @@ function createExportDelivery(options = {}) {
                                 failure.message,
                                 `错误码：${failure.code}`,
                                 `原因：${escapeHtml(failure.raw || err.message)}`,
-                                "点下面按钮打开私聊，发送 /start 后会自动继续这次导出。"
+                                "点下面按钮打开私聊，发送 /start 后会自动继续这次导出。",
+                                elapsedText()
                             ].join("\n"),
                             { reply_markup: privateExportStartMarkup(payload) }
                         ).catch(() => {});
@@ -346,7 +404,8 @@ function createExportDelivery(options = {}) {
                         progress.message_id,
                         [
                             `${format.toUpperCase()} 已私聊发送：${exportSummary}`,
-                            `但扣费/扣次数记录失败：${escapeHtml(err.settlementMessage || err.message || String(err))}`
+                            `但扣费/扣次数记录失败：${escapeHtml(err.settlementMessage || err.message || String(err))}`,
+                            elapsedText()
                         ].join("\n")
                     ).catch(() => {});
                     err.userNotified = true;
@@ -363,13 +422,21 @@ function createExportDelivery(options = {}) {
                     progress.message_id,
                     [
                         `${format.toUpperCase()} 导出完成：${exportSummary}`,
-                        `但扣费/扣次数记录失败：${escapeHtml(err.settlementMessage || err.message || String(err))}`
+                        `但扣费/扣次数记录失败：${escapeHtml(err.settlementMessage || err.message || String(err))}`,
+                        elapsedText()
                     ].join("\n")
                 ).catch(() => {});
                 err.userNotified = true;
                 throw err;
             }
-            await editMessage(chatId, progress.message_id, `${format.toUpperCase()} 导出完成：${exportSummary}`).catch(() => {});
+            await editMessage(chatId, progress.message_id, `${format.toUpperCase()} 导出完成：${exportSummary}\n${elapsedText()}`).catch(
+                () => {}
+            );
+        } catch (err) {
+            const exportDurationMs = Math.max(0, now() - exportStartedAt);
+            if (!Number.isFinite(Number(err.exportDurationMs))) err.exportDurationMs = exportDurationMs;
+            if (!err.exportDurationText) err.exportDurationText = formatExportDuration(exportDurationMs);
+            throw err;
         } finally {
             if (result?.filePath) await removeDirectory(path.dirname(result.filePath)).catch(() => {});
         }

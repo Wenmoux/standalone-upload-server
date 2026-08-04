@@ -24,6 +24,7 @@ const { createBotTaskRuntime } = require("./task-runtime");
 const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const epubPicker = require("./epub-style-picker");
+const { renderEpubPreviewPng } = require("./epub-preview");
 const {
     EPUB_EXPORT_STYLE_CHOICES,
     epubCustomSelectionMarkup,
@@ -85,7 +86,6 @@ const {
     extractCacheIds,
     chapterToSharePayload
 } = require("./text-share-utils");
-
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "";
 const TELEGRAM_API_BASE = String(process.env.TELEGRAM_API_BASE || "https://api.telegram.org").replace(/\/+$/, "");
 const POLL_TIMEOUT = Number(process.env.TELEGRAM_POLL_TIMEOUT || 25);
@@ -118,7 +118,7 @@ const telegramClient = createTelegramClient({
     apiBase: TELEGRAM_API_BASE,
     requestTimeoutMs: TELEGRAM_REQUEST_TIMEOUT
 });
-const { telegram, sendMessage, editMessage, sendDocument, sendPhoto, answerCallback } = telegramClient;
+const { telegram, sendMessage, editMessage, editPhoto, clearReplyMarkup, sendDocument, sendPhoto, answerCallback } = telegramClient;
 const maybeUnpinAutomaticPush = createAutomaticPushUnpinHandler({ telegram, logger: console });
 const rateLimiter = createRateLimiter({ maxKeys: Number(process.env.TELEGRAM_RATE_LIMIT_MAX_KEYS || 5000) });
 const { parseSearchQuery, parseBookId } = createSearchQueryParser({ searchLimit: SEARCH_LIMIT, parsePlatformSuffix });
@@ -195,6 +195,9 @@ const exportDelivery = createExportDelivery({
     telegram,
     sendMessage,
     editMessage,
+    editPhoto,
+    clearReplyMarkup,
+    sendPhoto,
     sendDocument,
     isGroup,
     escapeHtml,
@@ -217,7 +220,8 @@ const exportDelivery = createExportDelivery({
     exportQuoteText,
     freeExportText,
     botUserProvider: () => botUser,
-    privateExportStartTtlMs: PRIVATE_EXPORT_START_TTL_MS
+    privateExportStartTtlMs: PRIVATE_EXPORT_START_TTL_MS,
+    renderEpubPreviewPng
 });
 const { requestEpubCustomization, requestEpubStudio, requestEpubStyle, sendExport, takePrivateExportStart } = exportDelivery;
 const accountHandlers = createAccountHandlers({
@@ -350,7 +354,6 @@ function getCommandRegistry() {
     const withBookshelfCooldown = (message, label, handler) =>
         withCooldown(message, "mybookshelf", BOT_BOOKSHELF_COOLDOWN_MS, label, handler);
     const withPikpakCooldown = (message, label, handler) => withCooldown(message, "pikpak", BOT_PIKPAK_COOLDOWN_MS, label, handler);
-
     registerAccountCommands(registry, {
         handleStart,
         handleMenu,
@@ -401,7 +404,6 @@ function getCommandRegistry() {
     commandRegistry = registry;
     return registry;
 }
-
 async function refreshCommandSettings(force = false) {
     const ttl = Number(process.env.PO18_BOT_COMMAND_SETTINGS_TTL_MS || 15000);
     if (!force && commandSettingsState.payload && Date.now() - commandSettingsState.at < ttl) return commandSettingsState.payload;
@@ -416,7 +418,6 @@ async function refreshCommandSettings(force = false) {
         return commandSettingsState.payload || { commands: [] };
     }
 }
-
 async function refreshSearchPlatforms(force = false) {
     if (!force && searchPlatformState.at && Date.now() - searchPlatformState.at < SEARCH_PLATFORM_CONFIG_TTL_MS)
         return searchPlatformRegistry.snapshot();
@@ -434,7 +435,6 @@ async function refreshSearchPlatforms(force = false) {
         });
     return searchPlatformState.loading;
 }
-
 function helpLinesFromCommands() {
     return buildHelpLinesFromCommands(getCommandRegistry(), escapeHtml);
 }

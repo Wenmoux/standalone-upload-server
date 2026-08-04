@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test/assert 与 Bot 账户、经济、EPUB 自定义、导出投递和 PikPak 处理器的受控客户端/Telegram 替身
- * [OUTPUT]: 提供 EPUB 自定义回调、私聊续接/PEER_ID_INVALID 降级、发送后结算、账户状态、管理员发币、红包幂等键和外部存储交互回归断言
+ * [OUTPUT]: 提供 EPUB 图片实时预览/自定义回调、私聊续接/PEER_ID_INVALID 降级、导出耗时/发送后结算、账户状态、管理员发币、红包幂等键和外部存储交互回归断言
  * [POS]: tests 的 Bot 组合根减重守卫，确保领域处理器拆分不改变命令权限、文案和副作用顺序
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -67,6 +67,28 @@ test("private export continuation is user-scoped, expiring and style-aware", () 
     now = 2501;
     assert.equal(flow.takePrivateExportStart(expired, "7"), null);
     assert.equal(flow.privateExportStartMarkup("payload").inline_keyboard[0][0].url, "https://t.me/po18book_bot?start=payload");
+});
+
+test("Telegram EPUB customization sends and then edits the shared live preview", async () => {
+    const calls = [];
+    const flow = exportDeliveryWith({
+        normalizeEpubCustomConfig: (value) => ({ ...value }),
+        epubCustomSummary: () => "实时预览",
+        epubCustomSelectionMarkup: () => ({ inline_keyboard: [[{ text: "生成", callback_data: "export" }]] }),
+        renderEpubPreviewPng: () => Buffer.from("preview"),
+        clearReplyMarkup: async (...args) => calls.push(["clear", ...args]),
+        sendPhoto: async (...args) => calls.push(["send", ...args]),
+        editPhoto: async (...args) => calls.push(["edit", ...args])
+    });
+    const config = { styleId: "style1", includeColophon: true, showTopImage: true };
+    await flow.requestEpubCustomization({ id: 7 }, "book-9", config, { messageId: 8, media: false });
+    assert.equal(calls[0][0], "clear");
+    assert.equal(calls[1][0], "send");
+    assert.equal(calls[1][2].toString(), "preview");
+    await flow.requestEpubCustomization({ id: 7 }, "book-9", config, { messageId: 9, media: true });
+    assert.equal(calls[2][0], "edit");
+    assert.equal(calls[2][2], 9);
+    assert.equal(calls[2][3].toString(), "preview");
 });
 
 test("EPUB custom options override saved defaults before the build starts", async () => {
@@ -164,6 +186,7 @@ test("Telegram EPUB studio handler preserves the selected component combination"
 test("export delivery sends the file before idempotent currency settlement and cleans temp files", async () => {
     const order = [];
     const edits = [];
+    let currentTime = 1000;
     const client = {
         exportPermission: async () => ({ unlocked: true, free_export: {}, user: { copper_coins: 100 } }),
         exportPricing: async () => ({ pricing: {} }),
@@ -173,12 +196,16 @@ test("export delivery sends the file before idempotent currency settlement and c
     };
     const flow = exportDeliveryWith({
         client,
-        buildExport: async () => ({ book: { book_id: "9", title: "Book" }, chapters: 3, filePath: "C:\\tmp\\po18\\book.txt" }),
+        buildExport: async () => {
+            currentTime = 7500;
+            return { book: { book_id: "9", title: "Book" }, chapters: 3, filePath: "C:\\tmp\\po18\\book.txt" };
+        },
         exportQuote: () => ({ amount: 10, currency: "copper", paidChapters: 0 }),
         sendMessage: async () => ({ message_id: 5 }),
         sendDocument: async () => order.push("document"),
         editMessage: async (...args) => edits.push(args),
-        removeDirectory: async (dir) => order.push(["cleanup", dir])
+        removeDirectory: async (dir) => order.push(["cleanup", dir]),
+        now: () => currentTime
     });
     await flow.sendExport({ id: 7, type: "private" }, { id: 11 }, "9", "txt", null, { settlementKey: "job:1" });
     assert.equal(order[0], "document");
@@ -187,6 +214,27 @@ test("export delivery sends the file before idempotent currency settlement and c
     assert.deepEqual(order[2][7], { idempotencyKey: "job:1", idempotencyScope: "export-settlement", bookId: "9" });
     assert.equal(order[3][0], "cleanup");
     assert.match(edits.at(-1)[2], /导出完成/);
+    assert.match(edits.at(-1)[2], /耗时：6\.5 秒/);
+});
+
+test("export delivery exposes elapsed time when generation fails", async () => {
+    let currentTime = 1000;
+    const flow = exportDeliveryWith({
+        client: {
+            exportPermission: async () => ({ free_export: {}, user: {} }),
+            exportPricing: async () => ({}),
+            getBook: async () => ({ book: { book_id: "9", title: "Book" } })
+        },
+        buildExport: async () => {
+            currentTime = 63_000;
+            throw new Error("zip failed");
+        },
+        now: () => currentTime
+    });
+    await assert.rejects(
+        flow.sendExport({ id: 7, type: "private" }, { id: 11 }, "9", "epub"),
+        (err) => err.exportDurationMs === 62_000 && err.exportDurationText === "1 分 2 秒"
+    );
 });
 
 test("group export that cannot open a private chat produces a resumable start button", async () => {

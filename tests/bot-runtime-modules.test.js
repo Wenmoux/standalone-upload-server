@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、Bot 业务组合根/进程运行时、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供 Bot 业务/生命周期装配、管理员广播草稿/投递与依赖边界的自动化回归断言
+ * [OUTPUT]: 提供 Bot 业务/生命周期装配、Telegram 预览图片原位编辑、管理员广播草稿/投递与依赖边界的自动化回归断言
  * [POS]: tests 的 Bot 运行模块装配与依赖边界守卫，防止实现或部署契约在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -291,6 +291,36 @@ test("telegram client treats unchanged message edits as idempotent", async () =>
     }
 });
 
+test("telegram client edits EPUB preview media in place with caption and keyboard", async () => {
+    const originalFetch = global.fetch;
+    const requests = [];
+    global.fetch = async (url, options) => {
+        const form = options.body;
+        requests.push({
+            url,
+            media: JSON.parse(form.get("media")),
+            replyMarkup: JSON.parse(form.get("reply_markup"))
+        });
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+        });
+    };
+    try {
+        const client = createTelegramClient({ token: "T", apiBase: "https://telegram.test", requestTimeoutMs: 1000 });
+        const result = await client.editPhoto("42", "9", Buffer.from("preview"), "preview.png", "实时预览", {
+            reply_markup: { inline_keyboard: [[{ text: "生成", callback_data: "export" }]] }
+        });
+        assert.equal(result.message_id, 9);
+        assert.equal(requests[0].url, "https://telegram.test/botT/editMessageMedia");
+        assert.equal(requests[0].media.media, "attach://preview");
+        assert.equal(requests[0].media.caption, "实时预览");
+        assert.equal(requests[0].replyMarkup.inline_keyboard[0][0].callback_data, "export");
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
 test("telegram client still reports ordinary edit failures", async () => {
     const originalFetch = global.fetch;
     global.fetch = async () =>
@@ -399,13 +429,7 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
     });
     const epubConfig = { styleId: "style2", includeColophon: false, showTopImage: true };
     assert.equal(
-        schedulers.scheduleExport(
-            { id: "c1", type: "group" },
-            { id: 42 },
-            "b1",
-            "epub",
-            { epubStyleId: "style2", epubConfig }
-        ),
+        schedulers.scheduleExport({ id: "c1", type: "group" }, { id: 42 }, "b1", "epub", { epubStyleId: "style2", epubConfig }),
         true
     );
     assert.equal(jobs[1].systemJobInput.epub_style_id, "style2");

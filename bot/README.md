@@ -63,6 +63,8 @@ Telegram 输入 `/` 时显示的系统命令表只保留 `/menu`、`/search`、`
 | `/exporttxt 书号`                  | 创建 TXT 导出任务                       |
 | `/exportepub 书号`                 | 从模板库直选或自定义配置后创建 EPUB 导出任务 |
 
+TXT/EPUB 从真正开始生成时计时；最终成功、发送后结算异常或最终失败通知会附带实际执行耗时，后台排队等待不计入其中。
+
 书籍收藏通过搜索结果或详情卡片中的“收藏”按钮完成，`/myfav` 用于查看收藏列表；不存在 `/fav 书号` 命令。
 
 平台后缀来自后端实际平台配置，并兼容历史别名：`-qd/-qidian`、`-fq/-fanqie/-tomato`、`-mgd/-miguodu/-myrics`、`-hetu`、`-ht/-haitang`、`-longma`、`-lhxt/-lianhongxintiao` 等。同一别名组会同时匹配历史原始平台值，不要求先清洗数据库。
@@ -119,7 +121,7 @@ TXT/EPUB 导出先从 `/bot-api/books/:bookId/chapters/export` 按 Bot Token 分
 
 群聊导出会先探测 Bot 是否能够私聊发文件。Telegram 返回 `Forbidden`、`chat not found`、`blocked` 或 `PEER_ID_INVALID` 都表示用户尚未建立可用私聊，不是 EPUB 构建失败；Bot 会在群里提供“打开私聊继续导出”按钮，用户发送 `/start` 后恢复所选书籍、底板和自定义开关。
 
-EPUB 模板库提供“江湖纸卷”“老二次元”“空门夜雨”“丹青云卷”四种成品选择；点击成品会直接创建任务。“基础自定义”可调整底板、制作说明和支持的章头装饰，“模板工坊”可循环选择 6 种章题、4 种分卷、3 种简介和 4 种装饰，共 288 种组合。配置写入持久任务，重启恢复不会退回默认值。`crane` 仍在生成器中注册，用于旧配置兼容，但不对用户公开。样式结构见 [EPUB 内置样式](./epub-styles/README.md)，交互与知识库接入规则见 [EPUB 模板库](../docs/EPUB_TEMPLATE_LIBRARY.md)。
+EPUB 模板库提供“江湖纸卷”“老二次元”“空门夜雨”“丹青云卷”四种成品选择；点击成品先打开简介/分卷/正文三联 PNG 预览，确认后才创建任务。“基础自定义”可调整底板、制作说明和支持的章头装饰，“模板工坊”可循环选择 6 种章题、4 种分卷、3 种简介和 4 种装饰，共 288 种组合。Telegram 后续切换原位刷新同一张预览图，配置写入持久任务，重启恢复不会退回默认值。`crane` 仍在生成器中注册，用于旧配置兼容，但不对用户公开。样式结构见 [EPUB 内置样式](./epub-styles/README.md)，交互与知识库接入规则见 [EPUB 模板库](../docs/EPUB_TEMPLATE_LIBRARY.md)。
 
 ## 维护边界
 

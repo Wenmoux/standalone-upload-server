@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node 主机身份、job-queue、PgBotClient 的 system_jobs 契约、导出错误格式化及任务生命周期消息/审计适配器
- * [OUTPUT]: 对外提供携带 worker/attempt fencing token 的租约、心跳、带原因反馈的重试、取消和重启恢复运行时
+ * [OUTPUT]: 对外提供携带 worker/attempt fencing token 的租约、心跳、带原因及实际执行耗时反馈的重试、取消和重启恢复运行时
  * [POS]: bot 后台任务域的可靠性核心，把进程内执行与 server-pg 持久状态连接起来并拒绝旧租约迟到回写
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -223,7 +223,7 @@ function createBotTaskRuntime(deps = {}) {
                 }).catch(() => {});
             }
         },
-        async onError(job, err) {
+        async onError(job, err, ms) {
             const current = await currentSystemJob(job);
             if (job.signal?.aborted || current?.cancel_requested_at || current?.status === "canceled") {
                 updateTrackedSystemJob(job, {
@@ -243,7 +243,9 @@ function createBotTaskRuntime(deps = {}) {
             console.error(`[bot-task] ${job.name} failed: ${message}`);
             updateTrackedSystemJob(job, { status: "failed", progress: 100, error: message, finished: true });
             if (job.chatId && !err?.userNotified) {
-                const text = exportFailure ? exportFailure.text : `${escapeHtml(job.label || "后台任务")}失败：${escapeHtml(message)}`;
+                const baseText = exportFailure ? exportFailure.text : `${escapeHtml(job.label || "后台任务")}失败：${escapeHtml(message)}`;
+                const durationText = exportFailure && err?.exportDurationText ? `\n耗时：${escapeHtml(err.exportDurationText)}` : "";
+                const text = `${baseText}${durationText}`;
                 sendMessage(job.chatId, text).catch(() => {});
             }
             if (exportFailure) {
@@ -256,6 +258,7 @@ function createBotTaskRuntime(deps = {}) {
                     status: "failed",
                     error_code: exportFailure.code,
                     error: exportFailure.raw || exportFailure.message,
+                    duration_ms: Math.max(0, Number(err?.exportDurationMs ?? ms ?? 0)),
                     details: { book_id: job.bookId || "", format: job.format || "" }
                 }).catch(() => {});
             }

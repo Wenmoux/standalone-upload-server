@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 services 的模板元数据、组件目录/短状态和 Telegram 64 字节 callback_data 约束
- * [OUTPUT]: 对外提供公开模板、基础自定义、288 种工坊组合的规范化/解析及 inline keyboard 构造能力
- * [POS]: bot 交互层的 EPUB 模板库边界，统一 Telegram/QQ 选择语义并隐藏仅用于历史兼容的生成器样式
+ * [OUTPUT]: 对外提供公开模板、先预览后生成的基础自定义、288 种工坊组合的规范化/解析及 inline keyboard 构造能力
+ * [POS]: bot 交互层的 EPUB 模板库边界，统一 Telegram/QQ 实时预览选择语义并隐藏仅用于历史兼容的生成器样式
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { DEFAULT_EPUB_EXPORT_CONFIG, EPUB_STYLE_OPTIONS, normalizeEpubExportConfig } = require("../services/epub-style-config");
@@ -71,7 +71,7 @@ function epubStyleSelectionMarkup(bookId, callback = (parts) => parts.join("|"))
             ...chunk(
                 directChoices.map((style) => ({
                     text: style.label,
-                    callback_data: callback(["epubstyle", style.id, id])
+                    callback_data: callback(["epubcustom", "open", style.id, "11", id])
                 })),
                 2
             ),

@@ -20,20 +20,26 @@ const { componentCatalog, encodeStudioConfig } = require("../services/epub-compo
 
 test("EPUB style picker offers all public styles before export", () => {
     const markup = epubStyleSelectionMarkup("b1");
-    assert.deepEqual(EPUB_EXPORT_STYLE_CHOICES.map((item) => item.id), ["style1", "style2", "style3", "style4", "studio"]);
+    assert.deepEqual(
+        EPUB_EXPORT_STYLE_CHOICES.map((item) => item.id),
+        ["style1", "style2", "style3", "style4", "studio"]
+    );
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style1")?.label, "江湖纸卷");
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style2")?.label, "老二次元");
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style3")?.label, "空门夜雨");
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "style4")?.label, "丹青云卷");
     assert.equal(EPUB_EXPORT_STYLE_CHOICES.find((item) => item.id === "studio")?.direct, false);
-    assert.deepEqual(markup.inline_keyboard.flat().map((button) => button.callback_data), [
-        "epubstyle|style1|b1",
-        "epubstyle|style2|b1",
-        "epubstyle|style3|b1",
-        "epubstyle|style4|b1",
-        "epubcustom|open|style1|11|b1",
-        "epubstudio|open|yqhs|b1"
-    ]);
+    assert.deepEqual(
+        markup.inline_keyboard.flat().map((button) => button.callback_data),
+        [
+            "epubcustom|open|style1|11|b1",
+            "epubcustom|open|style2|11|b1",
+            "epubcustom|open|style3|11|b1",
+            "epubcustom|open|style4|11|b1",
+            "epubcustom|open|style1|11|b1",
+            "epubstudio|open|yqhs|b1"
+        ]
+    );
     assert.equal(normalizeEpubStyleChoice("style2"), "style2");
     assert.equal(normalizeEpubStyleChoice("style3"), "style3");
     assert.equal(normalizeEpubStyleChoice("style4"), "style4");

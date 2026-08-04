@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 Node 文件/Blob 能力、Fetch 和 Telegram Bot HTTP API 的请求与错误语义
- * [OUTPUT]: 对外提供统一 Telegram 请求、幂等消息编辑、文档/图片发送、回调应答和传输统计客户端
- * [POS]: bot 的 Telegram 网络适配层，集中处理超时、429 退避、编辑无变化、文件上传、文本截断与可观测性
+ * [OUTPUT]: 对外提供统一 Telegram 请求、幂等文本/图片/说明编辑、文档/图片发送、回调应答和传输统计客户端
+ * [POS]: bot 的 Telegram 网络适配层，集中处理超时、429 退避、编辑无变化、预览图原位刷新、文件上传、文本截断与可观测性
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const fs = require("fs/promises");
@@ -21,7 +21,7 @@ function telegramNetworkMessage(method, err) {
 
 function isMessageNotModified(method, data = {}) {
     return (
-        String(method || "") === "editMessageText" &&
+        /^editMessage(?:Text|Media|Caption|ReplyMarkup)$/.test(String(method || "")) &&
         Number(data.error_code || 0) === 400 &&
         /message is not modified/i.test(String(data.description || ""))
     );
@@ -152,17 +152,58 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         return data.result;
     }
 
-    async function sendPhoto(chatId, bytes, fileName = "captcha.jpg", caption = "") {
+    function appendReplyMarkup(form, replyMarkup) {
+        if (replyMarkup) form.append("reply_markup", JSON.stringify(replyMarkup));
+    }
+
+    async function sendPhoto(chatId, bytes, fileName = "captcha.jpg", caption = "", extra = {}) {
         if (!bytes || !Number(bytes.length)) throw new Error(`Telegram photo is empty: ${fileName}`);
         const form = new FormData();
         form.append("chat_id", String(chatId));
         form.append("caption", truncate(caption, 900));
+        form.append("parse_mode", "HTML");
+        appendReplyMarkup(form, extra.reply_markup);
         form.append("photo", new Blob([bytes]), fileName);
         const response = await telegramFetch("sendPhoto", { method: "POST", body: form });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data.ok === false) recordFailure("sendPhoto", data.error_code || response.status, data.description);
         if (!response.ok || data.ok === false) throw new Error(data.description || "sendPhoto failed");
         return data.result;
+    }
+
+    async function editPhoto(chatId, messageId, bytes, fileName = "preview.png", caption = "", extra = {}) {
+        if (!bytes || !Number(bytes.length)) throw new Error(`Telegram photo is empty: ${fileName}`);
+        const form = new FormData();
+        form.append("chat_id", String(chatId));
+        form.append("message_id", String(messageId));
+        form.append(
+            "media",
+            JSON.stringify({ type: "photo", media: "attach://preview", caption: truncate(caption, 900), parse_mode: "HTML" })
+        );
+        appendReplyMarkup(form, extra.reply_markup);
+        form.append("preview", new Blob([bytes]), fileName);
+        const response = await telegramFetch("editMessageMedia", { method: "POST", body: form });
+        const data = await response.json().catch(() => ({}));
+        if (isMessageNotModified("editMessageMedia", data)) return { message_not_modified: true };
+        if (!response.ok || data.ok === false) recordFailure("editMessageMedia", data.error_code || response.status, data.description);
+        if (!response.ok || data.ok === false) throw new Error(data.description || "editMessageMedia failed");
+        return data.result;
+    }
+
+    function editCaption(chatId, messageId, caption, extra = {}) {
+        return telegram("editMessageCaption", {
+            chat_id: chatId,
+            message_id: messageId,
+            caption: truncate(caption, 900),
+            parse_mode: "HTML",
+            ...extra
+        });
+    }
+
+    function clearReplyMarkup(chatId, messageId) {
+        return telegram("editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }).catch(
+            () => {}
+        );
     }
 
     function answerCallback(id, text = "") {
@@ -175,6 +216,9 @@ function createTelegramClient({ token, apiBase, requestTimeoutMs }) {
         telegramFetch,
         sendMessage,
         editMessage,
+        editPhoto,
+        editCaption,
+        clearReplyMarkup,
         sendDocument,
         sendPhoto,
         answerCallback,

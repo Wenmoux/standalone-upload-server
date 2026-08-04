@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供持久任务领取、执行、续租和完成语义的自动化回归断言
- * [POS]: tests 的持久任务领取、执行、续租和完成语义守卫，防止实现或部署契约在后续变更中静默退化
+ * [OUTPUT]: 提供持久任务领取、执行、续租、完成及最终导出失败耗时反馈语义的自动化回归断言
+ * [POS]: tests 的持久任务领取、执行、续租和完成语义守卫，防止导出终态反馈或部署契约在后续变更中静默退化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -135,4 +135,39 @@ test("bot task runtime rebuilds jobs claimed during startup recovery", async () 
         client.calls.some((call) => call[0] === "create"),
         false
     );
+});
+
+test("bot task runtime includes export duration in the terminal failure notice", async () => {
+    const client = fakeClient();
+    const messages = [];
+    const audits = [];
+    const runtime = createBotTaskRuntime({
+        client,
+        sendMessage: async (_chatId, text) => messages.push(text),
+        escapeHtml: String,
+        formatExportFailure: () => ({ code: "EXPORT_TEST", message: "导出失败", raw: "zip failed", text: "导出失败" }),
+        recordBotAudit: async (payload) => audits.push(payload),
+        concurrency: 1,
+        workerId: "failure-worker"
+    });
+    await runtime.botTaskQueue.enqueue({
+        name: "export:epub:1:9",
+        label: "EPUB 导出",
+        chatId: "1",
+        bookId: "9",
+        format: "epub",
+        systemJobType: "bot_export_epub",
+        systemJobInput: { telegram_id: "1", chat_id: "1", book_id: "9", format: "epub" },
+        maxAttempts: 1,
+        task: async () => {
+            throw Object.assign(new Error("zip failed"), {
+                retryable: false,
+                exportDurationMs: 62_000,
+                exportDurationText: "1 分 2 秒"
+            });
+        }
+    });
+    await waitFor(() => runtime.botTaskQueue.stats().running === 0 && audits.length === 1);
+    assert.ok(messages.some((text) => /导出失败\n耗时：1 分 2 秒/.test(text)));
+    assert.equal(audits[0].duration_ms, 62_000);
 });

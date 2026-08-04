@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、EPUB 模板配置与卡片格式化器
- * [OUTPUT]: 对外提供 QQ 主面板/帮助/签到、紧凑结果键盘、详情、EPUB 模板库/自定义面板和带状态卡的 TXT/EPUB 下载交互
+ * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、EPUB 预览渲染器、EPUB 模板配置与卡片格式化器
+ * [OUTPUT]: 对外提供 QQ 主面板/帮助/签到、紧凑结果键盘、详情、EPUB 模板库/实时图片预览/自定义面板和带最终执行耗时状态卡的 TXT/EPUB 下载交互
  * [POS]: qq-bot 的业务交互核心，以单行主动作和两列内容选择匹配 QQ 移动端密度，并在昂贵导出前拒绝零缓存书籍
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -8,6 +8,7 @@ const { createSearchPlatformRegistry } = require("../bot/search-platforms");
 const { createSearchQueryParser, parseBookId } = require("../bot/search-query");
 const { filterQqBooks } = require("../services/qq-bot-config");
 const { normalizeEpubCustomConfig } = require("../bot/epub-style-picker");
+const { renderEpubPreviewPng } = require("../bot/epub-preview");
 const { CATEGORIES: EPUB_STUDIO_CATEGORIES, component, cycleStudioConfig } = require("../services/epub-component-library");
 const {
     bookButtonLabel,
@@ -83,6 +84,12 @@ function createQqMessageRuntime(options = {}) {
         if (!event) throw new Error("QQ reply context expired");
         const plain = clean(String(text || "").replace(/<br\s*\/?>/gi, "\n"));
         return api.sendText(event.target, plain, event.reply);
+    }
+
+    async function sendImage(eventOrTarget, bytes, keyboard = []) {
+        const event = typeof eventOrTarget === "object" ? eventOrTarget : contextFor(eventOrTarget);
+        if (!event) throw new Error("QQ 图片回复上下文已过期");
+        return api.sendImage(event.target, bytes, "epub-preview.png", event.reply, keyboard);
     }
 
     async function sendFile(targetKey, filePath) {
@@ -244,10 +251,14 @@ function createQqMessageRuntime(options = {}) {
     }
 
     function styleByInput(value = "") {
-        const raw = String(value || "").trim().toLowerCase();
+        const raw = String(value || "")
+            .trim()
+            .toLowerCase();
         if (!raw) return null;
-        if (/^\d+$/.test(raw)) return exportRuntime.epubStyles[Number(raw) - 1] || null;
-        return exportRuntime.epubStyles.find((item) => item.id.toLowerCase() === raw || String(item.label || "").toLowerCase() === raw) || null;
+        if (/^\d+$/.test(raw)) return exportRuntime.epubStyles.filter((item) => item.direct !== false)[Number(raw) - 1] || null;
+        return (
+            exportRuntime.epubStyles.find((item) => item.id.toLowerCase() === raw || String(item.label || "").toLowerCase() === raw) || null
+        );
     }
 
     async function exportBook(event, format, value = "", styleInput = "", customConfig = null) {
@@ -268,25 +279,23 @@ function createQqMessageRuntime(options = {}) {
             state.pendingStyleBookId = state.selectedBookId;
             state.pendingEpubConfig = normalizeEpubCustomConfig({ styleId: config.defaultEpubStyle || "style1" });
             state.updatedAt = Date.now();
-            return sendMarkdown(
-                event,
-                styleText(exportRuntime.epubStyles, config.defaultEpubStyle, access.book),
-                [
-                    ...chunkRows(
-                        exportRuntime.epubStyles.filter((style) => style.direct !== false).map((style, index) => ({
+            return sendMarkdown(event, styleText(exportRuntime.epubStyles, config.defaultEpubStyle, access.book), [
+                ...chunkRows(
+                    exportRuntime.epubStyles
+                        .filter((style) => style.direct !== false)
+                        .map((style, index) => ({
                             label: style.label || style.id,
                             data: `样式 ${index + 1}`,
                             style: style.id === config.defaultEpubStyle ? 1 : 0
                         })),
-                        2
-                    ),
-                    [
-                        { label: "基础自定义", data: "自定义EPUB", style: 0 },
-                        { label: "模板工坊", data: "模板工坊", style: 1 }
-                    ],
-                    [{ label: "取消", data: "取消", style: 0 }]
-                ]
-            );
+                    2
+                ),
+                [
+                    { label: "基础自定义", data: "自定义EPUB", style: 0 },
+                    { label: "模板工坊", data: "模板工坊", style: 1 }
+                ],
+                [{ label: "取消", data: "取消", style: 0 }]
+            ]);
         }
         const style = format === "epub" ? styleByInput(styleInput) : null;
         if (format === "epub" && !style) return sendText(event, "EPUB 样式无效，请发送 EPUB 后按列表选择。 ");
@@ -298,7 +307,12 @@ function createQqMessageRuntime(options = {}) {
         } catch (err) {
             logger.error?.(`[qq-bot] export failed: ${err.code || err.message || err}`);
             if (!err.userNotified) {
-                await sendMarkdown(event, errorText(`导出失败：${err.message || "请稍后重试"}`), afterActionKeyboard()).catch(() => {});
+                const durationText = err.exportDurationText ? `\n耗时：${err.exportDurationText}` : "";
+                await sendMarkdown(
+                    event,
+                    errorText(`导出失败：${err.message || "请稍后重试"}${durationText}`),
+                    afterActionKeyboard()
+                ).catch(() => {});
             }
         } finally {
             activeExports.delete(key);
@@ -339,13 +353,15 @@ function createQqMessageRuntime(options = {}) {
                       }
                   ])
                 : [];
-        return sendMarkdown(event, customStyleText(exportRuntime.epubStyles, config, { book_id: state.pendingStyleBookId }), [
+        const keyboard = [
             ...chunkRows(
-                exportRuntime.epubStyles.filter((item) => item.direct !== false).map((item, index) => ({
-                    label: `${item.id === config.styleId ? "✓ " : ""}${item.label || item.id}`,
-                    data: `底板 ${index + 1}`,
-                    style: item.id === config.styleId ? 1 : 0
-                })),
+                exportRuntime.epubStyles
+                    .filter((item) => item.direct !== false)
+                    .map((item, index) => ({
+                        label: `${item.id === config.styleId ? "✓ " : ""}${item.label || item.id}`,
+                        data: `底板 ${index + 1}`,
+                        style: item.id === config.styleId ? 1 : 0
+                    })),
                 2
             ),
             ...studioRows,
@@ -354,7 +370,15 @@ function createQqMessageRuntime(options = {}) {
                 { label: "生成 EPUB", data: "确认生成EPUB", style: 1 },
                 { label: "返回模板库", data: "EPUB", style: 0 }
             ]
-        ]);
+        ];
+        if (typeof api.sendImage === "function") {
+            try {
+                return await sendImage(event, renderEpubPreviewPng(config), keyboard);
+            } catch (err) {
+                logger.warn?.(`[qq-bot] EPUB preview fallback: ${err.message || err}`);
+            }
+        }
+        return sendMarkdown(event, customStyleText(exportRuntime.epubStyles, config, { book_id: state.pendingStyleBookId }), keyboard);
     }
 
     async function handle(event) {
@@ -403,18 +427,19 @@ function createQqMessageRuntime(options = {}) {
             });
         }
         if (/^确认生成epub$/i.test(input) && state.pendingStyleBookId && state.pendingEpubConfig) {
-            return exportBook(
-                event,
-                "epub",
-                state.pendingStyleBookId,
-                state.pendingEpubConfig.styleId,
-                state.pendingEpubConfig
-            );
+            return exportBook(event, "epub", state.pendingStyleBookId, state.pendingEpubConfig.styleId, state.pendingEpubConfig);
         }
         const styleMatch = input.match(/^(?:样式|style)\s*(\S+)$/i);
-        if (styleMatch && state.pendingStyleBookId) return exportBook(event, "epub", state.pendingStyleBookId, styleMatch[1]);
-        if (/^(?:下一页|next)$/i.test(input)) return state.query ? search(event, state.query, state.page + 1) : sendText(event, "请先搜索。 ");
-        if (/^(?:上一页|prev|previous)$/i.test(input)) return state.query ? search(event, state.query, Math.max(1, state.page - 1)) : sendText(event, "请先搜索。 ");
+        if (styleMatch && state.pendingStyleBookId) {
+            const style = styleByInput(styleMatch[1]);
+            return style
+                ? showCustomEpub(event, { ...state.pendingEpubConfig, styleId: style.id })
+                : sendText(event, "EPUB 样式无效，请重新选择。 ");
+        }
+        if (/^(?:下一页|next)$/i.test(input))
+            return state.query ? search(event, state.query, state.page + 1) : sendText(event, "请先搜索。 ");
+        if (/^(?:上一页|prev|previous)$/i.test(input))
+            return state.query ? search(event, state.query, Math.max(1, state.page - 1)) : sendText(event, "请先搜索。 ");
         const searchMatch = input.match(/^(?:搜索|搜|search)\s+([\s\S]+)$/i);
         if (searchMatch) return search(event, searchMatch[1], 1);
         const detailMatch = input.match(/^(?:详情|选择|info)\s*(\S*)$/i);
@@ -443,7 +468,7 @@ function createQqMessageRuntime(options = {}) {
         return sendMarkdown(eventOrTarget, exportStatusText(text), terminal ? afterActionKeyboard() : []);
     }
 
-    return { handle, sendFile, sendMarkdown, sendStatus, sendText };
+    return { handle, sendFile, sendImage, sendMarkdown, sendStatus, sendText };
 }
 
 module.exports = { createQqMessageRuntime };
