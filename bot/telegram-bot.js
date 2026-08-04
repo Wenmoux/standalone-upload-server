@@ -25,9 +25,16 @@ const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
 const epubPicker = require("./epub-style-picker");
 const {
-    EPUB_EXPORT_STYLE_CHOICES, epubCustomSelectionMarkup, epubCustomSummary, epubStudioSelectionMarkup,
-    epubStudioSummary, epubStyleSelectionMarkup, normalizeEpubCustomConfig, normalizeEpubStyleChoice,
-    parseEpubCustomState, parseEpubStudioState
+    EPUB_EXPORT_STYLE_CHOICES,
+    epubCustomSelectionMarkup,
+    epubCustomSummary,
+    epubStudioSelectionMarkup,
+    epubStudioSummary,
+    epubStyleSelectionMarkup,
+    normalizeEpubCustomConfig,
+    normalizeEpubStyleChoice,
+    parseEpubCustomState,
+    parseEpubStudioState
 } = epubPicker;
 const { createTaskSchedulers } = require("./task-schedulers");
 const {
@@ -197,8 +204,10 @@ const exportDelivery = createExportDelivery({
     normalizeEpubCustomConfig,
     normalizeEpubStyleChoice,
     epubStyleChoices: EPUB_EXPORT_STYLE_CHOICES,
-    epubCustomSelectionMarkup, epubCustomSummary,
-    epubStudioSelectionMarkup, epubStudioSummary,
+    epubCustomSelectionMarkup,
+    epubCustomSummary,
+    epubStudioSelectionMarkup,
+    epubStudioSummary,
     epubStyleSelectionMarkup,
     callback,
     ensureRegistered: (...args) => accountHandlers.ensureRegistered(...args),
@@ -280,7 +289,6 @@ if (!TELEGRAM_TOKEN) {
     console.error("缺少 TELEGRAM_BOT_TOKEN");
     process.exit(1);
 }
-
 let botUser = null;
 const searchCache = createSearchCache({ maxSize: Number(process.env.TELEGRAM_SEARCH_CACHE_MAX || 200) });
 const reviewDrafts = createReviewDraftStore({ ttlMs: 10 * 60 * 1000, maxSize: 1000 });
@@ -288,7 +296,6 @@ const broadcastDrafts = createBroadcastDraftStore({ ttlMs: 10 * 60 * 1000, maxSi
 let commandRegistry = null;
 const commandSettingsState = { at: 0, payload: null };
 const searchPlatformState = { at: 0, loading: null };
-
 const { handleLoginPo18, handleMyBookshelf, handlePo18Code, handlePo18Logout, handlePo18Set, handlePo18Status } = createPo18AccountHandlers(
     {
         client,
@@ -307,7 +314,6 @@ const { handleLoginPo18, handleMyBookshelf, handlePo18Code, handlePo18Logout, ha
         isGroup
     }
 );
-
 const { persistentJobTypes, recoverSystemJob, scheduleExport, scheduleMyBookshelf, scheduleShare, scheduleShareBookshelf } =
     createTaskSchedulers({
         botTaskQueue,
@@ -319,17 +325,22 @@ const { persistentJobTypes, recoverSystemJob, scheduleExport, scheduleMyBookshel
         handleShareBookshelf,
         sendRegisteredUserBroadcast: (...args) => broadcastHandlers.sendRegisteredUserBroadcast(...args)
     });
-const epubHandlerDeps = { requestEpubStyle, scheduleExport, sendMessage, withBotAudit, withCooldown, exportCooldownMs: BOT_EXPORT_COOLDOWN_MS };
+const epubHandlerDeps = {
+    requestEpubStyle,
+    scheduleExport,
+    sendMessage,
+    withBotAudit,
+    withCooldown,
+    exportCooldownMs: BOT_EXPORT_COOLDOWN_MS
+};
 const handleEpubCustom = createEpubCustomHandler({ ...epubHandlerDeps, parseEpubCustomState, requestEpubCustomization });
 const handleEpubStudio = createEpubStudioHandler({ ...epubHandlerDeps, parseEpubStudioState, requestEpubStudio });
-
 const { handleTasks, handleTask, handleCancelJob } = createTaskStatusHandlers({
     client,
     ensureRegistered,
     sendMessage,
     escapeHtml
 });
-
 function getCommandRegistry() {
     if (commandRegistry) return commandRegistry;
     const registry = createCommandRegistry();
@@ -431,7 +442,6 @@ function helpLinesFromCommands() {
 function rememberSearch(query) {
     return searchCache.remember(query);
 }
-
 const { handleHot, handleInfo, handleRandom, handleSearch, handleSearchRequestSubmit, handleWordCloud, sendBookCards } =
     createSearchHandlers({
         client,
@@ -458,7 +468,6 @@ const { handleHot, handleInfo, handleRandom, handleSearch, handleSearchRequestSu
         bookActions,
         refreshSearchPlatforms
     });
-
 const {
     handleCrowd,
     handleCrowdVote,
@@ -495,7 +504,6 @@ const {
     reviewPromptActions,
     reviewVoteActions
 });
-
 const broadcastHandlers = createBroadcastHandlers({
     client,
     ensureRegistered,
@@ -526,7 +534,6 @@ const { handleMenuAction } = createMenuHandlers({
     withSearchCooldown: (message, label, handler) => withCooldown(message, "search", BOT_SEARCH_COOLDOWN_MS, label, handler),
     withBookshelfCooldown: (message, label, handler) => withCooldown(message, "mybookshelf", BOT_BOOKSHELF_COOLDOWN_MS, label, handler)
 });
-
 async function handleMessage(message) {
     const text = message.text || message.caption || "";
     if (!text) return;
