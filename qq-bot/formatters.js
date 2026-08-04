@@ -1,12 +1,13 @@
 /**
- * [INPUT]: 依赖 bot/account-view/book-card-view 的跨平台展示模型、共享平台名称及搜索/签到/导出状态领域对象
- * [OUTPUT]: 对外提供 QQ 安全 Markdown 主面板、帮助、签到、紧凑搜索书卡、可折叠简介、样式和导出状态文本
+ * [INPUT]: 依赖 bot/account-view/book-card-view 的跨平台展示模型、共享平台/EPUB 组件名称及搜索/签到/导出状态领域对象
+ * [OUTPUT]: 对外提供 QQ 安全 Markdown 主面板、帮助、签到、紧凑搜索书卡、可折叠简介、模板库/工坊 EPUB 和导出状态文本
  * [POS]: qq-bot 的纯展示层，以稳定块级标题/分隔线/代码块构建信息层级，业务字段不依赖易裸露的行内 Markdown 标记
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { scholarText } = require("../bot/account-view");
 const { createBookCardView } = require("../bot/book-card-view");
 const { defaultPlatformLabel } = require("../services/platforms");
+const { component } = require("../services/epub-component-library");
 
 const NUMBER_FORMAT = new Intl.NumberFormat("zh-CN");
 
@@ -64,7 +65,7 @@ function helpText() {
         "点击结果书名查看详情，使用「上一页」「下一页」浏览。",
         "",
         "## 下载",
-        "在详情卡片中选择 TXT 或 EPUB；EPUB 可选择四种同源样式。",
+        "在详情卡片中选择 TXT 或 EPUB；EPUB 可直接使用成品模板，也可自定义制作说明和章头装饰。",
         "",
         "## 快捷文字",
         "签到　详情 书号　TXT 书号　EPUB 书号"
@@ -163,6 +164,7 @@ function cacheUnavailableText(book = {}) {
 function styleText(styles = [], defaultStyle = "style1", book = {}) {
     const title = truncate(book.title || book.book_id || "", 28);
     const defaultLabel = styles.find((style) => style.id === defaultStyle)?.label || defaultStyle;
+    const directStyles = styles.filter((style) => style.direct !== false);
     return joinLines([
         "# 🎨 EPUB 样式",
         "",
@@ -170,9 +172,30 @@ function styleText(styles = [], defaultStyle = "style1", book = {}) {
         `默认样式：${clean(defaultLabel)}`,
         "",
         "---",
-        ...(styles || []).map((style, index) => `${style.id === defaultStyle ? "●" : "○"} ${index + 1}｜${clean(style.label || style.id)}${style.id === defaultStyle ? "（默认）" : ""}`),
+        ...directStyles.map((style, index) => `${style.id === defaultStyle ? "●" : "○"} ${index + 1}｜${clean(style.label || style.id)}${style.id === defaultStyle ? "（默认）" : ""}`),
         "",
-        "选择后立即开始生成。"
+        "选择成品模板会立即生成，也可以进入自定义模式。"
+    ]);
+}
+
+function customStyleText(styles = [], config = {}, book = {}) {
+    const title = truncate(book.title || book.book_id || "", 28);
+    const style = styles.find((item) => item.id === config.styleId) || styles[0] || {};
+    const art = style.capabilities?.chapterArt;
+    const studio = config.styleId === "studio" ? config.studio || {} : null;
+    return joinLines([
+        "# 🧩 自定义 EPUB",
+        "",
+        title ? `书籍：《${clean(title)}》` : null,
+        `底板：${clean(style.label || style.id || config.styleId)}`,
+        `制作说明：${config.includeColophon ? "保留" : "移除"}`,
+        `章头装饰：${art === "optional" ? (config.showTopImage ? "显示" : "隐藏") : art === "fixed" ? "模板固定" : "无"}`,
+        studio
+            ? `组件：${clean(component("chapter", studio.chapter).name)} / ${clean(component("volume", studio.volume).name)} / ${clean(component("intro", studio.intro).name)} / ${clean(component("ornament", studio.ornament).name)}`
+            : null,
+        "",
+        "---",
+        "调整完成后再确认生成。"
     ]);
 }
 
@@ -209,6 +232,7 @@ module.exports = {
     cacheUnavailableText,
     clean,
     compactNumber,
+    customStyleText,
     detailText,
     emptySearchText,
     errorText,

@@ -28,14 +28,14 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `bot-api-routes.test.js`: Bot API 跨渠道账户/签到、书籍、书评操作键、任务及 Worker fencing token 路由契约。
 - `bot-audit.test.js`: Bot 管理操作审计记录。
 - `bot-command-registry.test.js`: 命令目录、注册器和别名一致性。
-- `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、PEER_ID_INVALID 降级、发送后结算、权限与文案契约。
-- `bot-export-builder.test.js`: Bot 部分缓存与 PO18 已购正文合并、去重排序及 TXT 来源标题/合法缺口保持契约。
+- `bot-entry-handlers.test.js`: Bot 账户/经济/导出/PikPak 处理器的私聊续接、PEER_ID_INVALID 降级、基础/工坊 EPUB 回调、发送后结算、权限与文案契约。
+- `bot-export-builder.test.js`: Bot 部分缓存与 PO18 已购正文合并、去重排序、分卷排除后的实际导出章节数及 TXT 来源标题/合法缺口保持契约。
 - `bot-library.test.js`: Bot PO18 加密凭据、凭据变更会话失效、书架、缺书请求与分享事实持久化用例。
 - `bot-menu-handlers.test.js`: Telegram 精简系统命令、宫格面板与 callback 领域委托契约。
 - `bot-settings.test.js`: Bot 命令目录配置清洗、去重、合并与持久化语义。
 - `bot-export-errors.test.js`: 导出错误分类、私聊不可达识别、重试语义与面向用户消息。
 - `bot-job-queue.test.js`: Bot 持久任务队列提交与状态迁移。
-- `bot-runtime-modules.test.js`: Bot 业务组合根/进程生命周期装配、Telegram 幂等编辑、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
+- `bot-runtime-modules.test.js`: Bot 业务组合根/进程生命周期装配、Telegram 幂等编辑、EPUB 自定义任务持久化、搜索缓存、短期书评/管理员广播草稿、批量投递与依赖边界。
 - `bot-search-platforms.test.js`: 搜索平台参数、历史别名组和后台动态平台解析。
 - `bot-search-social-handlers.test.js`: 搜索与社交交互契约，覆盖私聊输入、群聊手动回复、书评草稿隔离、稳定发布键、失败保留及取消清理。
 - `bot-task-runtime.test.js`: 持久任务领取、执行、续租、fencing token 回写和完成语义。
@@ -53,8 +53,8 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `db-errors.test.js`: PostgreSQL 错误到 HTTP 语义的规范化。
 - `docker-release.test.js`: 镜像标签、来源身份和发布清单规则。
 - `docs-check.test.js`: Markdown 目标解析、断链识别和多语言源码 L3 完整性门禁。
-- `epub-builder.test.js`: EPUB 长屏封面、全屏 spine、分卷目录、制作说明、源章节标题保真、标题去重与样式注入契约。
-- `epub-style-picker.test.js`: EPUB 样式选择、默认值和兼容别名。
+- `epub-builder.test.js`: EPUB 长屏封面、全屏 spine、分卷目录、制作说明、章头资源开关、模板工坊组合、源章节标题保真、标题去重与样式注入契约。
+- `epub-style-picker.test.js`: EPUB 模板库公开范围、基础/工坊回调、288 种组件组合、默认值和兼容别名。
 - `epub-style2-assets.test.js`: 老二次元样式资源解析与回退。
 - `events.test.js`: 领域事件发布和监听隔离。
 - `health-routes.test.js`: liveness、readiness、deep health HTTP 契约。
@@ -67,7 +67,7 @@ Node.js 契约与回归测试层；路由测试使用受控依赖替身，`pg-fl
 - `network-security.test.js`: 出站 URL、私网与代理安全规则。
 - `openapi-error-response.test.js`: OpenAPI 索引与统一错误响应契约。
 - `pg-bot-client.test.js`: Bot HTTP 客户端分页、动态平台读取、来源感知签到、鉴权、书评操作键和错误映射。
-- `qq-bot.test.js`: QQ AppSecret 脱敏、平台/标签/实时缓存范围、签到、移动端可折叠代码块/纯文本降级、主面板/状态卡层级、紧凑内嵌按钮、Gateway 事件归一化、Access Token 与分阶段重试富媒体上传契约。
+- `qq-bot.test.js`: QQ AppSecret 脱敏、平台/标签/实时缓存范围、签到、模板库基础/工坊导出、移动端可折叠代码块/纯文本降级、主面板/状态卡层级、紧凑内嵌按钮、Gateway 事件归一化、Access Token 与分阶段重试富媒体上传契约。
 - `pg-flow-core-cases.js`: 真实 PostgreSQL 迁移、元数据/章节统计、任务租约、API Token、凭据迁移和注册事务用例组。
 - `pg-flow-domain-cases.js`: 真实 PostgreSQL 红包并发、书评治理/清单、备份恢复与最新迁移回滚用例组。
 - `pg-flows.test.js`: 真实 PostgreSQL 集成组合根，装配共享 fixture 并顺序执行核心/领域用例组，避免并发重置 schema。

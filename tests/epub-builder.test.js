@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 node:test、assert、相关生产模块及受控替身/夹具
- * [OUTPUT]: 提供 EPUB 内容结构、源章节标题保真、标题去重与样式注入的自动化回归断言
- * [POS]: tests 的 EPUB 内容结构与标题语义守卫，防止生成章号、重复标题或样式漂移
+ * [OUTPUT]: 提供 EPUB 内容结构、源章节标题保真、标题去重、模板开关与样式注入的自动化回归断言
+ * [POS]: tests 的 EPUB 内容结构、标题语义与自定义模板守卫，防止生成章号、重复标题、无效开关或样式漂移
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const assert = require("assert/strict");
@@ -139,7 +139,7 @@ test("crane EPUB style remains available", async () => {
 });
 
 test("EPUB styles preserve numeric source titles without synthesizing chapter labels", async () => {
-    for (const styleId of ["style1", "style2", "style3", "style4", "crane"]) {
+    for (const styleId of ["style1", "style2", "style3", "style4", "studio", "crane"]) {
         const { makeEpubFiles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
         const files = await makeEpubFiles(
             { book_id: `numeric-${styleId}`, title: "我在修仙界大器晚成", author: "作者", description: "简介" },
@@ -152,6 +152,87 @@ test("EPUB styles preserve numeric source titles without synthesizing chapter la
         assert.doesNotMatch(chapter, /第1章/, `${styleId} should not synthesize a chapter label`);
         assert.match(toc, /<text>1 大器晚成<\/text>/, `${styleId} TOC should keep the source title`);
     }
+});
+
+test("studio EPUB combines knowledge-base chapter, volume, intro and ornament components", async () => {
+    const { makeEpubFiles, listEpubStyles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
+    const files = await makeEpubFiles(
+        { book_id: "studio-1", title: "模板工坊示例", author: "作者", description: "简介第一段\n简介第二段" },
+        [
+            { chapter_id: "v1", title: "第一卷 少年游", type: "volume" },
+            { chapter_id: "c1", title: "第1章 初见", text: "正文一" },
+            { chapter_id: "c2", title: "第2章 重逢", text: "正文二" }
+        ],
+        {
+            epub: {
+                styleId: "studio",
+                includeColophon: false,
+                studio: { chapter: "hesu", volume: "shuanglan", intro: "xuanhe", ornament: "zhuqian" }
+            }
+        }
+    );
+    const css = contentOf(files, "OEBPS/Styles/main.css");
+    const intro = contentOf(files, "OEBPS/Text/intro.xhtml");
+    const volume = contentOf(files, "OEBPS/Text/volume_0001.xhtml");
+    const first = contentOf(files, "OEBPS/Text/chapter_0001.xhtml");
+    const last = contentOf(files, "OEBPS/Text/chapter_0002.xhtml");
+    const toc = contentOf(files, "OEBPS/toc.ncx");
+    assert.match(css, /color:#7d593f/);
+    assert.match(css, /border-right:3px solid #b11e31/);
+    assert.match(intro, /body class="studio-intro"/);
+    assert.match(intro, /简介第一段/);
+    assert.match(volume, /h2 class="studio-volume">第一卷　少年游/);
+    assert.match(first, /<b>第1章<\/b><br\/><b>初见<\/b>/);
+    assert.doesNotMatch(first, /第1章章/);
+    assert.doesNotMatch(first, /全书完/);
+    assert.match(last, /<span>全书完<\/span>/);
+    assert.match(toc, /volume_0001\.xhtml[^]*chapter_0001\.xhtml/);
+    assert.ok(files.some((file) => file.name === "OEBPS/Fonts/studio-stkaiti.ttf"));
+    assert.ok(!files.some((file) => file.name === "OEBPS/Images/studio-cloud.png"));
+    assert.equal(listEpubStyles().find((style) => style.id === "studio")?.name, "模板工坊");
+
+    const cloudFiles = await makeEpubFiles(
+        { book_id: "studio-cloud", title: "云纹示例", author: "作者", description: "简介" },
+        [{ chapter_id: "c1", title: "第一章 云起", text: "正文" }],
+        { epub: { styleId: "studio", includeColophon: false } }
+    );
+    assert.ok(cloudFiles.some((file) => file.name === "OEBPS/Images/studio-cloud.png"));
+    assert.match(contentOf(cloudFiles, "OEBPS/Styles/main.css"), /Images\/studio-cloud\.png/);
+    assert.match(contentOf(cloudFiles, "OEBPS/content.opf"), /href="Images\/studio-cloud\.png" media-type="image\/png"/);
+});
+
+test("studio EPUB renders the verified Kindle and Danqing component families without inventing chapter numbers", async () => {
+    const { makeEpubFiles } = createEpubBuilder({ fetchImpl: null, yieldToEventLoop: async () => {} });
+    const files = await makeEpubFiles(
+        { book_id: "studio-expanded", title: "扩展模板示例", author: "作者", description: "青墨简介" },
+        [
+            { chapter_id: "v1", title: "第二卷 山河", type: "volume" },
+            { chapter_id: "c1", title: "第12章 云开", text: "正文一" },
+            { chapter_id: "c2", title: "终章", text: "正文二" }
+        ],
+        {
+            epub: {
+                styleId: "studio",
+                includeColophon: false,
+                studio: { chapter: "danxia", volume: "danjuan", intro: "qingmo", ornament: "danhen" }
+            }
+        }
+    );
+    const css = contentOf(files, "OEBPS/Styles/main.css");
+    const intro = contentOf(files, "OEBPS/Text/intro.xhtml");
+    const volume = contentOf(files, "OEBPS/Text/volume_0001.xhtml");
+    const numbered = contentOf(files, "OEBPS/Text/chapter_0001.xhtml");
+    const plain = contentOf(files, "OEBPS/Text/chapter_0002.xhtml");
+    assert.match(css, /color:#a3151a/);
+    assert.match(css, /border:4px double #8f292d/);
+    assert.match(intro, /青墨简介/);
+    assert.match(volume, /class="studio-volume-number">第二卷/);
+    assert.match(volume, /class="studio-volume-title">山河/);
+    assert.match(numbered, /class="studio-number">第12章/);
+    assert.match(numbered, /<br\/>云开/);
+    assert.match(numbered, /◆　◇　◆/);
+    assert.match(plain, /<h2 class="studio-chapter">终章<\/h2>/);
+    assert.doesNotMatch(plain, /studio-number|<br\/>终章/);
 });
 
 test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", async () => {
@@ -239,6 +320,14 @@ test("style2 EPUB reproduces title, colophon, intro, volume and chapter pages", 
     assert.match(toc, /content src="Text\/volume_0001\.xhtml"\/><navPoint[^>]+><navLabel><text>第1章 示例章节<\/text>/);
     assert.equal(listEpubStyles().find((style) => style.id === "style1")?.name, "江湖纸卷");
     assert.equal(listEpubStyles().find((style) => style.id === "style2")?.name, "老二次元");
+
+    const noChapterArt = await makeEpubFiles(
+        { book_id: "b3-no-art", title: "无章头示例", author: "作者", description: "简介" },
+        [{ chapter_id: "c1", title: "第一章 无图", text: "正文" }],
+        { epub: { styleId: "style2", includeColophon: false, showTopImage: false } }
+    );
+    assert.ok(!noChapterArt.some((file) => file.name === "OEBPS/Images/style2-chapter.jpg"));
+    assert.doesNotMatch(contentOf(noChapterArt, "OEBPS/Text/chapter_0001.xhtml"), /style2-chapter\.jpg/);
 });
 
 test("style3 EPUB builds pure-type cover matter, real volumes and nested chapters", async () => {

@@ -220,6 +220,7 @@ function createEpubBuilder(deps = {}) {
                         ...pageContext,
                         header,
                         chapterNo,
+                        chapterCount,
                         bodyHtml: textToParagraphs(bodyText)
                     })
                 });

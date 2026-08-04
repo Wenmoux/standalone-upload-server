@@ -397,11 +397,23 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         format: "txt",
         group_chat: true
     });
-    assert.equal(schedulers.scheduleExport({ id: "c1", type: "group" }, { id: 42 }, "b1", "epub", { epubStyleId: "style2" }), true);
+    const epubConfig = { styleId: "style2", includeColophon: false, showTopImage: true };
+    assert.equal(
+        schedulers.scheduleExport(
+            { id: "c1", type: "group" },
+            { id: 42 },
+            "b1",
+            "epub",
+            { epubStyleId: "style2", epubConfig }
+        ),
+        true
+    );
     assert.equal(jobs[1].systemJobInput.epub_style_id, "style2");
-    assert.match(jobs[1].idempotencyKey, /style2$/);
+    assert.deepEqual(jobs[1].systemJobInput.epub_config, epubConfig);
+    assert.match(jobs[1].idempotencyKey, /style2:01$/);
     jobs[1].task(null, { systemJobId: 88 });
     assert.equal(exports[0][5].epubStyleId, "style2");
+    assert.deepEqual(exports[0][5].epubConfig, epubConfig);
     assert.equal(exports[0][5].settlementKey, "system-job:88:export-settlement");
 
     assert.equal(schedulers.scheduleShareBookshelf({ chat: { id: "c2" }, from: { id: 99 } }), true);
@@ -411,6 +423,22 @@ test("bot task schedulers enqueue export jobs with system job metadata", () => {
         telegram_id: "99",
         chat_id: "c2"
     });
+
+    const studioConfig = {
+        styleId: "studio",
+        includeColophon: true,
+        showTopImage: false,
+        studio: { chapter: "zhuti", volume: "shuanglan", intro: "xuanhe", ornament: "zhuqian" }
+    };
+    assert.equal(
+        schedulers.scheduleExport({ id: "c1", type: "private" }, { id: 42 }, "b2", "epub", {
+            epubStyleId: "studio",
+            epubConfig: studioConfig
+        }),
+        true
+    );
+    assert.deepEqual(jobs[3].systemJobInput.epub_config, studioConfig);
+    assert.match(jobs[3].idempotencyKey, /studio:10zsxz$/);
 
     const privateJobCount = jobs.length;
     schedulers.scheduleMyBookshelf({ chat: { id: "g1", type: "group" }, from: { id: 99 } });

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node path、独立 Style2 CSS/XHTML 模板、样式配置、书籍元数据与章节/分卷内容
- * [OUTPUT]: 对外提供老二次元 EPUB 的精简资源槽、基础 CSS、配置默认值和保留源章节标题的页面渲染器
+ * [INPUT]: 依赖 Node path、独立 Style2 CSS/XHTML 模板、通用章头开关、样式配置、书籍元数据与章节/分卷内容
+ * [OUTPUT]: 对外提供老二次元 EPUB 的精简资源槽、基础 CSS、配置默认值和可关闭章头图的页面渲染器
  * [POS]: services 的 Style2 模板内核，集中定义视觉结构并供 Bot 导出与 Admin 预览共享
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -170,9 +170,9 @@ function renderStyle2Volume(context) {
 }
 
 function renderStyle2Chapter(context) {
-    const { header, bodyHtml } = context;
+    const { config, header, bodyHtml } = context;
     const definition = STYLE2_ASSET_BY_SLOT.get("chapter");
-    const image = context.hasAsset(definition.name)
+    const image = config.showTopImage && context.hasAsset(definition.name)
         ? `<div class="logo"><img alt="" class="logo" src="${assetHref(context, definition.name)}"/></div>`
         : "";
     return renderEpubTemplate("style2-chapter.xhtml", {

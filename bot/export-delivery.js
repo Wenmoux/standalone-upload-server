@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Bot API 客户端、消息平台投递/私聊不可达识别、导出构建器、计价规则、EPUB 样式协议和临时文件系统
- * [OUTPUT]: 对外提供私聊导出续接、EPUB 样式提示、私聊可达性检查和带来源的成功后幂等结算状态机
+ * [INPUT]: 依赖 Bot API 客户端、消息平台投递/私聊不可达识别、导出构建器、计价规则、EPUB 成品/基础/工坊配置协议和临时文件系统
+ * [OUTPUT]: 对外提供私聊导出续接、EPUB 模板库/基础/工坊面板、私聊可达性检查和带来源的成功后幂等结算状态机
  * [POS]: bot 的导出投递边界，连接 export-builder 产物与消息平台/用户经济，但不持有命令注册和轮询生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -19,8 +19,13 @@ function createExportDelivery(options = {}) {
     const formatExportFailure = options.formatExportFailure;
     const isPrivateChatUnavailableError = options.isPrivateChatUnavailableError;
     const normalizeEpubStyleChoice = options.normalizeEpubStyleChoice;
+    const normalizeEpubCustomConfig = options.normalizeEpubCustomConfig || ((value) => value || {});
     const epubStyleChoices = options.epubStyleChoices || [];
     const epubStyleSelectionMarkup = options.epubStyleSelectionMarkup;
+    const epubCustomSelectionMarkup = options.epubCustomSelectionMarkup;
+    const epubCustomSummary = options.epubCustomSummary;
+    const epubStudioSelectionMarkup = options.epubStudioSelectionMarkup;
+    const epubStudioSummary = options.epubStudioSummary;
     const callback = options.callback;
     const ensureRegistered = options.ensureRegistered;
     const buildExport = options.buildExport;
@@ -59,6 +64,7 @@ function createExportDelivery(options = {}) {
             bookId: String(bookId || "").trim(),
             format: String(format || "txt").trim(),
             epubStyleId: normalizeEpubStyleChoice(exportOptions.epubStyleId),
+            ...(exportOptions.epubConfig ? { epubConfig: normalizeEpubCustomConfig(exportOptions.epubConfig) } : {}),
             createdAt: now()
         });
         return key;
@@ -89,14 +95,51 @@ function createExportDelivery(options = {}) {
         }
     }
 
-    async function requestEpubStyle(chat, _from, bookId) {
+    async function showEpubPanel(chatId, messageId, text, replyMarkup) {
+        if (messageId) {
+            try {
+                return await editMessage(chatId, messageId, text, { reply_markup: replyMarkup });
+            } catch {
+                // 原消息可能过期或已不可编辑，回退为新消息。
+            }
+        }
+        return sendMessage(chatId, text, { reply_markup: replyMarkup });
+    }
+
+    async function requestEpubStyle(chat, _from, bookId, display = {}) {
         const chatId = typeof chat === "object" ? chat.id : chat;
         const id = String(bookId || "").trim();
         if (!id) return sendMessage(chatId, "用法：/exportepub 书号");
-        return sendMessage(
+        return showEpubPanel(
             chatId,
-            ["请选择 EPUB 生成样式：", `<code>${escapeHtml(id)}</code>`, "选择后才会开始生成和计算导出费用。"].join("\n"),
-            { reply_markup: epubStyleSelectionMarkup(id, callback) }
+            display.messageId,
+            ["请选择 EPUB 生成样式：", `<code>${escapeHtml(id)}</code>`, "选择成品模板会立即开始生成，也可以进入自定义模式。"].join("\n"),
+            epubStyleSelectionMarkup(id, callback)
+        );
+    }
+
+    async function requestEpubCustomization(chat, bookId, value = {}, display = {}) {
+        const chatId = typeof chat === "object" ? chat.id : chat;
+        const id = String(bookId || "").trim();
+        if (!id) return sendMessage(chatId, "EPUB 书号无效，请重新选择。");
+        const config = normalizeEpubCustomConfig(value);
+        return showEpubPanel(
+            chatId,
+            display.messageId,
+            epubCustomSummary(id, config, escapeHtml),
+            epubCustomSelectionMarkup(id, config, callback)
+        );
+    }
+
+    async function requestEpubStudio(chat, bookId, value = {}, display = {}) {
+        const chatId = typeof chat === "object" ? chat.id : chat;
+        const id = String(bookId || "").trim();
+        if (!id) return sendMessage(chatId, "EPUB 书号无效，请重新选择。");
+        return showEpubPanel(
+            chatId,
+            display.messageId,
+            epubStudioSummary(id, value, escapeHtml),
+            epubStudioSelectionMarkup(id, value, callback)
         );
     }
 
@@ -132,7 +175,8 @@ function createExportDelivery(options = {}) {
             );
             return;
         }
-        const epubStyleId = normalizeEpubStyleChoice(exportOptions.epubStyleId);
+        const customEpubConfig = exportOptions.epubConfig ? normalizeEpubCustomConfig(exportOptions.epubConfig) : null;
+        const epubStyleId = normalizeEpubStyleChoice(exportOptions.epubStyleId || customEpubConfig?.styleId);
         const epubStyleLabel = epubStyleChoices.find((item) => item.id === epubStyleId)?.label || "";
         const progress = await sendMessage(
             chatId,
@@ -142,7 +186,11 @@ function createExportDelivery(options = {}) {
         try {
             const savedEpubConfig = pricingData.pricing?.epub || pricingData.epub || {};
             result = await buildExport(bookData.book, format, from, {
-                epub: epubStyleId ? { ...savedEpubConfig, styleId: epubStyleId } : savedEpubConfig
+                epub: {
+                    ...savedEpubConfig,
+                    ...(customEpubConfig || {}),
+                    ...(epubStyleId ? { styleId: epubStyleId } : {})
+                }
             });
             const quote = exportQuote(result, pricing);
             const paidBook = Number(quote.paidChapters || 0) > 0;
@@ -332,6 +380,8 @@ function createExportDelivery(options = {}) {
         canSendPrivateMessage,
         privateExportStartMarkup,
         rememberPrivateExportStart,
+        requestEpubCustomization,
+        requestEpubStudio,
         requestEpubStyle,
         sendExport,
         takePrivateExportStart

@@ -1,16 +1,19 @@
 /**
- * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、导出运行时与卡片格式化器
- * [OUTPUT]: 对外提供 QQ 主面板/帮助/签到、紧凑结果键盘、详情、EPUB 样式和带状态卡的 TXT/EPUB 下载交互
+ * [INPUT]: 依赖 PgBotClient、QQ API 发送器、共享搜索解析/平台语义、QQ 内容范围/实时缓存策略、EPUB 模板配置与卡片格式化器
+ * [OUTPUT]: 对外提供 QQ 主面板/帮助/签到、紧凑结果键盘、详情、EPUB 模板库/自定义面板和带状态卡的 TXT/EPUB 下载交互
  * [POS]: qq-bot 的业务交互核心，以单行主动作和两列内容选择匹配 QQ 移动端密度，并在昂贵导出前拒绝零缓存书籍
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const { createSearchPlatformRegistry } = require("../bot/search-platforms");
 const { createSearchQueryParser, parseBookId } = require("../bot/search-query");
 const { filterQqBooks } = require("../services/qq-bot-config");
+const { normalizeEpubCustomConfig } = require("../bot/epub-style-picker");
+const { CATEGORIES: EPUB_STUDIO_CATEGORIES, component, cycleStudioConfig } = require("../services/epub-component-library");
 const {
     bookButtonLabel,
     cacheUnavailableText,
     clean,
+    customStyleText,
     detailText,
     emptySearchText,
     errorText,
@@ -45,7 +48,15 @@ function createQqMessageRuntime(options = {}) {
         const key = sessionKey(event);
         const current = sessions.get(key);
         if (current && Date.now() - current.updatedAt < sessionTtlMs) return current;
-        const next = { query: "", page: 1, rows: [], selectedBookId: "", pendingStyleBookId: "", updatedAt: Date.now() };
+        const next = {
+            query: "",
+            page: 1,
+            rows: [],
+            selectedBookId: "",
+            pendingStyleBookId: "",
+            pendingEpubConfig: null,
+            updatedAt: Date.now()
+        };
         sessions.set(key, next);
         return next;
     }
@@ -187,6 +198,7 @@ function createQqMessageRuntime(options = {}) {
         state.rows = rows;
         state.selectedBookId = "";
         state.pendingStyleBookId = "";
+        state.pendingEpubConfig = null;
         state.updatedAt = Date.now();
         const hasMore = !!data.has_more || state.page * Number(data.limit || 30) < Number(data.total || 0);
         const numberButtons = rows.map((book, index) => ({
@@ -217,6 +229,7 @@ function createQqMessageRuntime(options = {}) {
         const state = getSession(event);
         state.selectedBookId = String(access.book.book_id || bookId);
         state.pendingStyleBookId = "";
+        state.pendingEpubConfig = null;
         state.updatedAt = Date.now();
         const keyboard = hasCachedContent(access.book)
             ? [
@@ -237,7 +250,7 @@ function createQqMessageRuntime(options = {}) {
         return exportRuntime.epubStyles.find((item) => item.id.toLowerCase() === raw || String(item.label || "").toLowerCase() === raw) || null;
     }
 
-    async function exportBook(event, format, value = "", styleInput = "") {
+    async function exportBook(event, format, value = "", styleInput = "", customConfig = null) {
         const state = getSession(event);
         const bookId = resolveBookId(event, value);
         if (!bookId) return sendText(event, "请先搜索并选择一本书，或在命令后填写书号。 ");
@@ -245,6 +258,7 @@ function createQqMessageRuntime(options = {}) {
         if (!access.allowed) return sendText(event, blockedMessage(access));
         if (!hasCachedContent(access.book)) {
             state.pendingStyleBookId = "";
+            state.pendingEpubConfig = null;
             state.updatedAt = Date.now();
             return sendMarkdown(event, cacheUnavailableText(access.book), searchAgainKeyboard());
         }
@@ -252,19 +266,24 @@ function createQqMessageRuntime(options = {}) {
         if (format === "epub" && !styleInput) {
             const config = await configProvider();
             state.pendingStyleBookId = state.selectedBookId;
+            state.pendingEpubConfig = normalizeEpubCustomConfig({ styleId: config.defaultEpubStyle || "style1" });
             state.updatedAt = Date.now();
             return sendMarkdown(
                 event,
                 styleText(exportRuntime.epubStyles, config.defaultEpubStyle, access.book),
                 [
                     ...chunkRows(
-                        exportRuntime.epubStyles.map((style, index) => ({
+                        exportRuntime.epubStyles.filter((style) => style.direct !== false).map((style, index) => ({
                             label: style.label || style.id,
                             data: `样式 ${index + 1}`,
                             style: style.id === config.defaultEpubStyle ? 1 : 0
                         })),
                         2
                     ),
+                    [
+                        { label: "基础自定义", data: "自定义EPUB", style: 0 },
+                        { label: "模板工坊", data: "模板工坊", style: 1 }
+                    ],
                     [{ label: "取消", data: "取消", style: 0 }]
                 ]
             );
@@ -275,7 +294,7 @@ function createQqMessageRuntime(options = {}) {
         if (activeExports.has(key)) return sendText(event, "已有一个导出任务正在处理，请等待完成。 ");
         activeExports.add(key);
         try {
-            await exportRuntime.exportBook(event, state.selectedBookId, format, style?.id || "");
+            await exportRuntime.exportBook(event, state.selectedBookId, format, style?.id || "", customConfig);
         } catch (err) {
             logger.error?.(`[qq-bot] export failed: ${err.code || err.message || err}`);
             if (!err.userNotified) {
@@ -284,8 +303,58 @@ function createQqMessageRuntime(options = {}) {
         } finally {
             activeExports.delete(key);
             state.pendingStyleBookId = "";
+            state.pendingEpubConfig = null;
             state.updatedAt = Date.now();
         }
+    }
+
+    async function showCustomEpub(event, value = null) {
+        const state = getSession(event);
+        if (!state.pendingStyleBookId) return sendText(event, "请先选择一本书并进入 EPUB 模板库。 ");
+        const config = normalizeEpubCustomConfig(value || state.pendingEpubConfig || { styleId: "style1" });
+        state.pendingEpubConfig = config;
+        state.updatedAt = Date.now();
+        const style = exportRuntime.epubStyles.find((item) => item.id === config.styleId) || exportRuntime.epubStyles[0] || {};
+        const toggles = [
+            {
+                label: `${config.includeColophon ? "✓" : "○"} 制作说明`,
+                data: "切换制作说明",
+                style: config.includeColophon ? 1 : 0
+            }
+        ];
+        if (style.capabilities?.chapterArt === "optional") {
+            toggles.push({
+                label: `${config.showTopImage ? "✓" : "○"} 章头装饰`,
+                data: "切换章头装饰",
+                style: config.showTopImage ? 1 : 0
+            });
+        }
+        const studioRows =
+            config.styleId === "studio"
+                ? EPUB_STUDIO_CATEGORIES.map((category) => [
+                      {
+                          label: `${{ chapter: "章题", volume: "分卷", intro: "简介", ornament: "装饰" }[category]}：${component(category, config.studio[category]).name}`,
+                          data: `切换组件 ${category}`,
+                          style: 0
+                      }
+                  ])
+                : [];
+        return sendMarkdown(event, customStyleText(exportRuntime.epubStyles, config, { book_id: state.pendingStyleBookId }), [
+            ...chunkRows(
+                exportRuntime.epubStyles.filter((item) => item.direct !== false).map((item, index) => ({
+                    label: `${item.id === config.styleId ? "✓ " : ""}${item.label || item.id}`,
+                    data: `底板 ${index + 1}`,
+                    style: item.id === config.styleId ? 1 : 0
+                })),
+                2
+            ),
+            ...studioRows,
+            toggles,
+            [
+                { label: "生成 EPUB", data: "确认生成EPUB", style: 1 },
+                { label: "返回模板库", data: "EPUB", style: 0 }
+            ]
+        ]);
     }
 
     async function handle(event) {
@@ -303,8 +372,44 @@ function createQqMessageRuntime(options = {}) {
         if (/^(?:sign|签到|每日签到)$/i.test(input)) return sign(event);
         if (/^(?:取消|cancel)$/i.test(input)) {
             state.pendingStyleBookId = "";
+            state.pendingEpubConfig = null;
             state.updatedAt = Date.now();
             return sendMarkdown(event, "# 已取消\n\n当前 EPUB 样式选择已关闭。", afterActionKeyboard());
+        }
+        if (/^(?:自定义epub|自定义生成)$/i.test(input) && state.pendingStyleBookId) return showCustomEpub(event);
+        if (/^模板工坊$/i.test(input) && state.pendingStyleBookId) {
+            return showCustomEpub(event, { ...state.pendingEpubConfig, styleId: "studio" });
+        }
+        const baseMatch = input.match(/^底板\s*(\d+)$/i);
+        if (baseMatch && state.pendingStyleBookId && state.pendingEpubConfig) {
+            const style = exportRuntime.epubStyles[Number(baseMatch[1]) - 1];
+            if (!style) return sendText(event, "EPUB 底板无效，请重新选择。 ");
+            return showCustomEpub(event, { ...state.pendingEpubConfig, styleId: style.id });
+        }
+        if (/^切换制作说明$/i.test(input) && state.pendingStyleBookId && state.pendingEpubConfig) {
+            return showCustomEpub(event, {
+                ...state.pendingEpubConfig,
+                includeColophon: !state.pendingEpubConfig.includeColophon
+            });
+        }
+        if (/^切换章头装饰$/i.test(input) && state.pendingStyleBookId && state.pendingEpubConfig) {
+            return showCustomEpub(event, { ...state.pendingEpubConfig, showTopImage: !state.pendingEpubConfig.showTopImage });
+        }
+        const studioMatch = input.match(/^切换组件\s+(chapter|volume|intro|ornament)$/i);
+        if (studioMatch && state.pendingStyleBookId && state.pendingEpubConfig?.styleId === "studio") {
+            return showCustomEpub(event, {
+                ...state.pendingEpubConfig,
+                studio: cycleStudioConfig(state.pendingEpubConfig.studio, studioMatch[1].toLowerCase())
+            });
+        }
+        if (/^确认生成epub$/i.test(input) && state.pendingStyleBookId && state.pendingEpubConfig) {
+            return exportBook(
+                event,
+                "epub",
+                state.pendingStyleBookId,
+                state.pendingEpubConfig.styleId,
+                state.pendingEpubConfig
+            );
         }
         const styleMatch = input.match(/^(?:样式|style)\s*(\S+)$/i);
         if (styleMatch && state.pendingStyleBookId) return exportBook(event, "epub", state.pendingStyleBookId, styleMatch[1]);

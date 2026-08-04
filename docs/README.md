@@ -18,6 +18,7 @@
 | [QQ Bot](../qq-bot/README.md) | QQ 开放平台权限、搜索范围、命令和文件投递 |
 | [QQ Bot](../qq-bot/README.md) | QQ 开放平台权限、搜索范围、命令和文件投递 |
 | [EPUB 样式](../bot/epub-styles/README.md) | 样式注册、预览、资源和兼容边界 |
+| [EPUB 模板库与自定义导出](EPUB_TEMPLATE_LIBRARY.md) | Telegram/QQ 模板库、自定义开关、任务恢复和知识库接入门禁 |
 | [Reader](../cirno-src/README.md) | Reader 功能、独立开发和构建 |
 | [2026-07-23 综合审计报告](../PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md) | 当前代码、逻辑、UI、安全、测试和文档完整度评估 |
 | [可优化完善与功能路线图](../PROJECT_OPTIMIZATION_FEATURE_ROADMAP_2026-07-23.md) | 后续优化、可增加功能、用户价值和实施顺序 |

@@ -265,6 +265,106 @@ test("QQ primary actions use one compact mobile row", async () => {
     );
 });
 
+test("QQ EPUB template library supports custom options before export", async () => {
+    const messages = [];
+    const exports = [];
+    const runtime = createQqMessageRuntime({
+        client: {
+            qqBookAccess: async () => ({
+                allowed: true,
+                book: { book_id: "101", title: "可下载", platform: "qidian", cache_count: 2 }
+            })
+        },
+        api: {
+            sendMarkdown: async (_target, content, _reply, keyboard) => messages.push({ content, keyboard }),
+            sendText: async (_target, content) => messages.push({ content, keyboard: [] })
+        },
+        configProvider: async () => ({ defaultEpubStyle: "style2" }),
+        exportRuntime: {
+            epubStyles: [
+                { id: "style1", label: "江湖纸卷", capabilities: { chapterArt: "optional" } },
+                { id: "style2", label: "老二次元", capabilities: { chapterArt: "optional" } },
+                { id: "style3", label: "空门夜雨", capabilities: { chapterArt: "none" } },
+                { id: "style4", label: "丹青云卷", capabilities: { chapterArt: "none" } }
+            ],
+            exportBook: async (...args) => exports.push(args)
+        }
+    });
+    const event = (content, messageId) => ({
+        content,
+        identity: "qq:user-open",
+        kind: "user",
+        messageId,
+        raw: {},
+        reply: { msgId: messageId, seq: 0 },
+        target: { kind: "user", id: "user-open" },
+        targetKey: "user:user-open",
+        userOpenId: "user-open"
+    });
+    await runtime.handle(event("详情 101", "custom-detail"));
+    await runtime.handle(event("EPUB", "custom-library"));
+    assert.equal(messages[1].keyboard.at(-2)[0].data, "自定义EPUB");
+    await runtime.handle(event("自定义EPUB", "custom-open"));
+    assert.match(messages[2].content, /底板：老二次元/);
+    await runtime.handle(event("切换制作说明", "custom-colophon"));
+    assert.match(messages[3].content, /制作说明：移除/);
+    await runtime.handle(event("确认生成EPUB", "custom-export"));
+    assert.equal(exports.length, 1);
+    assert.equal(exports[0][3], "style2");
+    assert.deepEqual(exports[0][4], { styleId: "style2", includeColophon: false, showTopImage: true });
+});
+
+test("QQ EPUB studio cycles knowledge-base components before export", async () => {
+    const messages = [];
+    const exports = [];
+    const runtime = createQqMessageRuntime({
+        client: {
+            qqBookAccess: async () => ({
+                allowed: true,
+                book: { book_id: "101", title: "可下载", platform: "qidian", cache_count: 2 }
+            })
+        },
+        api: {
+            sendMarkdown: async (_target, content, _reply, keyboard) => messages.push({ content, keyboard }),
+            sendText: async (_target, content) => messages.push({ content, keyboard: [] })
+        },
+        configProvider: async () => ({ defaultEpubStyle: "style1" }),
+        exportRuntime: {
+            epubStyles: [
+                { id: "style1", label: "江湖纸卷", direct: true, capabilities: { chapterArt: "optional" } },
+                { id: "studio", label: "模板工坊", direct: false, capabilities: { chapterArt: "none", componentLibrary: true } }
+            ],
+            exportBook: async (...args) => exports.push(args)
+        }
+    });
+    const event = (content, messageId) => ({
+        content,
+        identity: "qq:user-open",
+        kind: "user",
+        messageId,
+        raw: {},
+        reply: { msgId: messageId, seq: 0 },
+        target: { kind: "user", id: "user-open" },
+        targetKey: "user:user-open",
+        userOpenId: "user-open"
+    });
+    await runtime.handle(event("详情 101", "studio-detail"));
+    await runtime.handle(event("EPUB", "studio-library"));
+    await runtime.handle(event("模板工坊", "studio-open"));
+    assert.match(messages[2].content, /底板：模板工坊/);
+    assert.ok(messages[2].keyboard.some((row) => row[0]?.data === "切换组件 chapter"));
+    await runtime.handle(event("切换组件 chapter", "studio-chapter"));
+    assert.match(messages[3].content, /朱题宠章/);
+    await runtime.handle(event("确认生成EPUB", "studio-export"));
+    assert.equal(exports[0][3], "studio");
+    assert.deepEqual(exports[0][4].studio, {
+        chapter: "zhuti",
+        volume: "qinglan",
+        intro: "huihan",
+        ornament: "sanxing"
+    });
+});
+
 test("QQ search requests only downloadable cached books", async () => {
     let searchParams = null;
     const messages = [];

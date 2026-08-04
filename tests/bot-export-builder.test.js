@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 node:test、assert、fs/path 与 bot/export-builder 的缓存/PO18 合并及 TXT 流式序列化
- * [OUTPUT]: 提供部分缓存补全、章节去重排序、合法顺序缺口与源标题保持的自动化回归断言
+ * [OUTPUT]: 提供部分缓存补全、章节去重排序、合法顺序缺口、分卷排除计数与源标题保持的自动化回归断言
  * [POS]: tests 的 Bot 导出完整性守卫，防止局部缓存生成缺章文件或按数组位置篡改来源目录
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -34,7 +34,7 @@ function builder(overrides = {}) {
         hasPo18Auth: () => false,
         fetchPo18PurchasedChapters: async () => [],
         asExportError: (code, message) => Object.assign(new Error(message), { code }),
-        safeFileName: (value) => String(value).replace(/[^\w-]+/g, "_"),
+        safeFileName: (value) => String(value).replace(/[\\/:*?"<>|\r\n]+/g, "_").trim().slice(0, 80),
         writeStreamChunk: streamChunk,
         finishWriteStream: finishStream,
         yieldToEventLoop: async () => {},
@@ -68,7 +68,10 @@ test("TXT export supplements a partial PO18 cache without renumbering titles or 
     const service = builder({
         client: {
             getChapters: async () => ({
-                rows: [{ chapter_id: "c45", chapter_order: 45, title: "第45章 原题", text: "缓存正文" }]
+                rows: [
+                    { chapter_id: "v1", chapter_order: 44, title: "第一卷", is_volume: true, text: "" },
+                    { chapter_id: "c45", chapter_order: 45, title: "第45章 原题", text: "缓存正文" }
+                ]
             }),
             po18Account: async () => ({ cookies: ["po18_auth=ok"] })
         },
@@ -90,7 +93,32 @@ test("TXT export supplements a partial PO18 cache without renumbering titles or 
         assert.match(content, /第 47 章\n\n已购正文/);
         assert.doesNotMatch(content, /第 1 章 第45章/);
         assert.equal(result.chapters, 2);
+        assert.equal(path.basename(result.filePath), "测试书_2章.txt");
         assert.deepEqual(fetchCalls[0].options.skipChapterIds, ["c45"]);
+    } finally {
+        await fs.rm(path.dirname(result.filePath), { recursive: true, force: true });
+    }
+});
+
+test("EPUB export filename uses the actual chapter count without volumes", async () => {
+    const service = builder({
+        client: {
+            getChapters: async () => ({
+                rows: [
+                    { chapter_id: "v1", chapter_order: 1, title: "第一卷", is_volume: true },
+                    { chapter_id: "c1", chapter_order: 2, title: "第一章", text: "正文一" },
+                    { chapter_id: "c2", chapter_order: 3, title: "第二章", text: "正文二" }
+                ]
+            }),
+            po18Account: async () => null
+        },
+        buildZip: async () => Buffer.from("epub")
+    });
+
+    const result = await service.buildExport({ book_id: "book-2", title: "测试:书", platform: "qidian" }, "epub");
+    try {
+        assert.equal(result.chapters, 2);
+        assert.equal(path.basename(result.filePath), "测试_书_2章.epub");
     } finally {
         await fs.rm(path.dirname(result.filePath), { recursive: true, force: true });
     }

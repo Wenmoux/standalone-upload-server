@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 node:test/assert 与 Bot 账户、经济、导出投递和 PikPak 处理器的受控客户端/Telegram 替身
- * [OUTPUT]: 提供私聊续接/PEER_ID_INVALID 降级、发送后结算、账户状态、管理员发币、红包幂等键和外部存储交互回归断言
+ * [INPUT]: 依赖 node:test/assert 与 Bot 账户、经济、EPUB 自定义、导出投递和 PikPak 处理器的受控客户端/Telegram 替身
+ * [OUTPUT]: 提供 EPUB 自定义回调、私聊续接/PEER_ID_INVALID 降级、发送后结算、账户状态、管理员发币、红包幂等键和外部存储交互回归断言
  * [POS]: tests 的 Bot 组合根减重守卫，确保领域处理器拆分不改变命令权限、文案和副作用顺序
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -8,6 +8,8 @@ const assert = require("assert/strict");
 const test = require("node:test");
 const { createAccountHandlers } = require("../bot/account-handlers");
 const { createEconomyHandlers } = require("../bot/economy-handlers");
+const { createEpubCustomHandler } = require("../bot/epub-custom-handlers");
+const { createEpubStudioHandler } = require("../bot/epub-studio-handlers");
 const { createExportDelivery } = require("../bot/export-delivery");
 const { isPrivateChatUnavailableError } = require("../bot/export-errors");
 const { createPikpakHandler } = require("../bot/pikpak-handler");
@@ -65,6 +67,98 @@ test("private export continuation is user-scoped, expiring and style-aware", () 
     now = 2501;
     assert.equal(flow.takePrivateExportStart(expired, "7"), null);
     assert.equal(flow.privateExportStartMarkup("payload").inline_keyboard[0][0].url, "https://t.me/po18book_bot?start=payload");
+});
+
+test("EPUB custom options override saved defaults before the build starts", async () => {
+    let buildOptions = null;
+    const flow = exportDeliveryWith({
+        client: {
+            exportPermission: async () => ({ unlocked: true, free_export: {}, user: { copper_coins: 100 } }),
+            exportPricing: async () => ({ pricing: { epub: { styleId: "style1", includeColophon: true, showTopImage: true } } }),
+            getBook: async () => ({ book: { book_id: "9", title: "Book" } }),
+            recordUserEvent: async () => {},
+            spendCurrency: async () => {}
+        },
+        normalizeEpubCustomConfig: (value) => ({ ...value }),
+        buildExport: async (_book, _format, _from, options) => {
+            buildOptions = options;
+            return { book: { book_id: "9", title: "Book" }, chapters: 1, filePath: "C:\\tmp\\po18\\book.epub" };
+        },
+        sendDocument: async () => {},
+        removeDirectory: async () => {}
+    });
+    await flow.sendExport({ id: 7, type: "private" }, { id: 11 }, "9", "epub", null, {
+        epubStyleId: "style2",
+        epubConfig: { styleId: "style2", includeColophon: false, showTopImage: false }
+    });
+    assert.deepEqual(buildOptions.epub, { styleId: "style2", includeColophon: false, showTopImage: false });
+});
+
+test("Telegram EPUB custom handler previews, returns and schedules normalized state", async () => {
+    const calls = [];
+    const handler = createEpubCustomHandler({
+        parseEpubCustomState: (styleId, flags) => ({
+            styleId,
+            includeColophon: flags[0] === "1",
+            showTopImage: flags[1] === "1"
+        }),
+        requestEpubCustomization: async (...args) => calls.push(["custom", ...args]),
+        requestEpubStyle: async (...args) => calls.push(["library", ...args]),
+        scheduleExport: async (...args) => calls.push(["export", ...args]),
+        sendMessage: async (...args) => calls.push(["message", ...args]),
+        withBotAudit: async (_message, _command, _action, _details, task) => task(),
+        withCooldown: async (_message, _key, _ms, _label, task) => task(),
+        exportCooldownMs: 1000
+    });
+    const input = {
+        operation: "base",
+        state: ["style2", "01", "book-9"],
+        message: { chat: { id: 7 }, message_id: 8 },
+        from: { id: 11 },
+        callbackMessage: { chat: { id: 7 }, from: { id: 11 } }
+    };
+    await handler(input);
+    assert.equal(calls[0][0], "custom");
+    assert.deepEqual(calls[0][3], { styleId: "style2", includeColophon: false, showTopImage: true });
+    await handler({ ...input, operation: "back" });
+    assert.equal(calls[1][0], "library");
+    await handler({ ...input, operation: "export" });
+    assert.equal(calls[2][0], "export");
+    assert.deepEqual(calls[2][5], {
+        epubStyleId: "style2",
+        epubConfig: { styleId: "style2", includeColophon: false, showTopImage: true }
+    });
+});
+
+test("Telegram EPUB studio handler preserves the selected component combination", async () => {
+    const calls = [];
+    const epubConfig = {
+        styleId: "studio",
+        includeColophon: true,
+        showTopImage: false,
+        studio: { chapter: "zhuti", volume: "shuanglan", intro: "xuanhe", ornament: "zhuqian" }
+    };
+    const handler = createEpubStudioHandler({
+        parseEpubStudioState: () => epubConfig,
+        requestEpubStudio: async (...args) => calls.push(["studio", ...args]),
+        requestEpubStyle: async (...args) => calls.push(["library", ...args]),
+        scheduleExport: async (...args) => calls.push(["export", ...args]),
+        sendMessage: async (...args) => calls.push(["message", ...args]),
+        withBotAudit: async (_message, _command, _action, _details, task) => task(),
+        withCooldown: async (_message, _key, _ms, _label, task) => task(),
+        exportCooldownMs: 1000
+    });
+    const input = {
+        operation: "chapter",
+        state: ["zsxz", "book-9"],
+        message: { chat: { id: 7 }, message_id: 8 },
+        from: { id: 11 },
+        callbackMessage: { chat: { id: 7 }, from: { id: 11 } }
+    };
+    await handler(input);
+    assert.deepEqual(calls[0][3], epubConfig.studio);
+    await handler({ ...input, operation: "export" });
+    assert.deepEqual(calls[1][5], { epubStyleId: "studio", epubConfig });
 });
 
 test("export delivery sends the file before idempotent currency settlement and cleans temp files", async () => {

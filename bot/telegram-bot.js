@@ -23,7 +23,12 @@ const { createBotUi } = require("./ui-formatters");
 const { createBotTaskRuntime } = require("./task-runtime");
 const { createMessageRuntime } = require("./message-runtime");
 const { createExportBuilder } = require("./export-builder");
-const { EPUB_EXPORT_STYLE_CHOICES, epubStyleSelectionMarkup, normalizeEpubStyleChoice } = require("./epub-style-picker");
+const epubPicker = require("./epub-style-picker");
+const {
+    EPUB_EXPORT_STYLE_CHOICES, epubCustomSelectionMarkup, epubCustomSummary, epubStudioSelectionMarkup,
+    epubStudioSummary, epubStyleSelectionMarkup, normalizeEpubCustomConfig, normalizeEpubStyleChoice,
+    parseEpubCustomState, parseEpubStudioState
+} = epubPicker;
 const { createTaskSchedulers } = require("./task-schedulers");
 const {
     createBroadcastDraftStore,
@@ -42,6 +47,8 @@ const { createBroadcastHandlers } = require("./broadcast-handlers");
 const { createAccountHandlers } = require("./account-handlers");
 const { createEconomyHandlers } = require("./economy-handlers");
 const { createExportDelivery } = require("./export-delivery");
+const { createEpubCustomHandler } = require("./epub-custom-handlers");
+const { createEpubStudioHandler } = require("./epub-studio-handlers");
 const { createPikpakHandler } = require("./pikpak-handler");
 const {
     mainMenuMarkup,
@@ -187,8 +194,11 @@ const exportDelivery = createExportDelivery({
     asExportError,
     formatExportFailure,
     isPrivateChatUnavailableError,
+    normalizeEpubCustomConfig,
     normalizeEpubStyleChoice,
     epubStyleChoices: EPUB_EXPORT_STYLE_CHOICES,
+    epubCustomSelectionMarkup, epubCustomSummary,
+    epubStudioSelectionMarkup, epubStudioSummary,
     epubStyleSelectionMarkup,
     callback,
     ensureRegistered: (...args) => accountHandlers.ensureRegistered(...args),
@@ -200,7 +210,7 @@ const exportDelivery = createExportDelivery({
     botUserProvider: () => botUser,
     privateExportStartTtlMs: PRIVATE_EXPORT_START_TTL_MS
 });
-const { requestEpubStyle, sendExport, takePrivateExportStart } = exportDelivery;
+const { requestEpubCustomization, requestEpubStudio, requestEpubStyle, sendExport, takePrivateExportStart } = exportDelivery;
 const accountHandlers = createAccountHandlers({
     client,
     sendMessage,
@@ -309,6 +319,9 @@ const { persistentJobTypes, recoverSystemJob, scheduleExport, scheduleMyBookshel
         handleShareBookshelf,
         sendRegisteredUserBroadcast: (...args) => broadcastHandlers.sendRegisteredUserBroadcast(...args)
     });
+const epubHandlerDeps = { requestEpubStyle, scheduleExport, sendMessage, withBotAudit, withCooldown, exportCooldownMs: BOT_EXPORT_COOLDOWN_MS };
+const handleEpubCustom = createEpubCustomHandler({ ...epubHandlerDeps, parseEpubCustomState, requestEpubCustomization });
+const handleEpubStudio = createEpubStudioHandler({ ...epubHandlerDeps, parseEpubStudioState, requestEpubStudio });
 
 const { handleTasks, handleTask, handleCancelJob } = createTaskStatusHandlers({
     client,
@@ -639,6 +652,12 @@ async function handleCallback(query) {
                 scheduleExport(message.chat, query.from, bookId, "epub", { epubStyleId: styleId })
             )
         );
+    }
+    if (action === "epubcustom") {
+        return handleEpubCustom({ operation: a, state: rest, message, from: query.from, callbackMessage });
+    }
+    if (action === "epubstudio") {
+        return handleEpubStudio({ operation: a, state: rest, message, from: query.from, callbackMessage });
     }
     if (action === "unlock") {
         return withBotAudit(callbackMessage, "/exporttxt", "export_unlock", { book_id: a }, async () => {

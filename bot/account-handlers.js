@@ -49,7 +49,8 @@ function createAccountHandlers(options = {}) {
                     .join("\n")
             ).catch(() => {});
             return scheduleExport(message.chat, message.from, pendingExport.bookId, pendingExport.format, {
-                epubStyleId: pendingExport.epubStyleId
+                epubStyleId: pendingExport.epubStyleId,
+                ...(pendingExport.epubConfig ? { epubConfig: pendingExport.epubConfig } : {})
             });
         }
         return sendMessage(message.chat.id, mainMenuText({ user, escapeHtml, scholarText }), {

@@ -10,6 +10,7 @@
 - `ARCHITECTURE.md`: 进程、端口、数据流、部署模式、持久化边界与发布链路地图。
 - `CONFIGURATION.md`: 环境变量的职责、默认值、安全等级和单容器/Compose 注入位置。
 - `TROUBLESHOOTING.md`: 依据日志症状定位迁移锁、Metrics、Bot 网络、健康检查和导出问题的操作手册。
+- `EPUB_TEMPLATE_LIBRARY.md`: EPUB 模板库、自定义 Bot 交互、持久任务恢复及知识库条目转为可生成模板的资源/测试门禁。
 - `../PROJECT_COMPREHENSIVE_ANALYSIS_2026-07-23.md`: 当前综合审计报告，按代码、逻辑、UI、安全、测试、文档和历史报告对账给出最新风险排序。
 - `../PROJECT_OPTIMIZATION_FEATURE_ROADMAP_2026-07-23.md`: 当前产品优化与新增功能路线图，把综合审计中的风险和机会拆成可排序实施项。
 

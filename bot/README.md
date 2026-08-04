@@ -61,7 +61,7 @@ Telegram 输入 `/` 时显示的系统命令表只保留 `/menu`、`/search`、`
 | `/random [-平台]`                  | 从指定平台有正文缓存的书中随机推荐      |
 | `/info 书号`                       | 查看书籍详情与操作按钮                  |
 | `/exporttxt 书号`                  | 创建 TXT 导出任务                       |
-| `/exportepub 书号`                 | 选择内置样式后创建 EPUB 导出任务        |
+| `/exportepub 书号`                 | 从模板库直选或自定义配置后创建 EPUB 导出任务 |
 
 书籍收藏通过搜索结果或详情卡片中的“收藏”按钮完成，`/myfav` 用于查看收藏列表；不存在 `/fav 书号` 命令。
 
@@ -108,7 +108,7 @@ PO18 账号、验证码、已购书架同步和整架共享只能在 Bot 私聊�
 
 ## 导出与持久任务
 
-TXT/EPUB 导出先从 `/bot-api/books/:bookId/chapters/export` 按 Bot Token 分页读取本地缓存正文；当缓存不完整且用户已绑定有效 PO18 会话时，会根据元信息补抓账号实际可读的缺失章节。已有缓存章节不会重复请求 PO18，空正文缓存可由已购正文替换。TXT 保留来源标题和真实 `chapter_order` 缺口；EPUB 只拆分来源标题本身已有的“第 X 章”，对“数字 + 章节名”等标题完整照录，不按数组位置补章号。生成文件只存在于任务临时目录，发送完成后由运行时清理。
+TXT/EPUB 导出先从 `/bot-api/books/:bookId/chapters/export` 按 Bot Token 分页读取本地缓存正文；当缓存不完整且用户已绑定有效 PO18 会话时，会根据元信息补抓账号实际可读的缺失章节。已有缓存章节不会重复请求 PO18，空正文缓存可由已购正文替换。TXT 保留来源标题和真实 `chapter_order` 缺口；EPUB 只拆分来源标题本身已有的“第 X 章”，对“数字 + 章节名”等标题完整照录，不按数组位置补章号。下载文件统一命名为 `书名_实际正文数章.txt/epub`，实际正文数不包含分卷记录。生成文件只存在于任务临时目录，发送完成后由运行时清理。
 
 `bot_export_txt`、`bot_export_epub`、书架同步、共享上传和 `bot_registered_user_broadcast` 都会写入服务端 `system_jobs`：
 
@@ -117,9 +117,9 @@ TXT/EPUB 导出先从 `/bot-api/books/:bookId/chapters/export` 按 Bot Token 分
 - Bot 重启后会认领未完成任务并恢复执行。
 - `/tasks`、`/task` 和 `/canceljob` 提供查询与取消入口。
 
-群聊导出会先探测 Bot 是否能够私聊发文件。Telegram 返回 `Forbidden`、`chat not found`、`blocked` 或 `PEER_ID_INVALID` 都表示用户尚未建立可用私聊，不是 EPUB 构建失败；Bot 会在群里提供“打开私聊继续导出”按钮，用户发送 `/start` 后恢复所选书籍和 EPUB 样式。
+群聊导出会先探测 Bot 是否能够私聊发文件。Telegram 返回 `Forbidden`、`chat not found`、`blocked` 或 `PEER_ID_INVALID` 都表示用户尚未建立可用私聊，不是 EPUB 构建失败；Bot 会在群里提供“打开私聊继续导出”按钮，用户发送 `/start` 后恢复所选书籍、底板和自定义开关。
 
-EPUB 导出按钮提供“江湖纸卷”“老二次元”“空门夜雨”“丹青云卷”四种选择；`crane` 仍在生成器中注册，用于旧配置兼容，但不作为 Bot 直选按钮。样式结构与扩展契约见 [EPUB 内置样式](./epub-styles/README.md)。
+EPUB 模板库提供“江湖纸卷”“老二次元”“空门夜雨”“丹青云卷”四种成品选择；点击成品会直接创建任务。“基础自定义”可调整底板、制作说明和支持的章头装饰，“模板工坊”可循环选择 6 种章题、4 种分卷、3 种简介和 4 种装饰，共 288 种组合。配置写入持久任务，重启恢复不会退回默认值。`crane` 仍在生成器中注册，用于旧配置兼容，但不对用户公开。样式结构见 [EPUB 内置样式](./epub-styles/README.md)，交互与知识库接入规则见 [EPUB 模板库](../docs/EPUB_TEMPLATE_LIBRARY.md)。
 
 ## 维护边界
 

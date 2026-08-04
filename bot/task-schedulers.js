@@ -1,9 +1,11 @@
 /**
- * [INPUT]: 依赖 botTaskQueue、Telegram 消息接口和导出、书架同步、共享、注册用户广播领域执行器
- * [OUTPUT]: 对外提供持久 Bot 任务类型、幂等任务构造与导出/私聊书架同步/共享/全员通知调度和恢复工厂
+ * [INPUT]: 依赖 botTaskQueue、Telegram 消息接口和带 EPUB 自定义配置的导出、书架同步、共享、注册用户广播领域执行器
+ * [OUTPUT]: 对外提供持久 Bot 任务类型、幂等任务构造与保留 EPUB 模板配置的导出/私聊书架同步/共享/全员通知调度和恢复工厂
  * [POS]: bot 任务域的声明式调度层，在入队前隔离 PO18 账号私密操作，并统一任务类型、互斥键、持久输入与执行函数的映射
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
+const { encodeStudioConfig } = require("../services/epub-component-library");
+
 const PERSISTENT_BOT_JOB_TYPES = [
     "bot_export_txt",
     "bot_export_epub",
@@ -29,9 +31,13 @@ function createTaskSchedulers(deps = {}) {
         const id = String(bookId || "").trim();
         if (!id) return null;
         const epubStyleId = format === "epub" ? String(exportOptions.epubStyleId || "").trim() : "";
+        const epubConfig = format === "epub" && exportOptions.epubConfig ? { ...exportOptions.epubConfig } : null;
+        const epubVariant = epubConfig
+            ? `${epubConfig.includeColophon ? "1" : "0"}${epubConfig.showTopImage ? "1" : "0"}${epubConfig.styleId === "studio" ? encodeStudioConfig(epubConfig.studio) : ""}`
+            : "";
         const label = `${format.toUpperCase()} 导出`;
         return {
-            name: `export:${format}:${from.id}:${id}${epubStyleId ? `:${epubStyleId}` : ""}`,
+            name: `export:${format}:${from.id}:${id}${epubStyleId ? `:${epubStyleId}${epubVariant ? `:${epubVariant}` : ""}` : ""}`,
             label,
             chatId,
             bookId: id,
@@ -44,13 +50,15 @@ function createTaskSchedulers(deps = {}) {
                 book_id: id,
                 format,
                 group_chat: typeof chat === "object" && isGroup(chat),
-                ...(epubStyleId ? { epub_style_id: epubStyleId } : {})
+                ...(epubStyleId ? { epub_style_id: epubStyleId } : {}),
+                ...(epubConfig ? { epub_config: epubConfig } : {})
             },
-            idempotencyKey: `bot:export:${format}:${from.id}:${id}${epubStyleId ? `:${epubStyleId}` : ""}`,
+            idempotencyKey: `bot:export:${format}:${from.id}:${id}${epubStyleId ? `:${epubStyleId}${epubVariant ? `:${epubVariant}` : ""}` : ""}`,
             maxAttempts: 3,
             lockKey: `export:${from.id}`,
             task: (signal, runtimeJob = {}) => sendExport(chat, from, id, format, signal, {
                 epubStyleId,
+                epubConfig,
                 settlementKey: runtimeJob.systemJobId ? `system-job:${runtimeJob.systemJobId}:export-settlement` : ""
             })
         };
@@ -170,7 +178,8 @@ function createTaskSchedulers(deps = {}) {
         let job = null;
         if (row.type === "bot_export_txt" || row.type === "bot_export_epub") {
             job = exportJob(chat, from, input.book_id, input.format || row.type.replace("bot_export_", ""), {
-                epubStyleId: input.epub_style_id || ""
+                epubStyleId: input.epub_style_id || "",
+                epubConfig: input.epub_config || null
             });
         } else if (row.type === "bot_po18_bookshelf_sync") {
             job = bookshelfJob(message);

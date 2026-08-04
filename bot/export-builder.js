@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node 临时目录、文件流与路径能力，以及注入的 server API 客户端、文本工具、EPUB 生成器和 ZIP 构建器
- * [OUTPUT]: 对外提供按书号合并缓存与账号可读章节并生成保留来源标题/顺序的临时 TXT/EPUB 文件
+ * [OUTPUT]: 对外提供按书号合并缓存与账号可读章节并生成保留来源标题/顺序、按实际正文数命名的临时 TXT/EPUB 文件
  * [POS]: bot 导出域的格式编排层，在鉴权正文分页、PO18 缺章补全与具体 TXT/EPUB 序列化之间建立稳定边界
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -126,9 +126,9 @@ async function buildExport(bookOrId, format, from = null, exportOptions = {}) {
         }
     }
     if (!rows.length) throw asExportError("EXPORT_NO_CONTENT", "本地没有正文缓存，无法导出");
-    const base = safeFileName(`${book.title || book.book_id}_${book.book_id}`);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "po18-bot-"));
     const readableCount = rows.filter((chapter) => !isVolumeChapter(chapter)).length;
+    const base = safeFileName(`${book.title || book.book_id}_${readableCount}章`);
     if (format === "txt") {
         const filePath = path.join(dir, `${base}.txt`);
         await writeTxtExport(filePath, book, rows);
